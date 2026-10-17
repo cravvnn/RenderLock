@@ -1,0 +1,4 @@
+numpy>=1.26,<3
+boon-deadlock==0.15.0
+polars==1.44.1
+python-snappy==0.7.3

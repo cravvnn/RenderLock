@@ -1,0 +1,14 @@
+diff --git a/ValveResourceFormat/Particles/ParticleDefinitionParser.cs b/ValveResourceFormat/Particles/ParticleDefinitionParser.cs
+index 7e33b59..4ba48b1 100644
+--- a/ValveResourceFormat/Particles/ParticleDefinitionParser.cs
++++ b/ValveResourceFormat/Particles/ParticleDefinitionParser.cs
+@@ -373,6 +373,9 @@ private readonly ITransformProvider TransformInput(string key)
+                         return new ControlPointTransformProvider(controlPoint, useOrientation);
+                     }
+                 case "PT_TYPE_INVALID":
++                    // Explicit no-transform input. AGR's pinned installed-binary
++                    // oracle verifies identity for current and historical samples.
++                    return new IdentityTransformProvider();
+                 case "PT_TYPE_NAMED_VALUE":
+                 default:
+                     Logger.LogWarning("Transform type {Type} not supported, using identity transform", type);

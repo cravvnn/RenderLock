@@ -1,0 +1,36 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Build outputs
+native/target/
+tools/launcher/target/
+bin/
+dist/
+build/
+releases/
+
+# Local artifacts and private assets
+research/runs/
+research/upstream/
+research/asset-cache/
+research/**/bin/
+research/**/obj/
+logs/
+Exports/
+*.blend
+*.blend1
+*.blend2
+*.agrscene/
+*.dem
+*.vpk
+*.vpk_c
+*.dll
+*.exe
+*.pdb
+*.glb
+*.gltf
+.env
+.env.*

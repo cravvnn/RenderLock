@@ -1,0 +1,14 @@
+DeadBlend — character beta
+
+Extract the entire portable ZIP, then double-click DeadBlend.exe (a
+Launch_DeadBlend.cmd fallback remains for troubleshooting).
+No Python installation or first-run package download is needed; the Source 2
+Viewer command-line exporter and the character-look tools are included.
+
+Select Blender and your Deadlock folder on Setup. Blender is not included.
+Choose a recording, inspect it and export a short tick range. The Lighting lab
+page adds the experimental character look (partial; read README.md first).
+Map export is not available in the beta.
+
+Read README.md for setup and coverage limits. Keep the .blend, .agrscene
+and .agr-report.json outputs together.

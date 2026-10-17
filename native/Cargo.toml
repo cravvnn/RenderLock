@@ -1,0 +1,18 @@
+[package]
+name = "agr-extract"
+version = "0.2.0"
+edition = "2024"
+rust-version = "1.88"
+license = "MIT"
+
+[dependencies]
+anyhow = "1"
+boon = { package = "boon-deadlock", version = "=0.15.0" }
+boon-proto = "=0.4.11094174"
+pbdems2 = { version = "=0.3.6", features = ["serde"] }
+prost = "0.14"
+serde_json = "1"
+
+[profile.release]
+opt-level = 2
+debug = false

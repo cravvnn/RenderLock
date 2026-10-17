@@ -1,0 +1,14 @@
+[package]
+name = "DeadBlend"
+version = "0.3.0"
+edition = "2024"
+rust-version = "1.88"
+license = "MIT"
+
+[dependencies]
+
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true
+panic = "abort"

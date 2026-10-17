@@ -1,0 +1,34 @@
+diff --git a/ValveResourceFormat/Resource/ResourceTypes/BinaryKV3.NodeType.cs b/ValveResourceFormat/Resource/ResourceTypes/BinaryKV3.NodeType.cs
+index 963f5ed..105d0e6 100644
+--- a/ValveResourceFormat/Resource/ResourceTypes/BinaryKV3.NodeType.cs
++++ b/ValveResourceFormat/Resource/ResourceTypes/BinaryKV3.NodeType.cs
+@@ -29,6 +29,8 @@ private enum KV3BinaryNodeType : byte
+             UINT8 = 23,
+             ARRAY_TYPE_BYTE_LENGTH = 24,
+             ARRAY_TYPE_AUXILIARY_BUFFER = 25,
++            UINT64_ZERO = 26,
++            UINT64_ONE = 27,
+         }
+     }
+ }
+diff --git a/ValveResourceFormat/Resource/ResourceTypes/BinaryKV3.cs b/ValveResourceFormat/Resource/ResourceTypes/BinaryKV3.cs
+index 7bc90da..960848b 100644
+--- a/ValveResourceFormat/Resource/ResourceTypes/BinaryKV3.cs
++++ b/ValveResourceFormat/Resource/ResourceTypes/BinaryKV3.cs
+@@ -814,6 +814,16 @@ private static KVObject ReadValue(Context context, KV3BinaryNodeType datatype, B
+                     return 0L;
+                 case KV3BinaryNodeType.INT64_ONE:
+                     return 1L;
++                case KV3BinaryNodeType.UINT64_ZERO:
++                case KV3BinaryNodeType.UINT64_ONE:
++                    // Installed 6779 reader c4215/c4267: v5-only unsigned
++                    // constants; no primitive lane bytes are consumed.
++                    if (context.Version < 5)
++                    {
++                        throw new InvalidDataException("Unsigned KV3 constants require version 5");
++                    }
++
++                    return datatype == KV3BinaryNodeType.UINT64_ONE ? 1UL : 0UL;
+                 case KV3BinaryNodeType.DOUBLE_ZERO:
+                     return 0.0D;
+                 case KV3BinaryNodeType.DOUBLE_ONE:
