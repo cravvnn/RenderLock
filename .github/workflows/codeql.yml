@@ -63,3 +63,11 @@ jobs:
         with:
           category: '/language:${{ matrix.language }}'
           output: codeql-results
+      - name: Retain C# analysis diagnostics
+        if: always() && matrix.language == 'csharp'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: codeql-csharp-diagnostics
+          path: codeql-results/*.sarif
+          retention-days: 7
+          if-no-files-found: warn
