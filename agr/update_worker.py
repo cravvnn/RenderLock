@@ -189,7 +189,8 @@ def prepare_worker(root, work):
                         ignore=shutil.ignore_patterns("site-packages", "__pycache__"))
     package = work / "agr"
     package.mkdir(exist_ok=True)
-    for name in ("__init__.py", "updater.py", "update_worker.py"):
+    for name in ("__init__.py", "updater.py", "update_worker.py", "update_window.py",
+                 "gui_theme.py", "gui_assets.py", "gui_widgets.py"):
         shutil.copyfile(root / "agr" / name, package / name)
     script = work / "worker.py"
     script.write_text("from agr.update_worker import main\nraise SystemExit(main())\n", encoding="utf-8")
@@ -231,7 +232,9 @@ def smoke(root):
     # without the session-locking portable launcher. No game or Blender launch.
     code = ("import sys;from pathlib import Path;sys.path.insert(0,sys.argv[1]);"
             "import portable_launcher;portable_launcher.verify(Path(sys.argv[1]));"
-            "from agr import gui;import tkinter as tk;r=tk.Tk();r.withdraw();r.update();r.destroy()")
+            "from agr import gui,gui_theme;import tkinter as tk;"
+            "gui_theme.enable_dpi_awareness();r=tk.Tk();r.withdraw();"
+            "gui_theme.initialize(r);gui_theme.brand_window(r);r.update();r.destroy()")
     result = subprocess.run([str(root / "runtime/python.exe"), "-I", "-B", "-c", code, str(root)],
                             cwd=root, env=clean_environment(), timeout=120, capture_output=True,
                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
@@ -251,18 +254,9 @@ def main(argv=None):
     root = Path(plan["target"]).resolve()
     if workspace_path(root) != work:
         raise ValueError("Recovery location disagrees with installation")
-    import tkinter as tk
-    from tkinter import ttk
-    window = tk.Tk()
-    window.title("RenderLock — Updating")
-    window.geometry("460x130")
-    window.resizable(False, False)
-    window.protocol("WM_DELETE_WINDOW", lambda: None)
-    ttk.Label(window, text="Recovering previous version..." if args.recover else "Installing RenderLock...",
-              padding=18).pack()
-    bar = ttk.Progressbar(window, mode="indeterminate", length=400)
-    bar.pack()
-    bar.start()
+    from .update_window import UpdateWindow
+    display = UpdateWindow(recover=args.recover)
+    window = display.root
     import queue
     import threading
     events = queue.Queue()
@@ -288,14 +282,16 @@ def main(argv=None):
         except queue.Empty:
             window.after(100, poll)
             return
+        def finish():
+            if can_relaunch and not args.no_relaunch and not (root / PENDING).exists():
+                subprocess.Popen([str(root / "RenderLock.exe")], cwd=root, env=clean_environment())
+            display.progress.stop()
+            window.destroy()
         if error:
-            from tkinter import messagebox
-            messagebox.showerror("RenderLock update could not finish",
-                f"{error}\n\nYour backup and recovery files are retained in:\n{work}\n"
-                "Open RenderLock.exe again to recover an interrupted update.", parent=window)
-        if can_relaunch and not args.no_relaunch and not (root / PENDING).exists():
-            subprocess.Popen([str(root / "RenderLock.exe")], cwd=root, env=clean_environment())
-        window.destroy()
+            display.show_error(f"{error}\n\nRecovery folder:\n{work}\n\n"
+                "Open RenderLock.exe again to recover an interrupted update.", finish)
+        else:
+            finish()
     threading.Thread(target=run, daemon=True).start()
     window.after(100, poll)
     window.mainloop()

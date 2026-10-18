@@ -308,6 +308,9 @@ def _build_rail(app, parent, beta):
         tk.Misc.lower(watermark)
     brand = tk.Frame(rail, background=gui_theme.RAIL_BG)
     brand.pack(fill="x", padx=px(17), pady=_pad((HEADER_TOP, 31)))
+    app.rail_logo = app.app_icon.subsample(max(1, round(app.app_icon.width() / px(40))))
+    tk.Label(brand, image=app.rail_logo, background=gui_theme.RAIL_BG, bd=0).pack(
+        anchor="w", pady=_pad((0, 8)))
     tk.Label(brand, text="RenderLock", font=gui_theme.FONT_WORDMARK, background=gui_theme.RAIL_BG,
              foreground=gui_theme.ACCENT).pack(anchor="w")
     tk.Label(brand, text=f"{__version__}  ·  " + ("Character beta" if beta else "Development"),
@@ -547,17 +550,9 @@ def build(app):
     gui_theme.initialize(root)
     root.configure(background=gui_theme.BG)
     root.title(f"RenderLock | {__version__}" + (" · Character beta" if beta else " · Development"))
-    app.app_icon = tk.PhotoImage(master=root, data=gui_assets.APP_ICON_PNG)
-    root.iconphoto(True, app.app_icon)
+    app.app_icon = gui_theme.brand_window(root)
     root.geometry(f"{px(1040)}x{px(760)}")
     root.minsize(px(900), px(660))
-
-    # Recolor the native title bar once the window frame exists (it is created on first map).
-    # Child widgets share the root's bind tag, so react only to the root itself.
-    def style_frame(event):
-        if event.widget is root and not getattr(app, "title_bar_styled", False):
-            app.title_bar_styled = gui_theme.style_title_bar(root) or True
-    root.bind("<Map>", style_frame, add="+")
 
     shell = tk.Frame(root, background=gui_theme.BG)
     shell.pack(fill="both", expand=True)

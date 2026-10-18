@@ -1,3 +1,10 @@
+# 0.3.0b5 — Consistent update branding
+
+- Use RenderLock's shared charcoal, cream and brass theme in the standalone installer and recovery window.
+- Show the RenderLock logo, window/taskbar icon, styled title bar and matching progress line throughout update and recovery.
+- Keep update failures inside the branded helper rather than opening a default-looking error dialog.
+- Add the visible logo to the main navigation rail and share window branding with the helper.
+
 # 0.3.0b4 — In-app updates
 
 - Add an Updates page with published release notes, optional startup checks and manual checks.

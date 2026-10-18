@@ -22,6 +22,10 @@ only manifest-owned application files and refuses collisions with unowned files.
 Keep the extracted app in a writable folder. One portable session per app folder
 is allowed, so another session cannot overlap an update.
 
+The installer, recovery window and update errors use the same RenderLock theme,
+logo and window icon as the editor. The standalone recovery runtime bundles these
+brand assets so it can display them even if the installed app needs repair.
+
 The updater verifies GitHub's ZIP SHA-256 digest and the complete package manifest,
 backs up replaced files, and checks Python, the UI imports and Tk after install.
 A failed install rolls back. An interrupted install is recovered on the next

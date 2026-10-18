@@ -28,7 +28,8 @@ ROOT_FILES = {"RenderLock.exe", "Launch_RenderLock.cmd", "portable_launcher.py",
               "LICENSE", "CREDITS.md", "CHANGELOG.md", "UPDATING.md"}
 REQUIRED = {"RenderLock.exe", "portable_launcher.py", "Launch_RenderLock.cmd",
             "release_profile.json", "agr/__init__.py", "agr/gui.py", "agr/cli.py",
-            "agr/updater.py", "agr/update_worker.py", "runtime/python.exe", "bin/agr-extract.exe"}
+            "agr/updater.py", "agr/update_worker.py", "agr/update_window.py", "agr/gui_theme.py",
+            "agr/gui_assets.py", "agr/gui_widgets.py", "runtime/python.exe", "bin/agr-extract.exe"}
 
 
 def version_key(value):

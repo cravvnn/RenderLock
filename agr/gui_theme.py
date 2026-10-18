@@ -163,6 +163,25 @@ def px(value):
     return int(value * SCALE + 0.5)
 
 
+def brand_window(root):
+    """Share the actual RenderLock icon and native frame across app windows."""
+    import tkinter as tk
+    from .gui_assets import APP_ICON_PNG
+    root._renderlock_icon = tk.PhotoImage(master=root, data=APP_ICON_PNG)
+    root.iconphoto(True, root._renderlock_icon)
+    if sys.platform == "win32":
+        import ctypes
+        try:
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Cravvnn.RenderLock")
+        except (AttributeError, OSError):
+            pass
+    def mapped(event):
+        if event.widget is root:
+            style_title_bar(root)
+    root.bind("<Map>", mapped, add="+")
+    return root._renderlock_icon
+
+
 def hairline():
     """Width of 1-pixel lines: stays crisp (whole pixels) at fractional scales."""
     return max(1, int(SCALE))
