@@ -1,0 +1,72 @@
+diff --git a/ValveResourceFormat/Particles/Operators/RampScalarSpline.cs b/ValveResourceFormat/Particles/Operators/RampScalarSpline.cs
+new file mode 100644
+index 0000000..b0e5bd3
+--- /dev/null
++++ b/ValveResourceFormat/Particles/Operators/RampScalarSpline.cs
+@@ -0,0 +1,54 @@
++namespace ValveResourceFormat.Particles.Operators
++{
++    /// <summary>
++    /// Ramps a scalar with a biased time phase and optional mirrored ease-out.
++    /// AGR evidence: installed particles.dll SHA256
++    /// 21a4b2d9636b64483fbecc9988d6e5fb9bb738435030f7e5fb2a579c78bfe004,
++    /// Operate RVA 0x1d36f0; bounded synthetic-lane oracle in AGR research.
++    /// </summary>
++    class RampScalarSpline : ParticleFunctionOperator
++    {
++        private readonly float rateMin, rateMax, startMin, startMax, endMin, endMax, bias;
++        private readonly bool proportional, easeOut;
++        private readonly ParticleField field;
++        private readonly float clampMin, clampMax;
++
++        public RampScalarSpline(ParticleDefinitionParser parse) : base(parse)
++        {
++            rateMin = parse.Float("m_RateMin", 0f);
++            rateMax = parse.Float("m_RateMax", 0f);
++            startMin = parse.Float("m_flStartTime_min", 0f);
++            startMax = parse.Float("m_flStartTime_max", 0f);
++            endMin = parse.Float("m_flEndTime_min", 1f);
++            endMax = parse.Float("m_flEndTime_max", 1f);
++            bias = parse.Float("m_flBias", .5f);
++            proportional = parse.Boolean("m_bProportionalOp", true);
++            easeOut = parse.Boolean("m_bEaseOut", false);
++            field = parse.ParticleField("m_nField", ParticleField.Radius);
++            (clampMin, clampMax) = field switch
++            {
++                ParticleField.Alpha or ParticleField.AlphaAlternate => (0f, 1f),
++                ParticleField.Radius or ParticleField.TrailLength => (0f, float.MaxValue),
++                _ => (-float.MaxValue, float.MaxValue),
++            };
++        }
++
++        public override void Operate(ParticleCollection particles, float frameTime, ParticleSystemState state, float strength)
++        {
++            foreach (ref var particle in particles.Current)
++            {
++                if (particle.Lifetime <= 0f) { continue; }
++                var start = state.Random.ForParticleBetween(particle.ParticleId, 11, startMin, startMax);
++                var end = state.Random.ForParticleBetween(particle.ParticleId, 12, endMin, endMax);
++                var time = proportional ? particle.Age / particle.Lifetime : particle.Age;
++                if (time < start || time >= end) { continue; }
++                var phase = Math.Clamp((time - start) / (end - start + 1.1920928955078125e-7f), 0f, 1f);
++                if (easeOut) { phase = 2f * Math.Min(phase, 1f - phase); }
++                phase = bias <= 0f ? 0f : bias >= 1f ? 1f : phase / (((1f / bias) - 2f) * (1f - phase) + 1f);
++                var rate = state.Random.ForParticleBetween(particle.ParticleId, 0, rateMin, rateMax);
++                var value = particle.GetScalar(field) + phase * (frameTime * strength) * rate;
++                particle.SetScalar(field, Math.Clamp(value, clampMin, clampMax));
++            }
++        }
++    }
++}
+diff --git a/ValveResourceFormat/Particles/ParticleControllerFactory.cs b/ValveResourceFormat/Particles/ParticleControllerFactory.cs
+index 6ddfa5e..11f75a3 100644
+--- a/ValveResourceFormat/Particles/ParticleControllerFactory.cs
++++ b/ValveResourceFormat/Particles/ParticleControllerFactory.cs
+@@ -151,6 +151,7 @@ internal static readonly Dictionary<string, Func<ParticleDefinitionParser, Parti
+                 ["C_OP_PositionLock"] = operatorInfo => new PositionLock(operatorInfo),
+                 ["C_OP_QuantizeFloat"] = operatorInfo => new QuantizeFloat(operatorInfo),
+                 ["C_OP_RampScalarLinear"] = operatorInfo => new RampScalarLinear(operatorInfo),
++                ["C_OP_RampScalarSpline"] = operatorInfo => new RampScalarSpline(operatorInfo),
+                 ["C_OP_RampScalarLinearSimple"] = operatorInfo => new RampScalarLinearSimple(operatorInfo),
+                 ["C_OP_RemapCrossProductOfTwoVectorsToVector"] = operatorInfo => new RemapCrossProductOfTwoVectorsToVector(operatorInfo),
+                 ["C_OP_RemapControlPointDirectionToVector"] = operatorInfo => new RemapControlPointDirectionToVector(operatorInfo),

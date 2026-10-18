@@ -1,0 +1,160 @@
+--- a/ValveResourceFormat/Particles/Particle.cs
++++ b/ValveResourceFormat/Particles/Particle.cs
+@@ -188,6 +188,9 @@
+         /// the path offset.
+         /// </summary>
+         public Vector3 HitboxOffsetPosition { get; set; } = Vector3.Zero;
++
++        /// <summary>Resolved model shape index emitted by AGR bone sampling.</summary>
++        public int HitboxIndex { get; set; }
+         /// <summary>Gets or sets a general-purpose scratch vector.</summary>
+         public Vector3 ScratchVector { get; set; } = Vector3.Zero;
+         /// <summary>Gets or sets a second general-purpose scratch vector.</summary>
+--- a/ValveResourceFormat/Particles/ParticleControllerFactory.cs
++++ b/ValveResourceFormat/Particles/ParticleControllerFactory.cs
+@@ -54,6 +54,7 @@
+         internal static readonly Dictionary<string, Func<ParticleDefinitionParser, ParticleFunctionInitializer>> InitializerDictionary
+             = new()
+             {
++                ["C_INIT_CreateOnModel"] = parse => new CreateOnModel(parse),
+                 ["C_INIT_AgeNoise"] = initializerInfo => new AgeNoise(initializerInfo),
+                 ["C_INIT_CreateAlongPath"] = initializerInfo => new CreateAlongPath(initializerInfo),
+                 ["C_INIT_CreateOnGrid"] = initializerInfo => new CreateOnGrid(initializerInfo),
+--- a/ValveResourceFormat/Particles/ParticleSystemState.cs
++++ b/ValveResourceFormat/Particles/ParticleSystemState.cs
+@@ -56,6 +56,14 @@
+         /// </summary>
+         internal ParticleRandom Random { get; } = new();
+ 
++        /// <summary>Explicit AGR model-order world poses; inherited by child systems.</summary>
++        public Func<int, IReadOnlyList<ModelBonePose>>? ModelBoneProvider { get; set; }
++
++        /// <summary>Require a supplied model provider instead of inventing root-only geometry.</summary>
++        public IReadOnlyList<ModelBonePose> GetModelBones(int controlPoint)
++            => ModelBoneProvider?.Invoke(controlPoint) ?? ParentSystem?.GetModelBones(controlPoint)
++                ?? throw new InvalidOperationException("AGR model bone provider is missing");
++
+         /// <summary>How many particles the system has spawned over its life.</summary>
+         public long ParticleCount { get; set; }
+         /// <summary>How long the system has been running, in seconds.</summary>
+--- a/ValveResourceFormat/Particles/Utils/ParticleRandom.cs
++++ b/ValveResourceFormat/Particles/Utils/ParticleRandom.cs
+@@ -55,6 +55,9 @@
+ 
+         /// <summary>Takes the next value from the table, in [0, 1).</summary>
+         public float Next() => At(queryCount++ + Seed);
++
++        /// <summary>Source model sampling's XYZ draws use twice the collection seed.</summary>
++        public float NextModelCoordinate() => At(queryCount++ + 2 * Seed);
+ 
+         /// <summary>
+         /// Takes the next value, remapped clear of both ends of the interval. The initializers that
+--- /dev/null
++++ b/ValveResourceFormat/Particles/ModelBoneSampling.cs
+@@ -0,0 +1,57 @@
++using System.Numerics;
++
++namespace ValveResourceFormat.Particles;
++
++/// <summary>Prepared model-order world bone transform, in Source units.</summary>
++public readonly record struct ModelBonePose(Vector3 Position, Quaternion Rotation, float Scale);
++
++/// <summary>AGR's bounded bone-box sampling subset; no entity lookup or hitbox inference.</summary>
++public static class ModelBoneSampling
++{
++    /// <summary>Sample a bone box with explicit RNG consumption and volume sampling only.</summary>
++    public static (Vector3 Position, Vector3 Coordinates, int Index) Sample(
++        IReadOnlyList<ModelBonePose> bones, Vector3 origin, Vector3 scale, Vector3 bias, Func<bool, float> random)
++    {
++        if (bones.Count == 0) return (origin, Vector3.Zero, 0);
++        if (bones.Count > 32767 || !Finite(origin) || !Finite(scale) || !Finite(bias)
++            || scale.X < 0 || scale.Y < 0 || scale.Z < 0)
++            throw new InvalidOperationException("Invalid AGR bone sampling inputs");
++        float Draw(bool extra = false)
++        {
++            var value = random(extra);
++            if (!float.IsFinite(value) || value < 0 || value >= 1)
++                throw new InvalidOperationException("Invalid AGR bone sampling random value");
++            return value;
++        }
++        var high = scale * .5f + new Vector3(.5f);
++        var low = Vector3.One - high;
++        var biased = !(bias.X > -.0001f && bias.X < .0001f && bias.Y > -.0001f
++            && bias.Y < .0001f && bias.Z > -.0001f && bias.Z < .0001f);
++        var best = -1e20f;
++        (Vector3 Position, Vector3 Coordinates, int Index) selected = default;
++        for (var attempt = 0; attempt < (biased ? 6 : 1); attempt++)
++        {
++            var index = (int)(bones.Count * Draw());
++            var bone = bones[index];
++            if (!Finite(bone.Position) || !float.IsFinite(bone.Scale) || bone.Scale <= 0
++                || !float.IsFinite(bone.Rotation.LengthSquared()))
++                throw new InvalidOperationException("Invalid AGR model bone transform");
++            var uv = (high - low) * new Vector3(Draw(true), Draw(true), Draw(true)) + low;
++            var local = new Vector3(16) * uv - new Vector3(8);
++            var q = new Vector3(bone.Rotation.X, bone.Rotation.Y, bone.Rotation.Z);
++            var twiceCross = 2 * Vector3.Cross(q, local);
++            var point = (local + bone.Rotation.W * twiceCross + Vector3.Cross(q, twiceCross)) * bone.Scale + bone.Position;
++            var score = float.MaxValue;
++            if (biased)
++            {
++                var delta = point - origin;
++                score = ((delta.Z * bias.Z + delta.Y * bias.Y) + delta.X * bias.X) + Draw() * 72;
++            }
++            if (score > best) { best = score; selected = (point, uv, index); }
++        }
++        if (!Finite(selected.Position)) throw new InvalidOperationException("Nonfinite AGR bone sample");
++        return selected;
++    }
++
++    private static bool Finite(Vector3 value) => float.IsFinite(value.X) && float.IsFinite(value.Y) && float.IsFinite(value.Z);
++}
+--- /dev/null
++++ b/ValveResourceFormat/Particles/Initializers/CreateOnModel.cs
+@@ -0,0 +1,46 @@
++namespace ValveResourceFormat.Particles.Initializers;
++
++/// <summary>AGR's explicit bone-only, literal-input model emission subset.</summary>
++class CreateOnModel : ParticleFunctionInitializer
++{
++    private readonly Vector3 scale;
++    private readonly Vector3 bias;
++
++    public CreateOnModel(ParticleDefinitionParser parse) : base(parse)
++    {
++        // Defaults checked against the installed constructor 0x17bf70.
++        if (!parse.Boolean("m_bUseBones") || parse.Boolean("m_bUseMesh")
++            || parse.Boolean("m_bEvenDistribution") || parse.Boolean("m_bScaleToVolume")
++            || parse.Boolean("m_bLocalCoords") || parse.Int32("m_nForceInModel") != 0
++            || parse.Int32("m_nHitboxValueFromControlPointIndex", -1) != -1
++            || parse.Float("m_flBoneVelocity") != 0 || parse.Float("m_flMaxBoneVelocity") != 0
++            || parse.Data.ContainsKey("m_modelInput") || parse.Data.ContainsKey("m_transformInput")
++            || parse.Data.ContainsKey("m_HitboxSetName"))
++            throw new NotSupportedException("AGR CreateOnModel requires default CP0 bone input, volume sampling, zero inherited velocity and no local/mesh/even/forced modes");
++        var desired = parse.NumberProvider("m_nDesiredHitbox", new LiteralNumberProvider(-1));
++        var shell = parse.NumberProvider("m_flShellSize", new LiteralNumberProvider(1));
++        var box = parse.VectorProvider("m_vecHitBoxScale", new LiteralVectorProvider(Vector3.One));
++        var direction = parse.VectorProvider("m_vecDirectionBias", new LiteralVectorProvider(Vector3.Zero));
++        if (desired is not LiteralNumberProvider || shell is not LiteralNumberProvider
++            || box is not LiteralVectorProvider || direction is not LiteralVectorProvider
++            || desired.NextNumber() != -1 || shell.NextNumber() != 1)
++            throw new NotSupportedException("AGR CreateOnModel requires literal scale/bias, no selected shape and shell size 1");
++        scale = box.NextVector(ParticleSystemState.Default);
++        bias = direction.NextVector(ParticleSystemState.Default);
++    }
++
++    // Native declaration for non-mesh mode, including creation time.
++    public override ulong WrittenFields => 0xc105;
++
++    public override Particle Initialize(ref Particle particle, ParticleCollection particles, ParticleSystemState state)
++    {
++        var sample = ModelBoneSampling.Sample(state.GetModelBones(0), state.GetControlPoint(0).Position,
++            scale, bias, extra => extra ? state.Random.NextModelCoordinate() : state.Random.Next());
++        particle.Position = sample.Position;
++        particle.PositionPrevious = sample.Position;
++        particle.Velocity = Vector3.Zero;
++        particle.HitboxOffsetPosition = sample.Coordinates;
++        particle.HitboxIndex = sample.Index;
++        return particle;
++    }
++}
