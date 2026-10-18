@@ -1,7 +1,8 @@
 """Replay boundary contracts; no proprietary replay or game assets required."""
 import pytest
 
-from agr.replay import ReplayError, _check_demo, _entities_from_raw, _position, extract_replay
+from agr.replay import (ReplayError, _check_demo, _entities_from_raw, _position,
+                        extract_replay, hero_display_name, inspect_replay)
 
 
 PREFIX = "CBodyComponent.m_skeletonInstance."
@@ -156,6 +157,99 @@ def test_bad_demo_header_is_rejected(tmp_path):
     demo.write_bytes(b"not a demo at all")
     with pytest.raises(ReplayError, match="PBDEMS2"):
         _check_demo(demo)
+
+
+def _inspect_fixture(tmp_path, monkeypatch, players, error=None):
+    from types import SimpleNamespace
+    import agr.replay as replay
+
+    demo = tmp_path / "owned.dem"
+    demo.write_bytes(b"PBDEMS2\0" + b"\0" * 8)
+    calls = []
+
+    class Frame:
+        def to_dicts(self):
+            if error is not None:
+                raise error
+            return players
+
+    class Demo:
+        build = 10932
+        map_name = "start"
+        match_id = 1
+        tick_rate = 64
+        total_ticks = 2
+        total_seconds = 2 / 64
+
+        def __init__(self, path, *, preload):
+            calls.append((path, preload))
+            assert preload is False
+
+        @property
+        def players(self):
+            return Frame()
+
+        def load(self, *names):
+            pytest.fail("Character inspection must not load per-tick/event datasets")
+
+    def forbidden_catalog(*args, **kwargs):
+        pytest.fail("Character inspection must not request a downloadable name catalog")
+
+    boon = SimpleNamespace(Demo=Demo, hero_names=forbidden_catalog)
+    monkeypatch.setattr(replay, "_dependencies", lambda: (boon, None))
+    return demo, calls
+
+
+def test_inspect_groups_recorded_heroes_offline_without_account_identity(tmp_path, monkeypatch):
+    demo, calls = _inspect_fixture(tmp_path, monkeypatch, [
+        {"hero_id": 999, "player_name": "Private A", "steam_id": 123},
+        {"hero_id": 2, "player_name": "Private B", "steam_id": 456},
+        {"hero_id": 999, "player_name": "Private C", "steam_id": 789},
+    ])
+    metadata = inspect_replay(demo)
+    assert calls == [(str(demo.resolve()), False)]
+    assert metadata == {
+        "build": 10932, "map_name": "start", "match_id": 1, "tick_rate": 64,
+        "total_ticks": 2, "total_seconds": 2 / 64,
+        "heroes": [{"hero_id": 2, "hero_name": "Seven", "player_count": 1},
+                   {"hero_id": 999, "hero_name": "Hero 999", "player_count": 2}],
+        "roster_source": "recorded_players",
+    }
+
+
+def test_inspect_invalid_roster_ids_are_not_silently_selectable(tmp_path, monkeypatch):
+    demo, _ = _inspect_fixture(tmp_path, monkeypatch, [
+        {"hero_id": 13}, {"hero_id": True}, {"hero_id": "13"}, {"hero_id": 1.5},
+        {"hero_id": 0}, {"hero_id": -1}, {}, None,
+    ])
+    metadata = inspect_replay(demo)
+    assert metadata["heroes"] == [{"hero_id": 13, "hero_name": "Haze", "player_count": 1}]
+    assert metadata["roster_source"] == "recorded_players"
+    assert "7 recorded player row(s)" in metadata["roster_warning"]
+    assert "may be incomplete" in metadata["roster_warning"]
+
+
+def test_inspect_empty_roster_preserves_metadata_with_honest_warning(tmp_path, monkeypatch):
+    demo, _ = _inspect_fixture(tmp_path, monkeypatch, [])
+    metadata = inspect_replay(demo)
+    assert metadata["total_ticks"] == 2
+    assert metadata["heroes"] == []
+    assert "No recorded hero IDs" in metadata["roster_warning"]
+
+
+def test_inspect_failed_roster_preserves_metadata_without_private_error_details(tmp_path, monkeypatch):
+    demo, _ = _inspect_fixture(tmp_path, monkeypatch, [], RuntimeError("private player/account data"))
+    metadata = inspect_replay(demo)
+    assert metadata["total_ticks"] == 2
+    assert metadata["heroes"] == []
+    assert metadata["roster_source"] == "unavailable"
+    assert "RuntimeError" in metadata["roster_warning"]
+    assert "private" not in str(metadata)
+
+
+@pytest.mark.parametrize("hero_id,name", [(2, "Seven"), (76, "Graves"), (999, "Hero 999")])
+def test_hero_display_names_are_cosmetic_offline_labels(hero_id, name):
+    assert hero_display_name(hero_id) == name
 
 
 def test_extraction_kill_markers_do_not_request_downloadable_name_catalog(tmp_path, monkeypatch):

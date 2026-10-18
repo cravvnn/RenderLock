@@ -1,3 +1,10 @@
+# 0.3.0b3 — Character checklist
+
+- Inspect replay or saved-package characters and choose named checkboxes with All / None controls.
+- Read the compact recorded-player roster offline without loading per-tick tables or downloading hero catalogs; retain unknown hero IDs.
+- Reset selections for a different input, discard stale inspection results, and reject an empty selection or an excluded follow-camera hero before export.
+- Keep manual hero IDs available in Advanced, with strict export and compatibility checks unchanged.
+
 # 0.3.0b2 — UI responsiveness, shared assets and compatibility diagnostics
 
 - Reduce repeated resize layout and decorative redraw work while retaining the interface design.

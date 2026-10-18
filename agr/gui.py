@@ -131,6 +131,8 @@ def migrate_scene_settings(values: dict[str, str]) -> dict[str, str]:
 def build_convert_command(values: dict[str, str], *, partial: bool = False,
                           overwrite: bool = False) -> list[str]:
     """Validate editable fields and build argv without shell interpretation."""
+    if values.get("heroes_empty", "0") == "1":
+        raise ValueError("Select at least one character to export, or choose All.")
     source = values.get("input", "").strip()
     if not source or not Path(source).is_file():
         raise ValueError("Choose an existing replay or saved package manifest.")
@@ -270,6 +272,8 @@ def build_convert_command(values: dict[str, str], *, partial: bool = False,
             raise ValueError('Follow camera hero ID must be a positive whole number.') from exc
         if hero <= 0:
             raise ValueError('Follow camera hero ID must be a positive whole number.')
+        if heroes and hero not in ids:
+            raise ValueError('The follow camera hero must be selected for export.')
         command += ['--shot-hero', str(hero)]
     if overwrite:
         command.append("--overwrite")
@@ -290,9 +294,12 @@ class AGRApp:
         self.termination_done.set()
         self.busy = False
         self.close_when_done = False
+        self._inspect_source = None
+        self._roster_source = None
+        self._roster_complete = False
         self.values = {key: tk.StringVar(value=value) for key, value in {
             "mode": "replay", "input": "", "assets": "", "blender": "",
-            "output": "", "start": "", "end": "", "fps": "64", "heroes": "",
+            "output": "", "start": "", "end": "", "fps": "64", "heroes": "", "heroes_empty": "0",
             "asset_source": "installed", "game_install": "", "source2viewer": "", "asset_cache": "",
             "map_enabled": "0", "map_name": "dl_midtown", "map_margin": "26",
             "source_lighting": "0", "world_region_probe": "", "lighting_dotnet": "",
@@ -334,6 +341,8 @@ class AGRApp:
             if not self.values[key].get().strip():
                 self.values[key].set(found)
         self._build_ui()
+        for key in ("input", "mode"):
+            self.values[key].trace_add("write", self._input_changed)
         self.root.protocol("WM_DELETE_WINDOW", self._close)
         self.root.after(100, self._poll)
 
@@ -344,6 +353,22 @@ class AGRApp:
     def _mode_changed(self) -> None:
         self.inspect_button.configure(text="Inspect replay" if self.values["mode"].get() == "replay"
                                       else "Inspect package")
+
+    def _input_identity(self):
+        """Bind an inspected roster to both the selected path and its file bytes' revision."""
+        path = Path(self.values["input"].get().strip()).expanduser().resolve()
+        try:
+            stat = path.stat()
+            revision = (stat.st_size, stat.st_mtime_ns)
+        except OSError:
+            revision = None
+        return self.values["mode"].get(), os.path.normcase(str(path)), revision
+
+    def _input_changed(self, *_args) -> None:
+        self._roster_source = None
+        self._roster_complete = False
+        self.character_picker.clear(reset_selection=True)
+        self.input_summary.set("Inspect to read this recording's information and characters.")
 
     def _asset_source_changed(self, event=None) -> None:
         installed = self.asset_source_label.get() == "Installed game"
@@ -361,6 +386,7 @@ class AGRApp:
             if not self.values["output"].get():
                 output = Path.home() / "Documents" / "RenderLock" / "Exports"
                 self.values["output"].set(str(output / (Path(path).stem + "_agr.blend")))
+            self._inspect()
 
     def _browse_assets(self) -> None:
         path = filedialog.askdirectory(parent=self.root, title="Choose supported game asset folder")
@@ -439,6 +465,18 @@ class AGRApp:
         if self.busy:
             return
         try:
+            if self._roster_source is not None and self._roster_source != self._input_identity():
+                # Keep the explicit filter and stale identity until inspection
+                # succeeds; a second Export click must not turn a subset into All.
+                self.character_picker.clear(reset_selection=False)
+                raise ValueError("The input file changed since inspection. Inspect it again before exporting.")
+            shot = self.values["shot_hero"].get().strip()
+            try:
+                shot_id = int(shot)
+            except ValueError:
+                shot_id = None  # The command builder explains invalid camera input.
+            if self._roster_complete and shot_id is not None and shot_id > 0 and shot_id not in self.character_picker.hero_ids:
+                raise ValueError("The follow camera hero is not listed in this recording. Choose a listed hero or leave the camera field empty.")
             command = build_convert_command(self._current_values(), partial=self.partial.get(),
                                             overwrite=self.overwrite.get())
         except ValueError as exc:
@@ -465,8 +503,10 @@ class AGRApp:
                 "from agr.scene_package import read_scene\n"
                 "data=read_scene(Path(sys.argv[1]))\n"
                 "summary={key:data.get(key) for key in ('schema_version','start_tick','end_tick','tick_rate')}\n"
-                "summary['roster']=[{'id':e['id'],'hero_id':e.get('hero_id'),'samples':len(e['samples'])} "
+                "summary['roster']=[{'id':e['id'],'hero_id':e.get('hero_id'),'hero_name':e.get('hero_name'),"
+                "'samples':len(e['samples'])} "
                 "for e in data['entities']]\n"
+                "summary['roster_source']='saved_package_tracks'\n"
                 "print(json.dumps(summary,indent=2))\n"
             )
             self._save_settings()
@@ -487,6 +527,7 @@ class AGRApp:
         for widget in self.mutable_widgets:
             widget.configure(state="disabled" if busy else "normal")
         self.asset_source_combo.configure(state="disabled" if busy else "readonly")
+        self.character_picker.set_busy(busy)
         self.cancel_button.configure(state="normal" if busy else "disabled")
         self._status_tint("busy" if busy else "ready")
         if busy:
@@ -497,6 +538,8 @@ class AGRApp:
             self.progress.grid_remove()
 
     def _start(self, command: list[str], operation: str, report_path: Path | None = None) -> None:
+        if operation == "inspect":
+            self._inspect_source = self._input_identity()
         self.cancel_requested.clear()
         self.termination_done.set()
         self._set_busy(True)
@@ -588,6 +631,10 @@ class AGRApp:
             self.termination_done.set()
 
     def _apply_metadata(self, metadata: dict[str, object]) -> None:
+        if hasattr(self, "character_picker"):
+            self.character_picker.load(metadata)
+            self._roster_source = self._input_identity()
+            self._roster_complete = self.character_picker.has_roster and not metadata.get("roster_warning")
         first_tick = metadata.get("start_tick", metadata.get("first_tick", 0))
         last_tick = metadata.get("end_tick", metadata.get("last_tick", metadata.get("total_ticks")))
         if not self.values["start"].get().strip() and isinstance(first_tick, (int, float)):
@@ -602,7 +649,9 @@ class AGRApp:
         if hasattr(self, "input_summary"):
             ticks = f"Ticks {first_tick}–{last_tick}" if last_tick is not None else "Input inspected"
             roster = metadata.get("roster")
-            detail = f" · {len(roster)} character tracks" if isinstance(roster, list) else ""
+            heroes = metadata.get("heroes")
+            detail = (f" · {len(heroes)} characters" if isinstance(heroes, list) else
+                      f" · {len(roster)} character tracks" if isinstance(roster, list) else "")
             self.input_summary.set(ticks + detail + " · Review the preview range before export.")
 
     def _poll(self) -> None:
@@ -625,9 +674,17 @@ class AGRApp:
                     elif operation == "inspect":
                         try:
                             metadata = json.loads(output)
-                            if isinstance(metadata, dict):
+                            if not isinstance(metadata, dict):
+                                raise ValueError("Inspection did not return metadata.")
+                            current = self._input_identity()
+                            if self._inspect_source != current:
+                                self.character_picker.clear(reset_selection=False)
+                                if self._inspect_source[:2] == current[:2]:
+                                    self._roster_source = self._inspect_source
+                                self.status.set("Input changed; inspect the selected recording again.")
+                            else:
                                 self._apply_metadata(metadata)
-                            self.status.set("Input inspected; review the tick range before converting.")
+                                self.status.set("Input inspected; choose characters and review the tick range before exporting.")
                         except ValueError:
                             self.status.set("Inspection finished. Metadata could not be parsed; see the log above.")
                     else:

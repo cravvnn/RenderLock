@@ -20,6 +20,31 @@ SCHEMA_VERSION = 1
 _SKEL = "CBodyComponent.m_skeletonInstance."
 _ANIM = "CBodyComponent.m_animationController."
 
+# Cosmetic English labels from the locally pinned Boon 6766 catalog. IDs from
+# the replay remain authoritative; this table neither selects assets nor claims
+# animation compatibility. Unknown future heroes remain selectable by ID.
+_HERO_DISPLAY_NAMES = {
+    1: "Infernus", 2: "Seven", 3: "Vindicta", 4: "Lady Geist", 6: "Abrams",
+    7: "Wraith", 8: "McGinnis", 10: "Paradox", 11: "Dynamo", 12: "Kelvin",
+    13: "Haze", 14: "Holliday", 15: "Bebop", 16: "Calico", 17: "Grey Talon",
+    18: "Mo & Krill", 19: "Shiv", 20: "Ivy", 21: "Kali", 25: "Warden",
+    27: "Yamato", 31: "Lash", 35: "Viscous", 38: "Gunslinger", 39: "The Boss",
+    46: "Generic Person", 48: "Wrecker", 49: "Rutger", 50: "Pocket",
+    51: "Thumper", 52: "Mirage", 53: "Fathom", 54: "Cadence", 55: "TargetDummy",
+    56: "Bomber", 57: "Shield Guy", 58: "Vyper", 59: "Vandal", 60: "Sinclair",
+    61: "Trapper", 62: "Raven", 63: "Mina", 64: "Drifter", 65: "Venator",
+    66: "Victor", 67: "Paige", 68: "Boho", 69: "The Doorman", 70: "Skyrunner",
+    71: "Swan", 72: "Billy", 73: "Druid", 74: "Graf", 75: "Fortuna",
+    76: "Graves", 77: "Apollo", 78: "Deadman Danny", 79: "Rem", 80: "Silver",
+    81: "Celeste", 82: "Opera", 84: "Rat King", 85: "Solomon", 86: "Violet",
+    87: "Nurse Harrow", 88: "Baba",
+}
+
+
+def hero_display_name(hero_id: int) -> str:
+    """Return an offline label; a label is never an export identity or guarantee."""
+    return _HERO_DISPLAY_NAMES.get(hero_id, f"Hero {hero_id}")
+
 
 class ReplayError(RuntimeError):
     """An unsupported replay, unavailable dependency, or failed extraction."""
@@ -72,16 +97,52 @@ def _check_demo(demo: Path) -> Path:
 
 
 def inspect_replay(demo: Path) -> dict[str, Any]:
-    """Read replay metadata without requesting the large per-tick tables."""
+    """Read metadata and recorded hero membership without large per-tick tables.
+
+    The compact player roster identifies hero types present in the recording,
+    not whether their rigs and animation are supported in a requested clip.
+    Player names and account identities are deliberately not returned.
+    """
     demo = _check_demo(demo)
     boon, _ = _dependencies()
     try:
-        parsed = boon.Demo(str(demo))
-        return {name: getattr(parsed, name) for name in (
+        parsed = boon.Demo(str(demo), preload=False)
+        metadata = {name: getattr(parsed, name) for name in (
             "build", "map_name", "match_id", "tick_rate", "total_ticks", "total_seconds"
         )}
     except Exception as exc:
         raise ReplayError(f"Boon could not read this replay: {exc}") from exc
+    metadata.update(heroes=[], roster_source="recorded_players")
+    try:
+        counts: dict[int, int] = {}
+        invalid_rows = 0
+        for player in parsed.players.to_dicts():
+            hero_id = player.get("hero_id") if isinstance(player, dict) else None
+            if isinstance(hero_id, bool) or not isinstance(hero_id, int) or hero_id <= 0:
+                invalid_rows += 1
+                continue
+            counts[hero_id] = counts.get(hero_id, 0) + 1
+        metadata["heroes"] = [
+            {"hero_id": hero_id, "hero_name": hero_display_name(hero_id),
+             "player_count": counts[hero_id]}
+            for hero_id in sorted(counts)
+        ]
+        if invalid_rows:
+            metadata["roster_warning"] = (
+                f"{invalid_rows} recorded player row(s) have no valid positive hero ID; "
+                "the character list may be incomplete."
+            )
+        elif not counts:
+            metadata["roster_warning"] = (
+                "No recorded hero IDs were found; the character list is unavailable."
+            )
+    except Exception as exc:
+        metadata["roster_source"] = "unavailable"
+        metadata["roster_warning"] = (
+            f"Recorded character list unavailable ({type(exc).__name__}); "
+            "replay metadata was read successfully."
+        )
+    return metadata
 
 
 def _write_json(path: Path, data: Any) -> None:

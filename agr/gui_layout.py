@@ -19,6 +19,7 @@ from .gui_theme import hairline, px
 from .gui_widgets import (Card, CheckBox, IdleUpdate, ProgressLine, ResizeRedraw, RoundedButton, RoundedEntry, SegmentedControl,
                           StatusDot, bind_tree, gradient_color, outline_right_rounded)
 from .release_profile import character_beta
+from .gui_characters import CharacterChecklist
 
 PAGE_EXPORT = "Export"
 PAGE_SETUP = "Setup"
@@ -348,15 +349,19 @@ def _build_export(app, page):
              font=gui_theme.FONT_SMALL, justify="left", anchor="w", wraplength=px(TEXT_WRAP)).grid(
         row=_next_row(body), column=0, columnspan=3, sticky="w", pady=_pad((11, 0)))
 
+    body, row = _card(app, page, row, "Characters")
+    app.character_picker = CharacterChecklist(body, heroes=app.values["heroes"], empty=app.values["heroes_empty"])
+    app.character_picker.grid(row=_next_row(body), column=0, columnspan=3, sticky="ew")
+
     body, row = _card(app, page, row, "Clip")
     fields = tk.Frame(body, background=gui_theme.CARD)
     fields.grid(row=_next_row(body), column=0, columnspan=3, sticky="ew")
-    # Widths follow the design: three short number fields (150) and a wider hero list (250).
+    # Character selection lives in the named checklist below the clip settings.
     for col, (key, label, weight) in enumerate((("start", "First tick", 3), ("end", "Last tick", 3),
-                                                ("fps", "FPS", 3), ("heroes", "Hero IDs  (empty = all)", 5))):
+                                                ("fps", "FPS", 3))):
         fields.columnconfigure(col, weight=weight, uniform="clip")
         group = tk.Frame(fields, background=gui_theme.CARD)
-        group.grid(row=0, column=col, sticky="ew", padx=_pad((0, 13 if col < 3 else 0)))
+        group.grid(row=0, column=col, sticky="ew", padx=_pad((0, 13 if col < 2 else 0)))
         _label(group, label).pack(anchor="w")
         entry = _entry(group, app.values[key])
         entry.pack(fill="x", pady=_pad((5, 0)))
@@ -424,7 +429,11 @@ def _build_setup(app, page):
 
 
 def _build_advanced(app, page):
-    body, row = _card(app, page, 0, "Character options",
+    body, row = _card(app, page, 0, "Character selection")
+    _path_row(app, body, "Hero IDs", "heroes", None, button=False)
+    _note(body, "Use the Export checklist after inspecting a recording. Manual IDs are available here if its character list is unavailable; empty selects all.", pady=(6, 0))
+
+    body, row = _card(app, page, row, "Character options",
                       "Experimental features depend on the selected hero and recorded data. "
                       "Check coverage after export.")
     for text, key in (("Cloth / secondary motion (experimental)", "cloth_enabled"),

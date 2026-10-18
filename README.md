@@ -7,7 +7,7 @@ RenderLock reads local replay and installed game files. It does not launch or at
 ## Character beta
 
 - Character models, packed textures, recorded movement and skeletal animation.
-- A selected tick range, all recorded heroes or a subset of hero IDs.
+- A selected tick range and a named checklist of characters to export.
 - An overview camera or a follow camera for one hero.
 - Supported particle effects, with missing effects listed in a coverage report.
 - Optional decompiled cloth proxies, bone constraints and material repairs.
@@ -32,8 +32,8 @@ Ready-to-run Windows packages are published on the Releases page of this reposit
 Install Blender separately. The candidate is checked with Blender 5.2.1 LTS. RenderLock does not include replays, game assets or third-party shader libraries.
 
 1. In **Setup**, select Blender and your Deadlock folder. The bundled Source 2 Viewer CLI and asset cache are filled in automatically; choose an asset cache outside the game folder if you prefer another location.
-2. In **Export**, choose a `.dem` and select **Inspect replay**.
-3. Review the start and end ticks. Inspection suggests a short preview rather than the full match. Leave hero IDs empty for the roster, or enter comma-separated IDs.
+2. In **Export**, browse to a `.dem`. RenderLock inspects it and fills the **Characters** checklist. If you type a path, select **Inspect replay**.
+3. Tick the characters to export, using **All** or **None** to start your selection. Review the start and end ticks; inspection suggests a short preview rather than the full match. Each choice includes all matching character tracks. The recording's roster does not guarantee availability or animation compatibility in every clip. Manual hero IDs remain in **Advanced** if the roster cannot be read.
 4. Choose a new `.blend` path and export. Keep partial export off unless you explicitly accept missing animation/models or movement placeholders (or use the Lighting lab).
 5. Read the completion message and coverage report, then open the scene in Blender.
 
