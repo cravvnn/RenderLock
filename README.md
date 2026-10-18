@@ -102,3 +102,10 @@ RenderLock builds on community tools, shaders and research. See [CREDITS.md](CRE
 ## Contributing
 
 Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for setup, the fail-closed contract, and what makes a change reviewable.
+## In-app updates
+
+Windows portable builds from 0.3.0b4 include an **Updates** page. Review release
+notes, download an update, then click **Install and restart** when your work is
+finished. Startup checks fetch metadata only and can be disabled. Older versions
+need one manual upgrade to receive this feature. See [Updating RenderLock](UPDATING.md).
+

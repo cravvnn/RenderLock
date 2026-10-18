@@ -307,6 +307,7 @@ class AGRApp:
             "character_shader": "", "character_only": "0",
             "map_workflow_revision": MAP_WORKFLOW_REVISION,
             "effects_enabled": "1", "cloth_enabled": "1", "material_repairs": "0", "model_constraints": "0",
+            "check_updates": "1",
             "simulate_effects": "0", "particle_probe": "", "particle_dotnet": "", "shot_hero": "", "particle_history_ticks": "0",
         }.items()}
         self.partial = tk.BooleanVar(value=False)
@@ -341,6 +342,8 @@ class AGRApp:
             if not self.values[key].get().strip():
                 self.values[key].set(found)
         self._build_ui()
+        from .update_ui import UpdateUI
+        self.update_ui = UpdateUI(self, PROGRAM_ROOT)
         for key in ("input", "mode"):
             self.values[key].trace_add("write", self._input_changed)
         self.root.protocol("WM_DELETE_WINDOW", self._close)
@@ -759,6 +762,8 @@ class AGRApp:
             self.close_when_done = True
             self._cancel()
         else:
+            if hasattr(self, "update_ui"):
+                self.update_ui.closed = True
             self._save_settings()
             self.root.destroy()
 

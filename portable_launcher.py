@@ -5,6 +5,7 @@ import hashlib
 import json
 from pathlib import Path, PurePosixPath
 import sys
+import subprocess
 
 ROOT = Path(__file__).resolve().parent
 
@@ -37,10 +38,18 @@ def verify(root=ROOT):
 
 def main(argv=None):
     try:
+        if (ROOT / ".renderlock-update-pending").exists():
+            work = ROOT / ".renderlock-update"
+            subprocess.Popen([str(work / "worker-runtime/python.exe"), "-I", "-B",
+                              str(work / "worker.py"), "--recover", "--parent", str(__import__('os').getpid())], cwd=work,
+                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            return 0
         manifest = verify()
-        print(f"RenderLock {manifest['version']} - portable files verified", flush=True)
-        from agr.cli import main as run
-        return run(sys.argv[1:] if argv is None else argv)
+        from agr.update_worker import application_lock
+        with application_lock(ROOT):
+            print(f"RenderLock {manifest['version']} - portable files verified", flush=True)
+            from agr.cli import main as run
+            return run(sys.argv[1:] if argv is None else argv)
     except Exception as error:
         print(f"RenderLock could not start: {error}\nExtract the complete ZIP into a new folder and try again.", file=sys.stderr, flush=True)
         return 1

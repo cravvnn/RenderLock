@@ -1,3 +1,11 @@
+# 0.3.0b4 — In-app updates
+
+- Add an Updates page with published release notes, optional startup checks and manual checks.
+- Download only after a click; verify the GitHub ZIP digest and package manifest before offering Install and restart.
+- Keep per-user settings, caches and unowned files; back up replaced app files, check startup, and roll back failed installs.
+- Recover interrupted installs through an independent runtime; prevent another portable session from overlapping an update.
+- Support beta version ordering and published prereleases without exposing draft releases or overwriting source checkouts.
+
 # 0.3.0b3 — Character checklist
 
 - Inspect replay or saved-package characters and choose named checkboxes with All / None controls.

@@ -26,6 +26,7 @@ PAGE_SETUP = "Setup"
 PAGE_ADVANCED = "Advanced"
 PAGE_MAP = "Map"
 PAGE_LIGHTING = "Lighting lab"
+PAGE_UPDATES = "Updates"
 
 PAGE_DETAILS = {
     PAGE_EXPORT: "Choose a recording, inspect it, then export a Blender scene.",
@@ -33,6 +34,7 @@ PAGE_DETAILS = {
     PAGE_ADVANCED: "Experimental character options and output policy.",
     PAGE_MAP: "Prepare the installed map region used by the lighting tools. Map geometry is not exported in this beta.",
     PAGE_LIGHTING: "Experimental character look: partial Source lighting, probe reflections and the Toilet Horse Shoe shader.",
+    PAGE_UPDATES: "Review what changed, download an update, then restart when you are ready.",
 }
 
 RAIL_WIDTH = 181
@@ -316,7 +318,8 @@ def _build_rail(app, parent, beta):
              (PAGE_SETUP, "\ue713", "Setup"),
              (PAGE_ADVANCED, "\ue9e9", "Advanced"),
              (PAGE_MAP, "\ue826", "Map"),
-             (PAGE_LIGHTING, "\ue945", "Lighting lab")]
+             (PAGE_LIGHTING, "\ue945", "Lighting lab"),
+             (PAGE_UPDATES, "\ue895", "Updates")]
     app.nav_items = {}
     for name, glyph, label in items:
         _nav_item(app, rail, name, glyph, icon_family, label)
@@ -505,6 +508,39 @@ def _development_lighting(app, page):
 # Top-level assembly.
 
 
+def _build_updates(app, page):
+    body, row = _card(app, page, 0, "RenderLock updates", f"Installed version: {__version__}")
+    app.update_status = tk.StringVar(value="Check for new RenderLock releases.")
+    _label(body, "Checks contact GitHub. Downloads and installation start only when you click.",
+           wraplength=px(TEXT_WRAP), justify="left").grid(row=_next_row(body), column=0, columnspan=3, sticky="w")
+    _check(app, body, "Check for updates when RenderLock opens", app.values["check_updates"], pady=(12, 8))
+    status = _label(body, "", wraplength=px(TEXT_WRAP), justify="left")
+    status.configure(textvariable=app.update_status)
+    status.grid(row=_next_row(body), column=0, columnspan=3, sticky="w", pady=_pad((0, 10)))
+    buttons = tk.Frame(body, background=gui_theme.CARD)
+    buttons.grid(row=_next_row(body), column=0, columnspan=3, sticky="ew")
+    app.update_check = RoundedButton(buttons, text="Check for updates", command=lambda: app.update_ui.check(),
+                                    theme=gui_theme.palette(), height=34)
+    app.update_check.pack(side="left", padx=_pad((0, 8)))
+    app.update_action = RoundedButton(buttons, text="Download update", command=lambda: app.update_ui.action(),
+                                     style="primary", theme=gui_theme.palette(), height=34)
+    app.update_action.pack(side="left")
+    body, row = _card(app, page, row, "What's new")
+    notes_frame = tk.Frame(body, background=gui_theme.FIELD)
+    notes_frame.grid(row=_next_row(body), column=0, columnspan=3, sticky="ew")
+    notes_frame.columnconfigure(0, weight=1)
+    app.update_notes = tk.Text(notes_frame, height=12, wrap="word", state="disabled", bd=0,
+        padx=px(12), pady=px(12), background=gui_theme.FIELD, foreground=gui_theme.TEXT,
+        font=gui_theme.FONT, highlightthickness=0)
+    app.update_notes.grid(row=0, column=0, sticky="ew")
+    scroll = ttk.Scrollbar(notes_frame, orient="vertical", command=app.update_notes.yview)
+    scroll.grid(row=0, column=1, sticky="ns")
+    app.update_notes.configure(yscrollcommand=scroll.set)
+    app.update_notes_link = RoundedButton(body, text="Open full release on GitHub", style="quiet",
+        command=lambda: app.update_ui.open_notes(), theme=gui_theme.palette())
+    app.update_notes_link.grid(row=_next_row(body), column=0, columnspan=3, sticky="w", pady=_pad((8, 0)))
+
+
 def build(app):
     beta = character_beta()
     root = app.root
@@ -552,7 +588,7 @@ def build(app):
     app.page_frames = {}
     for name, builder in ((PAGE_EXPORT, _build_export), (PAGE_SETUP, _build_setup),
                           (PAGE_ADVANCED, _build_advanced), (PAGE_MAP, _build_map),
-                          (PAGE_LIGHTING, _development_lighting)):
+                          (PAGE_LIGHTING, _development_lighting), (PAGE_UPDATES, _build_updates)):
         page_shell, page = _page(body)
         app.page_frames[name] = page_shell
         builder(app, page)

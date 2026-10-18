@@ -59,6 +59,26 @@ fn main() -> ExitCode {
         .and_then(|path| path.parent().map(Path::to_path_buf))
         .unwrap_or_else(|| PathBuf::from("."));
     let python = root.join("runtime").join("python.exe");
+    // Recovery uses an independent runtime: the installed one may have been
+    // interrupted mid-replacement. Exit this launcher before recovery replaces it.
+    if root.join(".renderlock-update-pending").exists() {
+        let work = root.join(".renderlock-update");
+        let recovery = Command::new(work.join("worker-runtime").join("python.exe"))
+            .args(["-I", "-B"])
+            .arg(work.join("worker.py"))
+            .arg("--recover")
+            .arg("--parent").arg(std::process::id().to_string())
+            .current_dir(&work)
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn();
+        return match recovery {
+            Ok(_) => ExitCode::SUCCESS,
+            Err(error) => {
+                fail(&format!("Update recovery could not start: {error}. Keep the .renderlock-update folder for recovery."), None);
+                ExitCode::FAILURE
+            }
+        };
+    }
     let log = log_path();
     if let Some(dir) = log.parent() {
         let _ = std::fs::create_dir_all(dir);
