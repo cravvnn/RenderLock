@@ -1,4 +1,4 @@
-"""Partial character look using a user-supplied Toilet Horse Shoe shader library.
+"""Partial character look using the qualified user-supplied Elagrimm library.
 
 The supplied library stays external to AGR. A copied group accepts recovered
 Source lighting references; this is an artistic adapter, not engine shader parity.
@@ -7,17 +7,20 @@ import hashlib
 import json
 from pathlib import Path
 
-LIBRARY_SHA256='a5ab487c827efd981e726ef9c828216fe9baaf29ccf9b8ff7c8e474ff37a3996'
-MATERIAL_NAME='Deadlock_Shader_V2.4'
+LIBRARY_SHA256='018bb08347dcd9cf48da317f5b4c2bcee9e0dcc4fecd4f32c3be3a3225ec1891'
+LIBRARY_COMMIT='e18af8b1c9c1d34b4af72002fb1f4136aa159515'
+LIBRARY_URL='https://github.com/Elagrimm/BLENDER-Deadlock-Shader'
+MATERIAL_NAME='Deadlock'
 NODE_NAME='D2B character shader'
 
 
 def validate_character_shader_library(path):
     path=Path(path).expanduser().resolve()
     if path.suffix.lower()!='.blend' or not path.is_file() or not 0<path.stat().st_size<=16*1024*1024:
-        raise ValueError('Character shader requires the qualified local .blend library')
+        raise ValueError('Elagrimm character shader requires the qualified local .blend library')
     if hashlib.sha256(path.read_bytes()).hexdigest()!=LIBRARY_SHA256:
-        raise ValueError('Character shader library changed; qualify this version before use')
+        raise ValueError('Character shader library changed or is not the supported Elagrimm library; '
+                         'choose BLENDER-Deadlock-Shader.blend from the documented revision')
     return path
 
 
@@ -126,10 +129,10 @@ def apply_character_shader(scene, roots, data, library, *, manifest_dir, allow_p
         destination.materials=[MATERIAL_NAME]
     template=destination.materials[0]
     author_nodes=[n for n in template.node_tree.nodes if n.type=='GROUP'
-                  and n.node_tree.name.startswith('Deadlock Shader V2.4')]
+                  and n.node_tree.name == 'Deadlock']
     if len(author_nodes)!=1:raise ValueError('Qualified author shader group absent')
     author=author_nodes[0];bridge=author.node_tree.copy()
-    bridge.name='D2B Toilet Horse Shoe - Source reference bridge'
+    bridge.name='D2B Elagrimm - Source reference bridge'
     for name in ('Source Diffuse Reference','Source Specular Reference'):
         bridge.interface.new_socket(name=name,in_out='INPUT',socket_type='NodeSocketColor')
     direct=bridge.interface.new_socket(name='Additional Light Influence',in_out='INPUT',socket_type='NodeSocketFloat')
@@ -150,7 +153,7 @@ def apply_character_shader(scene, roots, data, library, *, manifest_dir, allow_p
             target=link.to_socket;bridge.links.remove(link);bridge.links.new(total.outputs['Vector'],target)
     replacements={};rows=[];memo={}
     for old,resource in plans:
-        material=old.copy();material.name=old.name+' | THS Source reference'
+        material=old.copy();material.name=old.name+' | Elagrimm Source reference'
         nodes,links=material.node_tree.nodes,material.node_tree.links
         for node in nodes:
             if node.type=='GROUP':node.node_tree=_copy_groups(node.node_tree,memo,regions)
@@ -164,19 +167,27 @@ def apply_character_shader(scene, roots, data, library, *, manifest_dir, allow_p
                 try:value=value[:]
                 except TypeError:pass
                 shader.inputs[socket.name].default_value=value
-        links.new(npr.inputs['Albedo'].links[0].from_socket,shader.inputs['Diffuse Texture'])
-        links.new(normal.inputs['Color'].links[0].from_socket,shader.inputs['Normal Texture'])
-        links.new(nodes['AGR NPR transmissive'].outputs['Color'],shader.inputs['SSS/Shadow/Trans Texture'])
+        links.new(npr.inputs['Albedo'].links[0].from_socket,shader.inputs['Diffuse Color'])
+        links.new(normal.inputs['Color'].links[0].from_socket,shader.inputs['Normal'])
         packed=nodes.new('ShaderNodeCombineColor');packed.name='D2B AO roughness metallic'
         for dst,name in [('Red','Material AO'),('Green','Roughness'),('Blue','Metallic')]:
             socket=npr.inputs[name]
             if socket.is_linked:links.new(socket.links[0].from_socket,packed.inputs[dst])
             else:packed.inputs[dst].default_value=socket.default_value
-        links.new(packed.outputs['Color'],shader.inputs['Material Texture'])
-        mask=masks[resource];shader.inputs['Rimlight Mask'].default_value=(mask,mask,mask,1)
+        links.new(packed.outputs['Color'],shader.inputs['ORM'])
+        mask=masks[resource]
+        # Elagrimm exposes strength rather than a mask socket. Apply the
+        # qualified material's constant Source green mask to the author's value.
+        shader.inputs['Rimlight Strength'].default_value *= mask
+        # Preserve converted emission once, outside the author's optional
+        # emission branch. Otherwise authored/default emission could double it.
+        shader.inputs['Use Emission'].default_value=False
         links.new(npr.outputs['Irradiance'],shader.inputs['Source Diffuse Reference'])
         links.new(npr.outputs['Specular'],shader.inputs['Source Specular Reference'])
-        final=add_converted_emission(nodes,links,bsdf,shader.outputs['Result'])
+        author_rgb=nodes.new('ShaderNodeShaderToRGB')
+        author_rgb.name='AGR Elagrimm shader response'
+        links.new(shader.outputs['Output'],author_rgb.inputs['Shader'])
+        final=add_converted_emission(nodes,links,bsdf,author_rgb.outputs['Color'])
         for node in nodes:
             if node.type=='OUTPUT_MATERIAL':node.is_active_output=False
         output=nodes.new('ShaderNodeOutputMaterial');output.is_active_output=True
@@ -184,7 +195,7 @@ def apply_character_shader(scene, roots, data, library, *, manifest_dir, allow_p
         links.new(final,emission.inputs['Color']);links.new(emission.outputs['Emission'],output.inputs['Surface'])
         material['d2b_character_shader']=LIBRARY_SHA256
         replacements[old]=material
-        rows.append(dict(material=resource,rim_mask=mask,rim_factor=shader.inputs['Rimlight Factor'].default_value,
+        rows.append(dict(material=resource,rim_mask=mask,rim_factor=shader.inputs['Rimlight Strength'].default_value,
                          converted_emission_preserved=True))
     # Every selected material is fully constructed before changing any mesh slot.
     for obj in objects:
@@ -194,13 +205,15 @@ def apply_character_shader(scene, roots, data, library, *, manifest_dir, allow_p
     for obj in scene.objects:
         if obj.type=='LIGHT' and obj.name in ('AGR | Key','AGR | Fill'):
             obj.data.energy=0;disabled.append(obj.name)
-    report=dict(status='partial',author='Toilet Horse Shoe',library_sha256=LIBRARY_SHA256,
+    report=dict(status='partial',author='Elagrimm',library_sha256=LIBRARY_SHA256,
+                library_commit=LIBRARY_COMMIT,library_url=LIBRARY_URL,
                 mode='source_reference_rgb_bridge',materials=rows,renderer=scene.render.engine,
                 additional_lights='Native Eevee diffuse/specular added with editable Additional Light Influence',
                 disabled_review_lights=disabled,
-                rim='Artist Fresnel using exact green Source mask; no depth-aware Source rim',
+                rim='Elagrimm artist rim multiplied by constant green Source mask; no Source rim parity',
                 limits=['Author group copied; diffuse/specular ShaderToRGB inputs replaced by Source NPR references.',
                         'Source specular is already shaded before author shaping; artistic approximation.',
+                        'Author shadow tint and artistic controls retain library defaults; Source transmission is not reconstructed.',
                         'Converted emission preserved; general Source emissive/status/outline binding incomplete.',
                         'Packed lookup bilinear references qualified; Eevee implicit minification unqualified.',
                         'Additional Blender lights use artist shader response; Source light units/shadows are not certified.',

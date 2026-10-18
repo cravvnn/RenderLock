@@ -20,7 +20,7 @@ def validate_conversion(args) -> None:
     if not character_beta():
         return
     # The experimental character look (partial Source lighting, probe
-    # reflections and the Toilet Horse Shoe shader) is part of this beta.
+    # reflections and the Elagrimm shader) is part of this beta.
     # Map geometry stays omitted: scenes remain character-only and maps are
     # added separately in Blender.
     args.character_only = True

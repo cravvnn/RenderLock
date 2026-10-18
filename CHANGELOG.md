@@ -1,3 +1,9 @@
+# 0.3.0b5 — Elagrimm character shader
+
+- Replace the supported character-look library with Elagrimm's Deadlock shader; update the Lighting lab field and setup instructions. Toilet Horse Shoe is no longer supported.
+- Bind converted diffuse, normal and ORM inputs, preserve converted emission, and adapt the author's group for partial Source lighting and artistic rim. The qualified GPL-3.0 library remains a separate download.
+- Explain that game updates do not update rigs stored in older replays. A mismatched replay still requires compatible assets or a compatible newer replay; strict animation checks remain unchanged.
+
 # 0.3.0b4 — In-app updates and consistent branding
 
 - Use RenderLock's shared charcoal, cream and brass theme in the standalone installer and recovery window.

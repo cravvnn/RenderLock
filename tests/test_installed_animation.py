@@ -65,6 +65,7 @@ def test_recorded_skeleton_order_mismatch_stops_before_clip_decode(workspace):
     converter.overrides['models/test.vnmskel'] = skeleton
     with pytest.raises(AnimationError, match='bone or mask order') as caught:
         prepare_animation_assets(inputs/'segment.json', root/'installed', Provider(), converter)
+    assert 'Updating the game does not update rigs stored in an older replay' in str(caught.value)
     assert not converter.decoded
     assert not (root/'installed/animation_catalog.json').exists()
     report = json.loads((root/'installed/animation_asset_report.json').read_text())

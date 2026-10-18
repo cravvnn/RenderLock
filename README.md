@@ -11,7 +11,7 @@ RenderLock reads local replay and installed game files. It does not launch or at
 - An overview camera or a follow camera for one hero.
 - Supported particle effects, with missing effects listed in a coverage report.
 - Optional decompiled cloth proxies, bone constraints and material repairs.
-- **Experimental character look (Lighting lab):** partial Source lighting, probe reflections and the Toilet Horse Shoe character shader.
+- **Experimental character look (Lighting lab):** partial Source lighting, probe reflections and the Elagrimm character shader.
 
 Map export is unavailable in the beta; scenes stay character-only and maps are added separately in Blender. The character look is partial and artistic by design, cloth and effects are incomplete and vary by hero, and a successful character export does not mean every effect was reproduced. Always read the coverage report.
 
@@ -22,7 +22,7 @@ Everything the look pipeline needs is included in the portable package, except t
 1. In **Advanced**, tick **Allow partial export / movement placeholders** (the look pipeline requires it).
 2. In **Export**, choose the replay and set a **Follow hero ID** (the look needs a follow camera).
 3. In **Map**, tick **Prepare installed map region** (the map name defaults to your replay's map), then in **Lighting lab** tick **Partial static diffuse lighting**, **Partial hero probe lighting / reflections** and **Partial NPR indirect**.
-4. Point **Character shader .blend** at your local copy of the Toilet Horse Shoe library (version 2.5, SHA-256 `a5ab487c827efd981e726ef9c828216fe9baaf29ccf9b8ff7c8e474ff37a3996`). The library is not bundled.
+4. Download **BLENDER-Deadlock-Shader.blend** from [Elagrimm's shader](https://github.com/Elagrimm/BLENDER-Deadlock-Shader/blob/e18af8b1c9c1d34b4af72002fb1f4136aa159515/BLENDER-Deadlock-Shader.blend) and select it in **Elagrimm shader .blend**. Supported revision: `e18af8b1c9c1d34b4af72002fb1f4136aa159515`, SHA-256 `018bb08347dcd9cf48da317f5b4c2bcee9e0dcc4fecd4f32c3be3a3225ec1891`. The GPL-3.0 library stays a separate download. Earlier Toilet Horse Shoe selections must be replaced; that library is no longer supported.
 5. Export. The result uses Eevee with an artistic Source-lighting bridge and Fresnel rim; hero lighting, probe reflections and NPR indirect are partial. The coverage report and the in-scene notes list exactly what was and was not applied.
 
 ## Windows portable

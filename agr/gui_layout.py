@@ -33,7 +33,7 @@ PAGE_DETAILS = {
     PAGE_SETUP: "Point RenderLock at Blender and your game files. Conversion never launches Deadlock.",
     PAGE_ADVANCED: "Experimental character options and output policy.",
     PAGE_MAP: "Prepare the installed map region used by the lighting tools. Map geometry is not exported in this beta.",
-    PAGE_LIGHTING: "Experimental character look: partial Source lighting, probe reflections and the Toilet Horse Shoe shader.",
+    PAGE_LIGHTING: "Experimental character look: partial Source lighting, probe reflections and the Elagrimm shader.",
     PAGE_UPDATES: "Review what changed, download an update, then restart when you are ready.",
 }
 
@@ -500,10 +500,11 @@ def _development_lighting(app, page):
          lambda: app._browse_hero_decoder("probe_atlas_decoder", "ProbeAtlasDecode.dll")),
         ("Cubemap decoder", "cubemap_decoder",
          lambda: app._browse_hero_decoder("cubemap_decoder", "CubemapDecode.dll")),
-        ("Character shader .blend", "character_shader", app._browse_character_shader)):
+        ("Elagrimm shader .blend", "character_shader", app._browse_character_shader)):
         _path_row(app, body, label, key, command)
     _note(body, "Prepare the map region on the Map tab first. The optional "
-                "Toilet Horse Shoe library uses Eevee, a partial bridge and artistic rim.")
+                "Elagrimm's BLENDER-Deadlock-Shader.blend uses Eevee, a partial bridge and artistic rim. "
+                "Other shader libraries are not supported.")
     return row
 
 

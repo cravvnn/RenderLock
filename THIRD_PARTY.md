@@ -10,6 +10,17 @@ Source installations use `requirements.txt`. The Windows portable distribution b
 
 The historical prepared model, texture, skeleton and animation assets derive from the user's supplied Deadlock exports. They are not included in this installed-game distribution and are not represented as original AGR code or relicensed under the parser/evaluator licenses.
 
+## Elagrimm character shader
+
+The current optional character-look adapter supports only the user-supplied
+[Elagrimm Deadlock shader](https://github.com/Elagrimm/BLENDER-Deadlock-Shader),
+revision `e18af8b1c9c1d34b4af72002fb1f4136aa159515`. The library and its upstream
+GPL-3.0 license remain a separate download. RenderLock copies its node group into
+the user's scene, binds converted textures and adapts its lighting inputs. This
+partial, artistic bridge is not a claim of Source shader parity. Upstream credits
+are linked in CREDITS.md. Toilet Horse Shoe remains credited for historical work
+and is no longer a supported library.
+
 ## 0.1.3 installed-game distribution
 
 This standalone 0.1.3 package excludes the historical `assets/` and game-scene `examples/` directories described above. Source 2 Viewer is installed separately and invoked as an external converter: https://github.com/ValveResourceFormat/ValveResourceFormat . Its executable and supporting libraries are not redistributed in this package. The VPK reader follows the publicly documented archive layout and is exercised against unchanged user-supplied resource bytes in local, unshipped fixtures.

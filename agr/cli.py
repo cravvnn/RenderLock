@@ -555,7 +555,7 @@ def parser():
     cv.add_argument('--world-region-probe', type=Path, help='Qualified WorldRegionProbe.dll for --source-lighting')
     cv.add_argument('--lighting-dotnet', type=Path, help='.NET executable for --source-lighting')
     cv.add_argument('--source-npr-lighting',action='store_true',help='Partial NPR indirect with camera-forward/white-instance assumptions; requires --partial and --source-hero-lighting; frame rim not saved')
-    cv.add_argument('--character-shader',type=Path,help='Qualified user-supplied Toilet Horse Shoe shader .blend; partial Eevee Source-lighting bridge and artistic rim; requires --source-npr-lighting')
+    cv.add_argument('--character-shader',type=Path,help='Qualified user-supplied Elagrimm BLENDER-Deadlock-Shader.blend; partial Eevee Source-lighting bridge and artistic rim; requires --source-npr-lighting')
     cv.add_argument('--character-only',action='store_true',help='Omit map geometry from the Blender scene while retaining prepared lighting assets and coordinates for a separate map')
     cv.add_argument('--source-hero-lighting',action='store_true',help='Experimental partial hero probes/reflections; unit intensity/tint and viewer normalization assumptions; requires --source-lighting')
     cv.add_argument('--probe-atlas-decoder',type=Path,help='Qualified ProbeAtlasDecode.dll for --source-hero-lighting')

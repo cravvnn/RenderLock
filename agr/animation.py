@@ -265,6 +265,8 @@ def _bone_name_aliases(recorded_bones: list[str], asset_bones: list[str], *,
             f'{component} {explanation} (replay {len(recorded_bones)}, installed {len(asset_bones)}; '
             f'index {index}: replay {details["recorded_name"]!r}, installed {details["asset_name"]!r}'
             f'{location}). The recorded animation cannot be safely matched to these installed assets. '
+            'Updating the game does not update rigs stored in an older replay. '
+            'Try a recent replay with compatible installed assets, or use matching historical assets. '
             'For compatibility checking, share failure.json and animation_asset_report.json '
             'from the retained diagnostic folder, plus the replay ID and tick range.',
             details=details)

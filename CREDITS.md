@@ -17,8 +17,8 @@ RenderLock is maintained by [Cravvnn](https://github.com/cravvnn). It builds on 
 
 | Author / project | Contribution to RenderLock |
 | --- | --- |
-| [Toilet Horse Shoe](https://open3dlab.com/project/bb1e412b-2554-4e4e-acc4-d25b7f842e79/) | Author of the shader library used by the current optional character-look adapter. Users supply the qualified v2.5 library separately; it is not bundled. Our Source-lighting bridge and artistic rim adapt a copy of the author's node group. |
-| [Elagrimm and the shader's credited collaborators](https://github.com/Elagrimm/BLENDER-Deadlock-Shader#readme) | The Deadlock Blender shader used during earlier look development. It remains part of the project's history; the current character-look adapter uses Toilet Horse Shoe's library. Elagrimm's project retains its own credits and GPL-3.0 license. |
+| [Elagrimm and the shader's credited collaborators](https://github.com/Elagrimm/BLENDER-Deadlock-Shader#readme) | Author of the shader used by the current character-look adapter. Users supply the qualified library separately; it is not bundled. RenderLock adapts a copy of the author's group for its partial Source-lighting bridge and preserves the project's credits and GPL-3.0 license. |
+| [Toilet Horse Shoe](https://open3dlab.com/project/bb1e412b-2554-4e4e-acc4-d25b7f842e79/) | Shader author whose library supported earlier character-look development. It remains credited as historical work; the current adapter supports Elagrimm only. |
 
 Third-party shader libraries remain separate downloads, under their authors' terms.
 

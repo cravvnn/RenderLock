@@ -443,7 +443,7 @@ class AGRApp:
         if path:self.values[key].set(path)
 
     def _browse_character_shader(self) -> None:
-        path=filedialog.askopenfilename(parent=self.root,title='Choose character shader library',
+        path=filedialog.askopenfilename(parent=self.root,title='Choose Elagrimm BLENDER-Deadlock-Shader.blend',
             filetypes=[('Blender shader library','*.blend'),('All files','*')])
         if path:self.values['character_shader'].set(path)
 
