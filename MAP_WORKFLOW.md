@@ -28,7 +28,7 @@ If you move a linked map, repair the library path in Blender before saving. For 
 
 Experimental cloth currently covers Seven’s waist surface using installed character inputs and approximate native Blender cloth with animated body collision. Each export's coverage report identifies simulated and unsupported parts. This does not require the external map, and it does not add map collision. Some garments can therefore intersect floors or scenery, especially during a death sequence.
 
-AGR does not generate ragdolls or reconstruct deaths with physics. You can edit or add death animations in Blender. Cloth is baked to the exported character animation: changing that animation afterward does not automatically update the existing cloth bake. After editing Seven’s animation, root motion, frame range or FPS, save a separate copy, choose the embedded `AGR_Rebake_Cloth.py` in Blender’s Text Editor and click Run Script. If AGR has moved, select its program folder when prompted. A failed rebake disables the simulated waist output and retains ordinary skinned motion; it does not automatically restore the previous cache. See `CLOTH_WORKFLOW.md`.
+AGR does not generate ragdolls or reconstruct deaths with physics. You can edit or add death animations in Blender. Prepared cloth proxies are tied to the exported character animation, range and FPS: changing the animation afterward does not update the existing cloth bake. Regenerate the export after editing animation, range or FPS. See `CLOTH_WORKFLOW.md`.
 
 ## Experimental Source static diffuse lighting
 

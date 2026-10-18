@@ -564,7 +564,7 @@ def parser():
     cv.add_argument('--model-constraints', action='store_true',
                     help='Evaluate supported authored bone constraints from installed models; unsupported bindings fail explicitly')
     cv.add_argument("--secondary-motion", "--cloth", dest="secondary_motion", action="store_true",
-                    help="Bake experimental supported cloth and secondary motion using installed character assets; see per-hero coverage")
+                    help="Bake version-matched decompiled cloth proxies using installed character assets; see per-hero coverage")
     cv.add_argument("--output", type=Path, required=True)
     cv.add_argument("--start-tick", type=int)
     cv.add_argument('--particle-history-ticks', type=int, default=0,

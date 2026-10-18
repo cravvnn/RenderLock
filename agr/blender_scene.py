@@ -796,16 +796,12 @@ def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime
             scene.frame_set(math.floor(frame), subframe=frame % 1)
             evaluated = root.evaluated_get(bpy.context.evaluated_depsgraph_get())
             entry["transform_checks"].append({"frame": frame, "location": list(evaluated.location), "rotation_euler_radians": list(evaluated.rotation_euler), "world_matrix": [list(row) for row in evaluated.matrix_world]})
-    if any(obj.type == "ARMATURE" and obj.get("agr_cloth_definition") for obj in scene.objects):
-        rebake_source = Path(__file__).resolve().parents[1] / "tools" / "Rebake_AGR_Cloth.py"
-        if rebake_source.is_file():
-            bpy.data.texts.new("AGR_Rebake_Cloth.py").write(rebake_source.read_text(encoding="utf-8"))
     readme = bpy.data.texts.new("AGR_README")
     readme.write("DEADBLEND REPLAY SEGMENT\n\nSpace: play. Timeline event markers refer to recorded ticks.\n"
                    + "Armature bones are hidden for a clean preview; unhide the rig in the Outliner to inspect or pose.\n"
                  + "Ticks " + str(data["start_tick"]) + "â€“" + str(data["end_tick"]) + " inclusive; " + str(fps) + " FPS.\n"
                  + "Meshes can be in rest pose when evaluated pose data is unavailable. Map/effect/secondary-motion coverage is listed below.\n"
-                 + "Death animation can be replaced manually; automatic ragdoll is outside the current scope. Rebake supported garments after editing body poses, timing or root motion. Body angles do not reproduce the client backward-dash turn.\n"
+                 + "Death animation can be replaced manually; automatic ragdoll is outside the current scope. Prepared cloth proxies are tied to the body animation, range and FPS; regenerate the export after editing them. Body angles do not reproduce the client backward-dash turn.\n"
                  + "Model basis yaw is explicit per asset; world coordinates and root tracks remain independently editable.\n\n"
                  + json.dumps(report, indent=2))
     scene.render.engine = 'BLENDER_EEVEE' if character_shader is not None else 'CYCLES'

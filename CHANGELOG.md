@@ -4,6 +4,7 @@
 - New interface: rounded card layout, raised navigation rail, DPI-aware scaling and a matching title bar.
 - New native DeadBlend.exe launcher (no console; clear dialogs on failure); the command script stays as a fallback.
 - App icon from the project artwork: the window, the taskbar and the launcher executable use the DeadBlend emblem; sources live in `artwork/`.
+- Cloth: the experimental native resimulation (Seven waist and the Haze hose prototype) and its rebake helper were retired; the cloth option now uses version-matched decompiled proxy definitions.
 - Bundle Source 2 Viewer 20.1, the character-look helper kit, the particle helper and a .NET runtime into the Windows portable; testers need only Blender and the game.
 - New Map tab for the installed map region used by the lighting tools; the Lighting lab keeps the character-look options.
 - Experimental character look enabled in the beta: partial Source lighting, probe reflections and the Toilet Horse Shoe shader (partial/artistic; limits listed in the coverage report).

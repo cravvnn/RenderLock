@@ -10,7 +10,7 @@ DeadBlend reads local replay and installed game files. It does not launch or att
 - A selected tick range, all recorded heroes or a subset of hero IDs.
 - An overview camera or a follow camera for one hero.
 - Supported particle effects, with missing effects listed in a coverage report.
-- Optional experimental cloth, bone constraints and material repairs.
+- Optional decompiled cloth proxies, bone constraints and material repairs.
 - **Experimental character look (Lighting lab):** partial Source lighting, probe reflections and the Toilet Horse Shoe character shader.
 
 Map export is unavailable in the beta; scenes stay character-only and maps are added separately in Blender. The character look is partial and artistic by design, cloth and effects are incomplete and vary by hero, and a successful character export does not mean every effect was reproduced. Always read the coverage report.

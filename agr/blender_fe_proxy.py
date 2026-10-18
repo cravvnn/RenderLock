@@ -7,6 +7,26 @@ vertices retain armature deformation. Does not alter the replay's rig action.
 from __future__ import annotations
 
 
+def _capsule_mesh(row, scale):
+    """Rounded low-resolution tapered proxy, in its FE carrier's local frame."""
+    import math
+    import numpy as np
+    a, b = (np.array(end, dtype=float) * scale for end in row['ends'])
+    axis = b[:3] - a[:3]
+    length = np.linalg.norm(axis)
+    axis = axis / length if length > 1e-10 else np.array([0., 0., 1.])
+    side = np.cross(axis, np.eye(3)[np.argmin(abs(axis))]); side /= np.linalg.norm(side)
+    up = np.cross(axis, side); rings = []
+    for center, radius, angles in ((a[:3], a[3], np.linspace(math.pi, math.pi / 2, 5)),
+                                   (b[:3], b[3], np.linspace(math.pi / 2, 0, 5))):
+        for angle in angles:
+            rings.append([center + axis * (radius * math.cos(angle)) + radius * math.sin(angle) *
+                          (side * math.cos(j * math.tau / 12) + up * math.sin(j * math.tau / 12)) for j in range(12)])
+    faces = [(i * 12 + j, i * 12 + (j + 1) % 12, (i + 1) * 12 + (j + 1) % 12, (i + 1) * 12 + j)
+             for i in range(len(rings) - 1) for j in range(12)]
+    return [p for ring in rings for p in ring], faces
+
+
 def bake_fe_proxy(rig, definition, frames, fps, collection=None, *, unit_scale=.0254):
     import bpy,math
     from .installed_cloth import UnsupportedCloth
@@ -125,7 +145,6 @@ def _bake(rig, coat, definition, frames, collection, unit_scale):
         if not math.isclose(cloth.settings.effector_weights.gravity,clock['gravity_multiplier'],rel_tol=1e-6,abs_tol=1e-8):
             raise ValueError('Authored gravity exceeds Blender effector-weight range')
     collision_collection=bpy.data.collections.new('AGR reconstructed cloth colliders');collection.children.link(collision_collection)
-    from agr.blender_surface_cloth import _capsule_mesh
     physics=definition['physics']['m_pFeModel']
     rows=[dict(node=r['nNode'],ends=r['vSphere']) for r in physics['m_TaperedCapsuleRigids']]
     rows += [dict(node=r['nNode'],ends=[r['vSphere'],r['vSphere']]) for r in physics['m_SphereRigids']]

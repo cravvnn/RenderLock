@@ -204,7 +204,6 @@ def package(root, output, native_helper, source2viewer_dir=None, lighting_kit=No
     for name in ("README.md", "START_HERE.txt", "THIRD_PARTY.md", "LICENSE", "Launch_DeadBlend.cmd", "portable_launcher.py", "release_profile.json"):
         copy_file(source / name, portable / name)
     copy_file(native_helper, portable / "bin/agr-extract.exe")
-    copy_file(root / "tools/Rebake_AGR_Cloth.py", portable / "tools/Rebake_AGR_Cloth.py")
     if launcher_exe is not None:
         copy_file(launcher_exe, portable / "DeadBlend.exe")
     if source2viewer_dir is not None:
