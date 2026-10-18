@@ -21,3 +21,12 @@ def test_registration_refuses_mismatched_physics_and_unsafe_key(tmp_path):
     definition={'schema':'agr_decompiled_fe_proxy_v1','physics':{},'source_sha256':{'x':'y'},'scope':'fixture'}
     with pytest.raises(ValueError):register(tmp_path,'model','a'*64,definition,{'different':1})
     with pytest.raises(ValueError):register(tmp_path,'model','../bad',definition,{})
+
+
+@pytest.mark.parametrize('parts', [[], [None], [{'schema': 'agr_decompiled_fe_proxy_v1',
+                                               'physics': {'wrong': True}, 'mesh_suffix': '.body'}]])
+def test_bundle_cannot_report_empty_or_mismatched_garments_as_prepared(tmp_path, parts):
+    definition = dict(schema='agr_decompiled_fe_proxy_bundle_v1', physics={}, parts=parts,
+                      source_sha256={'proxy': 'fixture'}, scope='fixture')
+    with pytest.raises(ValueError, match='garment bundle'):
+        register(tmp_path, 'model.vmdl_c', 'a' * 64, definition, {})

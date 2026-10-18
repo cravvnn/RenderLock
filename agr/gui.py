@@ -189,7 +189,7 @@ def build_convert_command(values: dict[str, str], *, partial: bool = False,
                "--fps", str(fps), "--output", output]
     if values.get('source_lighting','0') == '1':
         if asset_mode != 'installed' or values.get('map_enabled','0') != '1':
-            raise ValueError('Partial Source lighting requires installed assets and Convert map region.')
+            raise ValueError('Partial Source lighting requires installed assets and Prepare installed map region on Map. This reads lighting data; Characters only can omit map geometry from the scene.')
         from .source_region import regional_command
         lighting_probe=values.get('world_region_probe','').strip()
         lighting_dotnet=values.get('lighting_dotnet','').strip()
@@ -638,6 +638,8 @@ class AGRApp:
             self.character_picker.load(metadata)
             self._roster_source = self._input_identity()
             self._roster_complete = self.character_picker.has_roster and not metadata.get("roster_warning")
+            for page in getattr(self, "page_layouts", {}).values():
+                page._schedule()
         first_tick = metadata.get("start_tick", metadata.get("first_tick", 0))
         last_tick = metadata.get("end_tick", metadata.get("last_tick", metadata.get("total_ticks")))
         if not self.values["start"].get().strip() and isinstance(first_tick, (int, float)):

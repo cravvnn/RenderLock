@@ -171,6 +171,8 @@ def merge_secondary_motion_coverage(preparation, blender_entities=None):
         result['status'] = 'no_supported_entities'
     elif prep.get('status') == 'not_requested':
         result['status'] = 'not_requested'
+    elif prep.get('status') == 'not_applicable':
+        result['status'] = 'not_applicable'
     else:
         result['status'] = 'no_supported_entities'
     details = []
@@ -191,11 +193,15 @@ def merge_secondary_motion_coverage(preparation, blender_entities=None):
     if retained:
         details.append('Cloth controls retained their recorded motion: ' + ', '.join(
             _cloth_entity_label(row) + f" ({row['withheld_control_count']} controls)" for row in retained))
-    surface_partial = [row for row in partial if not row['withheld_control_count']]
+    surface_partial = [row for row in partial if not row['withheld_control_count'] and not row.get('approximation_only')]
     if surface_partial:
         details.append('Additional cloth parts remain unsupported: ' + '; '.join(
             _cloth_entity_label(row) + (': ' + ', '.join(str(part) for part in row['unsupported_parts'])
                                        if row.get('unsupported_parts') else '') for row in surface_partial))
+    approximate = [row for row in partial if row.get('approximation_only')]
+    if approximate:
+        details.append('Approximate cloth simulation: ' + ', '.join(_cloth_entity_label(row) for row in approximate)
+                       + '; authored solver differences are listed in the coverage limits')
     if unsupported:
         details.append('Unsupported cloth: ' + ', '.join(_cloth_entity_label(row) for row in unsupported))
     if details:
@@ -271,8 +277,10 @@ def scene_completion_message(report):
         message += f" Cloth baked for {cloth['baked_entity_count']} {noun}."
     if isinstance(cloth, dict) and cloth.get('withheld_control_count', 0):
         message += ' Some cloth controls retained their recorded motion; see coverage.'
-    elif isinstance(cloth, dict) and cloth.get('partial_entity_count', 0):
+    elif isinstance(cloth, dict) and any(not row.get('approximation_only') for row in cloth.get('partially_baked_entities', [])):
         message += ' Additional cloth parts remain unsupported; see coverage.'
+    elif isinstance(cloth, dict) and cloth.get('partial_entity_count', 0):
+        message += ' Cloth simulation is approximate; see coverage limits.'
     if isinstance(cloth, dict) and cloth.get('unsupported_entity_count', 0):
         message += ' Some heroes have unsupported cloth; see coverage.'
     if isinstance(effects, dict) and effects.get('status') == 'partial':

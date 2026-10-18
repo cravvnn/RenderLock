@@ -6,6 +6,8 @@ The native replay helper uses Boon 0.15.0, boon-proto, pbdems2, and their Rust d
 
 The offline animation implementation uses research and format descriptions from ValveResourceFormat and Esoterica. Applicable MIT notices and references are retained in `agr/vendor/licenses` and `agr/vendor/THIRD_PARTY.md`.
 
+Automatic cloth reconstruction includes Tom Edwards' MIT-licensed Blender Source Tools DMX reader at `agr/vendor/datamodel.py`, with its original copyright and complete license header intact. The reader decodes locally generated model data; game-derived cloth definitions and meshes are never bundled.
+
 Source installations use `requirements.txt`. The Windows portable distribution bundles Python and its runtime dependencies, including their license files and package metadata. Exact bundled versions are recorded in `release_manifest.json`; Python's notice is at `runtime/LICENSE.txt`, and package notices remain in `runtime/Lib/site-packages`. Native helper notices are also copied to `notices/native` in the portable distribution. Blender is a separate tool. The portable also bundles the Source 2 Viewer CLI, a .NET runtime and the character-look helper tools; see the bundled-tools section below. The normal converter does not need the earlier diagnostic DLL-emulation harness.
 
 The historical prepared model, texture, skeleton and animation assets derive from the user's supplied Deadlock exports. They are not included in this installed-game distribution and are not represented as original AGR code or relicensed under the parser/evaluator licenses.

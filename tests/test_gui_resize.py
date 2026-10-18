@@ -93,19 +93,24 @@ def test_height_resize_reuses_horizontal_border_images(surface):
 
 
 def test_scrollbar_and_content_width_settle_after_overflow_changes(surface):
-    shell, content = gui_layout._page(surface)
-    shell.pack(fill="both", expand=True)
-    block = tk.Frame(content, height=600, width=50)
-    block.grid(row=0, column=0, sticky="ew")
+    class Background:
+        def attach(self, *args, **kwargs): pass
+        def sync(self, *args, **kwargs): pass
+    page = gui_layout._Page(surface, Background())
+    page.shell.pack(fill="both", expand=True)
+    block = tk.Frame(page.canvas, height=600, width=50)
+    page.add(block, 0)
     surface.update()
-    canvas = next(w for w in shell.winfo_children() if isinstance(w, tk.Canvas))
-    bar = next(w for w in shell.winfo_children() if isinstance(w, ttk.Scrollbar))
+    canvas, bar = page.canvas, page.bar
     assert bar.winfo_ismapped()
-    assert content.winfo_width() == canvas.winfo_width()
+    assert block.winfo_width() == canvas.winfo_width()
     canvas.yview_moveto(0.5)
     assert canvas.yview()[0] > 0
     block.configure(height=40)
+    # Inspection explicitly refreshes page geometry after changing its roster,
+    # including when a card was scrolled outside the mapped canvas viewport.
+    page._schedule()
     surface.update()
     assert not bar.winfo_ismapped()
     assert canvas.yview()[0] == 0
-    assert content.winfo_width() == canvas.winfo_width()
+    assert block.winfo_width() == canvas.winfo_width()

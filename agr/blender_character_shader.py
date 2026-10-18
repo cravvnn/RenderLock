@@ -201,15 +201,16 @@ def apply_character_shader(scene, roots, data, library, *, manifest_dir, allow_p
     for obj in objects:
         for slot in obj.material_slots:slot.material=replacements[slot.material]
     scene.render.engine='BLENDER_EEVEE'
-    disabled=[]
-    for obj in scene.objects:
-        if obj.type=='LIGHT' and obj.name in ('AGR | Key','AGR | Fill'):
-            obj.data.energy=0;disabled.append(obj.name)
+    # The Source reference path supplies indirect lighting only. Keep the
+    # builder's editable preview key/fill lights so the artist shader also has
+    # direct illumination; zeroing them leaves the character mostly in shadow.
+    review_lights=[obj.name for obj in scene.objects
+                   if obj.type=='LIGHT' and obj.name in ('AGR | Key','AGR | Fill')]
     report=dict(status='partial',author='Elagrimm',library_sha256=LIBRARY_SHA256,
                 library_commit=LIBRARY_COMMIT,library_url=LIBRARY_URL,
                 mode='source_reference_rgb_bridge',materials=rows,renderer=scene.render.engine,
                 additional_lights='Native Eevee diffuse/specular added with editable Additional Light Influence',
-                disabled_review_lights=disabled,
+                disabled_review_lights=[],preview_lights=review_lights,
                 rim='Elagrimm artist rim multiplied by constant green Source mask; no Source rim parity',
                 limits=['Author group copied; diffuse/specular ShaderToRGB inputs replaced by Source NPR references.',
                         'Source specular is already shaded before author shaping; artistic approximation.',
@@ -217,6 +218,7 @@ def apply_character_shader(scene, roots, data, library, *, manifest_dir, allow_p
                         'Converted emission preserved; general Source emissive/status/outline binding incomplete.',
                         'Packed lookup bilinear references qualified; Eevee implicit minification unqualified.',
                         'Additional Blender lights use artist shader response; Source light units/shadows are not certified.',
+                        'Editable key/fill preview lights remain enabled; these are artistic Blender lights, not recovered game direct lighting.',
                         'Opaque NPR characters only; integer camera bake requires rebaking after edits.'])
     scene['d2b_character_shader']=json.dumps(report)
     return report

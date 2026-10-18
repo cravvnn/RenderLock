@@ -1,3 +1,14 @@
+# 0.3.0b7 — Update checks and character preview lighting
+
+- Fix completed update checks attempting to configure a canvas text ID as a widget; automatic and manual checks now update the redesigned sidebar without a callback exception.
+- Keep the editable key/fill preview lights enabled for the Elagrimm character look, so partial indirect lighting is supplemented by the artist shader's direct-light response.
+
+# 0.3.0b6 — Redesigned UI, automatic cloth and lighting checks
+- Integrate Kara's redesigned interface with the existing charcoal, cream and brass palette, RenderLock branding, character selection and in-app updates.
+- Reconstruct supported painted cloth proxies automatically from installed assets. Saved-scene checks cover McGinnis and Fencer across all 301 frames of the tester's replay; other cloth layouts remain explicitly unsupported. This is approximate Blender cloth, not recorded Source cloth motion.
+- Resolve omitted neutral albedo controls from the exact qualified pbr shader defaults. Bebop's partial NPR/Elagrimm export now saves without requiring those defaults to be written explicitly in each material. Explicit unsupported settings still fail.
+- Check lighting-region probe count and both decoder budgets before optional map conversion. Explain installed map lighting data versus scene geometry and how to reduce an oversized character selection. Map-wide NPR and the tester's unsupported particle trees remain unsupported.
+
 # 0.3.0b5 — Elagrimm character shader
 
 - Replace the supported character-look library with Elagrimm's Deadlock shader; update the Lighting lab field and setup instructions. Toilet Horse Shoe is no longer supported.

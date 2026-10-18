@@ -114,7 +114,8 @@ class UpdateUI:
                     self.app.update_notes.insert("1.0", readable_notes(value["notes"]) if value else
                         "You have the newest published version available to this release channel.")
                     self.app.update_notes.configure(state="disabled")
-                    self.app.nav_items["Updates"]["text"].configure(text="Updates (new)" if value else "Updates")
+                    self.app.rail.itemconfigure(self.app.nav_items["Updates"]["text"],
+                                                text="Updates (new)" if value else "Updates")
                     self._status(f"RenderLock {value['version']} is available. Review the notes below." if value else
                                  f"RenderLock {__version__} is up to date.")
                 elif kind == "downloaded":

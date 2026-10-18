@@ -1,50 +1,73 @@
-"""Desktop workspace: navigation rail, page content, shared job controller.
+"""Desktop workspace: title bar, sidebar, page content and the shared job controller.
 
 Every page shares the launcher's controller (``AGRApp``); this module only
 builds widgets and the small navigation/selection behaviors. Layout targets a
-compact tool window that sits naturally next to Blender: a raised left rail for
-pages, one rounded card per section, and a pinned action footer with the job
-status on its own line.
+compact tool window that sits naturally next to Blender: the design's own title
+bar, a sidebar for pages, one card per section, and a footer with the job
+buttons and the status line, all over an animated background.
+
+Tk widgets are opaque, so everything that sits directly on the background (page
+title, footer links, status, sticker buttons, the gaps between cards) is drawn
+on canvases that also carry the background (see ``gui_backdrop``). Cards and
+their controls are ordinary widgets on top.
 
 All sizes are design pixels (the Figma mockup at 100%) passed through ``px()``,
-so the layout keeps its proportions on scaled displays.
+so the layout keeps its proportions on scaled displays. The window resizes
+freely; the background stretches with it so a maximized window looks like the
+default one, while controls keep their size.
 """
 from __future__ import annotations
 
+import base64
 import tkinter as tk
+import zlib
 from tkinter import ttk
 
 from . import __version__, gui_assets, gui_theme
+from .gui_backdrop import BASE_COLOR, Backdrop
+from .gui_chrome import BAR_HEIGHT, EdgeResizer, TitleBar, WindowChrome
 from .gui_theme import hairline, px
-from .gui_widgets import (Card, CheckBox, IdleUpdate, ProgressLine, ResizeRedraw, RoundedButton, RoundedEntry, SegmentedControl,
-                          StatusDot, bind_tree, gradient_color, outline_right_rounded)
+from .gui_widgets import (Card, CanvasDot, CanvasFocus, CanvasLink, CanvasProgress, CanvasSticker, CanvasText,
+                          CheckBox, DisplayText, RoundedButton, RoundedEntry, SegmentedControl, gradient_color,
+                          rgba_image)
 from .release_profile import character_beta
 from .gui_characters import CharacterChecklist
 
 PAGE_EXPORT = "Export"
 PAGE_SETUP = "Setup"
 PAGE_ADVANCED = "Advanced"
-PAGE_MAP = "Map"
 PAGE_LIGHTING = "Lighting lab"
+PAGE_MAP = "Map"
 PAGE_UPDATES = "Updates"
 
 PAGE_DETAILS = {
     PAGE_EXPORT: "Choose a recording, inspect it, then export a Blender scene.",
     PAGE_SETUP: "Point RenderLock at Blender and your game files. Conversion never launches Deadlock.",
     PAGE_ADVANCED: "Experimental character options and output policy.",
-    PAGE_MAP: "Prepare the installed map region used by the lighting tools. Map geometry is not exported in this beta.",
-    PAGE_LIGHTING: "Experimental character look: partial Source lighting, probe reflections and the Elagrimm shader.",
-    PAGE_UPDATES: "Review what changed, download an update, then restart when you are ready.",
+    PAGE_LIGHTING: "Partial Source lighting and Elagrimm character look.",
+    PAGE_MAP: "Prepare lighting data; add map geometry separately in Blender.",
+    PAGE_UPDATES: "Review release notes and install RenderLock updates.",
 }
 
+WORDMARK = "RenderLock"
+WINDOW_W, WINDOW_H = 1040, 760   # content below the title bar
+MIN_W, MIN_H = 900, 660
 RAIL_WIDTH = 181
-RAIL_RADIUS = 18
+NAV_TOP, NAV_HEIGHT = 121, 40
 CONTENT_PAD_X = 40
+HEADER_TOP = 30                # page title line (26 px tall); the subtitle line starts 29 px lower
+PAGE_TOP = 107                 # first card
+PAGE_BOTTOM = 128              # last card ends this far above the window bottom
+ACTIONS_BOTTOM = 102           # footer links row (36 px) starts this far above the bottom
+STATUS_BOTTOM = 66             # status row (36 px)
+STICKER_CENTER_BOTTOM = 57     # sticker labels' centre line
+LOG_GAP = 12
 CARD_GAP = 10
+SECTION_TITLE_LINE = 18    # card title line height
+SECTION_GAP = 15           # space between a card's blocks (title, rows, notes)
 ROW_GAP = 7                # vertical space between field rows inside a card
 LABEL_GAP = 10             # space between a row label and its field
-HEADER_TOP = 30            # rail brand and page header start on the same line
-TITLE_GAP = 4              # title -> subtitle, same in the rail and the page header
+TITLE_GAP = 4              # title -> subtitle inside cards
 LABEL_COLUMN = 0           # Export rows: each label hugs its field ("File", "Save as")
 WIDE_LABEL_COLUMN = 150    # Setup/Advanced rows keep their fields aligned
 TEXT_WRAP = 700
@@ -55,32 +78,84 @@ def _pad(value):
     return tuple(px(v) for v in value) if isinstance(value, tuple) else px(value)
 
 
-def _rail_edge_color(u, v):
-    """Rail outline color at normalized rail coordinates (Figma linear gradient, mostly top to bottom)."""
-    t = -0.0269 * u + 0.6237 * v + 0.0134
-    return gradient_color(((0.0, gui_theme.RAIL_EDGE_TOP), (1.0, gui_theme.RAIL_EDGE_BOTTOM)), t)
+def _display_text(parent, text, font, color):
+    """A title in a display face, with room for its real descenders.
+
+    Returns the widget and the extra room (px) it adds below the line, so callers can
+    take that room back out of the gap that follows and keep the layout unchanged.
+    """
+    room = gui_theme.descent_shortfall(font)
+    return DisplayText(parent, text=text, font=font, foreground=color, room=room), room
+
+
+def _blend(stops, t):
+    """Color and opacity at ``t`` on a gradient of ((position, "#rrggbb", alpha), ...)."""
+    t = min(1.0, max(0.0, t))
+    for (p0, c0, a0), (p1, c1, a1) in zip(stops, stops[1:]):
+        if t <= p1:
+            k = 0.0 if p1 == p0 else (t - p0) / (p1 - p0)
+            rgb0 = [int(c0[i:i + 2], 16) for i in (1, 3, 5)]
+            rgb1 = [int(c1[i:i + 2], 16) for i in (1, 3, 5)]
+            return [a + (b - a) * k for a, b in zip(rgb0, rgb1)], a0 + (a1 - a0) * k
+    last = stops[-1]
+    return [int(last[1][i:i + 2], 16) for i in (1, 3, 5)], last[2]
+
+
+def _over(rgb, alpha):
+    """``rgb`` (screen colors) at ``alpha`` over the background's typical color."""
+    base = gui_theme.screen_rgb(BASE_COLOR)
+    return "#%02x%02x%02x" % tuple(int(b + (c - b) * alpha + 0.5) for c, b in zip(rgb, base))
+
+
+def _asset_image(master, width, height, blob):
+    """A Tk image from embedded raw RGBA, converted for this screen's colors."""
+    raw = zlib.decompress(base64.b64decode(blob))
+    try:
+        import numpy as np
+    except ImportError:
+        np = None
+    if np is not None:
+        pixels = np.frombuffer(raw, np.uint8).reshape(height, width, 4).copy()
+        pixels[:, :, :3] = gui_theme.screen_pixels(pixels[:, :, :3])
+        rows = [pixels[y].tobytes() for y in range(height)]
+    else:
+        rows = [raw[y * width * 4:(y + 1) * width * 4] for y in range(height)]
+    return rgba_image(master, width, height, rows)
 
 
 def set_log_visible(app, visible: bool) -> None:
-    was_visible = bool(app.log_frame.winfo_manager())
-    if visible:
-        app.log_frame.grid()
-    else:
-        app.log_frame.grid_remove()
+    was_visible = getattr(app, "log_visible", False)
+    app.log_visible = visible
     app.log_button.configure(text="Hide log" if visible else "Show log")
+    app.layout_stage()
     if visible != was_visible:
         _resize_for_log(app, visible)
 
 
 def _work_area(root):
-    """Usable screen rectangle (left, top, right, bottom) excluding the taskbar."""
+    """Usable rectangle (left, top, right, bottom) of the monitor the window is on, without the
+    taskbar. Before the window is shown: the primary monitor's."""
     try:
         import ctypes
         from ctypes import wintypes
+        user32 = ctypes.WinDLL("user32")
+        if root.winfo_ismapped():
+            class MONITORINFO(ctypes.Structure):
+                _fields_ = [("cbSize", wintypes.DWORD), ("rcMonitor", wintypes.RECT),
+                            ("rcWork", wintypes.RECT), ("dwFlags", wintypes.DWORD)]
+            user32.MonitorFromWindow.argtypes = [wintypes.HWND, wintypes.DWORD]
+            user32.MonitorFromWindow.restype = wintypes.HMONITOR
+            user32.GetMonitorInfoW.argtypes = [wintypes.HMONITOR, ctypes.c_void_p]
+            info = MONITORINFO()
+            info.cbSize = ctypes.sizeof(info)
+            monitor = user32.MonitorFromWindow(wintypes.HWND(int(root.wm_frame(), 16)), 2)  # NEAREST
+            if monitor and user32.GetMonitorInfoW(monitor, ctypes.addressof(info)):
+                work = info.rcWork
+                return work.left, work.top, work.right, work.bottom
         rect = wintypes.RECT()
-        if ctypes.windll.user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(rect), 0):  # SPI_GETWORKAREA
+        if user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(rect), 0):  # SPI_GETWORKAREA
             return rect.left, rect.top, rect.right, rect.bottom
-    except (AttributeError, OSError):
+    except (AttributeError, OSError, ValueError, tk.TclError):
         pass
     return 0, 0, root.winfo_screenwidth(), root.winfo_screenheight()
 
@@ -89,20 +164,28 @@ def _resize_for_log(app, visible):
     """Grow the window by the log drawer's height when it opens, and give it back when it closes.
 
     The pages keep their space instead of being squeezed. If the taller window would run
-    off the bottom of the screen it moves up first, and it never grows past the screen.
-    A maximized window is left alone.
+    off the bottom of its monitor it moves up first, and it never grows past the monitor.
+    A maximized window keeps its size; a drawer closed while maximized gives its height back
+    when the window is restored (see _restored).
     """
     root = app.root
     if not root.winfo_ismapped() or root.state() == "zoomed":
-        app.log_growth = 0
+        if visible:
+            # Opened while maximized: nothing grows now. If a shrink was still owed (the drawer was
+            # closed while maximized), the reopened drawer simply uses that height again.
+            if not getattr(app, "log_shrink_pending", False):
+                app.log_growth = 0
+            app.log_shrink_pending = False
+        elif getattr(app, "log_growth", 0):
+            app.log_shrink_pending = True
         return
     root.update_idletasks()
     size, x, y = root.geometry().split("+")[0], root.winfo_x(), root.winfo_y()
     width, height = (int(v) for v in size.split("x"))
     if visible:
-        wanted = app.log_frame.winfo_reqheight() + px(12)  # drawer plus its top gap
+        wanted = app.log_frame.winfo_reqheight() + px(LOG_GAP)
         _left, top, _right, bottom = _work_area(root)
-        chrome = (root.winfo_rooty() - y) + (root.winfo_rootx() - x)  # title bar + bottom border
+        chrome = (root.winfo_rooty() - y) + (root.winfo_rootx() - x)  # native frame, if any
         growth = min(wanted, max(0, (bottom - top) - chrome - height))
         app.log_growth = growth
         if growth > 0:
@@ -110,8 +193,18 @@ def _resize_for_log(app, visible):
             root.geometry(f"{width}x{height + growth}+{x}+{new_y}")
     else:
         growth, app.log_growth = getattr(app, "log_growth", 0), 0
+        app.log_shrink_pending = False
         if growth:
-            root.geometry(f"{width}x{max(px(660), height - growth)}+{x}+{y}")
+            root.geometry(f"{width}x{max(app.min_height, height - growth)}+{x}+{y}")
+
+
+def _restored(app, event):
+    """After un-maximizing, give back the height of a log drawer that was closed while maximized."""
+    root = app.root
+    if (event.widget is root and getattr(app, "log_shrink_pending", False) and not app.log_visible
+            and root.winfo_ismapped() and root.state() == "normal"):
+        app.log_shrink_pending = False
+        root.after_idle(lambda: _resize_for_log(app, False))
 
 
 # --------------------------------------------------------------------------
@@ -120,7 +213,8 @@ def _resize_for_log(app, visible):
 
 
 def _label(parent, text, font=None, color=None, **kw):
-    return tk.Label(parent, text=text, background=parent.cget("background"),
+    # No border or padding: the line is exactly the font's height, like the design's 16 px text lines.
+    return tk.Label(parent, text=text, background=parent.cget("background"), bd=0, padx=0, pady=0,
                     foreground=color or gui_theme.MUTED, font=font or gui_theme.FONT_SMALL, **kw)
 
 
@@ -131,13 +225,16 @@ def _entry(parent, variable, width=120):
 
 def _card(app, page, row, title, detail="", label_column=LABEL_COLUMN):
     """Add a section card to ``page`` and return its body and the next page row."""
-    card = Card(page, theme=gui_theme.palette())
-    card.grid(row=row, column=0, sticky="ew", pady=_pad((0 if row == 0 else CARD_GAP, 0)))
+    # Padding counts the 1 px edge, as in the design (content starts 16 px down, 21 px in).
+    card = Card(page.canvas, theme=gui_theme.palette(), background=gui_theme.BACKDROP, pad_x=21, pad_y=16)
+    page.add(card, gap=0 if row == 0 else CARD_GAP)
     body = card.body
     body.columnconfigure(0, minsize=px(label_column))
     body.columnconfigure(1, weight=1)
-    _label(body, title, font=gui_theme.FONT_SECTION, color=gui_theme.TEXT).grid(
-        row=0, column=0, columnspan=3, sticky="w", pady=_pad((0, 4 if detail else 9)))
+    heading, room = _display_text(body, title, gui_theme.FONT_SECTION, gui_theme.TEXT)
+    # The title's 18 px line plus a 15 px gap: content starts 33 px below the title's top.
+    gap = px(4) - room if detail else px(SECTION_TITLE_LINE + SECTION_GAP) - int(heading.cget("height"))
+    heading.grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, max(0, gap)))
     if detail:
         _label(body, detail, justify="left", anchor="w", wraplength=px(TEXT_WRAP)).grid(
             row=1, column=0, columnspan=3, sticky="w", pady=_pad((0, 11)))
@@ -161,7 +258,8 @@ def _path_row(app, parent, label, key, command, button=True):
     entry.grid(row=row, column=1, sticky="ew", pady=gap)
     app.mutable_widgets.append(entry)
     if button:
-        browse = RoundedButton(parent, text="Browse", command=command, theme=gui_theme.palette(), height=34)
+        browse = RoundedButton(parent, text="Browse", command=command, theme=gui_theme.palette(), height=34,
+                               pad_x=13)
         browse.grid(row=row, column=2, padx=_pad((5, 0)), pady=gap)
         app.mutable_widgets.append(browse)
 
@@ -177,158 +275,401 @@ def _check(app, parent, text, variable, onvalue="1", offvalue="0", pady=(0, 1)):
 # Pages.
 
 
-def _page(container):
-    """Scrollable page body; the scrollbar appears only when it is needed."""
-    shell = tk.Frame(container, background=gui_theme.BG)
-    shell.columnconfigure(0, weight=1)
-    shell.rowconfigure(0, weight=1)
-    canvas = tk.Canvas(shell, background=gui_theme.BG, highlightthickness=0, bd=0)
-    bar = ttk.Scrollbar(shell, orient="vertical", command=canvas.yview)
-    canvas.grid(row=0, column=0, sticky="nsew")
-    canvas.configure(yscrollcommand=bar.set)
-    content = tk.Frame(canvas, background=gui_theme.BG)
-    content.columnconfigure(0, weight=1)
-    window = canvas.create_window((0, 0), window=content, anchor="nw")
+class _Page:
+    """Scrollable page: cards stacked on a canvas, so the background shows in the gaps.
 
-    last_width = last_region = None
-    scrollbar_visible = False
+    The scrollbar appears only when the cards do not fit; the background stays fixed to the
+    window while the cards scroll over it. While the user drags the window's size (``held``),
+    cards keep their width: reflowing every field on every mouse move is what makes Tk resize
+    sluggishly, so they reflow once when the drag ends.
+    """
 
-    def resize():
-        nonlocal last_width, last_region, scrollbar_visible
+    held = False
+    pages: list = []
+
+    def __init__(self, stage, backdrop):
+        self.backdrop = backdrop
+        self.shell = tk.Frame(stage, background=gui_theme.BACKDROP)
+        self.shell.columnconfigure(0, weight=1)
+        self.shell.rowconfigure(0, weight=1)
+        self.canvas = canvas = tk.Canvas(self.shell, background=gui_theme.BACKDROP, highlightthickness=0, bd=0)
+        self.bar = ttk.Scrollbar(self.shell, orient="vertical", command=canvas.yview)
+        canvas.grid(row=0, column=0, sticky="nsew")
+        canvas.configure(yscrollcommand=self._scrolled)
+        backdrop.attach(canvas, areas=self._open_areas)
+        self.cards = []
+        self.gaps = []     # (top, bottom) canvas rows between and below the cards
+        self._job = None
+        _Page.pages.append(self)
+        canvas.bind("<Configure>", lambda _e: self._schedule(), add="+")
+        self._root = stage.winfo_toplevel()
+        self._wheel_binding = self._root.bind("<MouseWheel>", self._wheel, add="+")
+        self.shell.bind("<Destroy>", self._destroyed, add="+")
+
+    def _destroyed(self, event):
+        if event.widget is not self.shell:
+            return
+        if self._job is not None:
+            self.canvas.after_cancel(self._job)
+            self._job = None
+        if self in _Page.pages:
+            _Page.pages.remove(self)
+        self._root.unbind("<MouseWheel>", self._wheel_binding)
+
+    def add(self, card, gap):
+        item = self.canvas.create_window(0, 0, window=card, anchor="nw")
+        self.cards.append((card, item, px(gap)))
+        card.bind("<Configure>", lambda _e: self._schedule(), add="+")
+
+    def _schedule(self):
+        if self._job is None and not _Page.held:
+            self._job = self.canvas.after_idle(self.layout)
+
+    @classmethod
+    def hold(cls, held):
+        """Hold card layout while the window is being dragged; lay every page out once afterwards."""
+        cls.held = held
+        if not held:
+            for page in cls.pages:
+                page._schedule()
+
+    def layout(self):
+        self._job = None
+        if _Page.held:
+            return
+        canvas = self.canvas
         width = canvas.winfo_width()
-        if width != last_width:
-            canvas.itemconfigure(window, width=width)
-            last_width = width
-        region = canvas.bbox("all")
-        if region != last_region:
-            canvas.configure(scrollregion=region)
-            last_region = region
-        overflow = content.winfo_reqheight() > canvas.winfo_height() + 1
-        if overflow != scrollbar_visible:
-            if overflow:
-                bar.grid(row=0, column=1, sticky="ns", padx=_pad((8, 0)))
-            else:
-                bar.grid_remove()
-                canvas.yview_moveto(0)
-            scrollbar_visible = overflow
+        y = 0
+        self.gaps = []
+        for card, item, gap in self.cards:
+            if gap:
+                self.gaps.append((y, y + gap))
+            y += gap
+            canvas.coords(item, 0, y)
+            canvas.itemconfigure(item, width=width)
+            y += card.winfo_reqheight()
+        self.gaps.append((y, y + 100000))
+        canvas.configure(scrollregion=(0, 0, width, y))
+        if y > canvas.winfo_height() + 1:
+            self.bar.grid(row=0, column=1, sticky="ns", padx=_pad((8, 0)))
+        else:
+            self.bar.grid_remove()
+            canvas.yview_moveto(0)
+        self.backdrop.sync(canvas, redraw=True)
 
-    update = IdleUpdate(shell, resize)
-    content.bind("<Configure>", update)
-    canvas.bind("<Configure>", update)
+    def _open_areas(self):
+        """Where the background shows on this page: the gaps between cards and below the last one."""
+        canvas = self.canvas
+        top, width, height = canvas.canvasy(0), canvas.winfo_width(), canvas.winfo_height()
+        return [(0, max(0, y0 - top), width, min(height, y1 - top)) for y0, y1 in self.gaps
+                if y1 - top > 0 and y0 - top < height]
 
-    def wheel(event):
+    def watch_focus(self):
+        """Let Tab reach every field on this page and scroll it into view first.
+
+        Tk skips widgets it cannot see when tabbing, and canvas cards scrolled out of view are
+        not visible to it at all. Each focusable control instead asks ``_reveal`` (a takefocus
+        script), which scrolls the field into view and says yes.
+        """
+        script = self.canvas.register(self._reveal)
+        pending = list(self.canvas.winfo_children())
+        while pending:
+            widget = pending.pop()
+            pending.extend(widget.winfo_children())
+            if isinstance(widget, tk.Entry):
+                widget.configure(takefocus=script)
+            elif hasattr(widget, "_set_option") and str(widget.cget("takefocus")) in ("1", "True"):
+                widget.focus_script = script
+                tk.Canvas.configure(widget, takefocus=script)
+
+    def _reveal(self, path):
+        widget = self.canvas.nametowidget(path)
+        if not self.shell.winfo_ismapped():
+            return 0  # a page that is not shown is not part of the Tab order
+        if isinstance(widget, tk.Entry) and str(widget.cget("state")) == "disabled":
+            return 0
+        canvas = self.canvas
+        card = widget
+        while card is not None and card.master is not canvas:
+            card = card.master
+        item = next((item for c, item, _gap in self.cards if c is card), None)
+        if item is None:
+            return 1
+        top = canvas.coords(item)[1] + widget.winfo_rooty() - card.winfo_rooty()
+        bottom = top + widget.winfo_height()
+        view_top, view_height = canvas.canvasy(0), canvas.winfo_height()
+        region = str(canvas.cget("scrollregion")).split()
+        total = max(1.0, float(region[-1])) if region else 1.0  # not laid out yet: nothing to scroll
+        margin = px(12)
+        if top < view_top:
+            canvas.yview_moveto(max(0.0, top - margin) / total)
+        elif bottom > view_top + view_height:
+            canvas.yview_moveto(max(0.0, bottom + margin - view_height) / total)
+        canvas.update_idletasks()  # map the card before Tk gives the field focus
+        return 1
+
+    def _scrolled(self, first, last):
+        self.bar.set(first, last)
+        self.backdrop.sync(self.canvas)  # keep the background fixed while the page scrolls
+
+    def _wheel(self, event):
         # Scroll only the page under the pointer; logs keep their native wheel.
         widget = event.widget
         while widget is not None:
-            if widget == shell and canvas.yview() != (0.0, 1.0):
-                canvas.yview_scroll(-int(event.delta / 120) or (-1 if event.delta > 0 else 1), "units")
+            if widget == self.shell and self.canvas.yview() != (0.0, 1.0):
+                self.canvas.yview_scroll(-int(event.delta / 120) or (-1 if event.delta > 0 else 1), "units")
                 return
             widget = getattr(widget, "master", None)
-
-    container.winfo_toplevel().bind("<MouseWheel>", wheel, add="+")
-    return shell, content
 
 
 def show_page(app, name):
     app.page = name
-    for key, frame in app.page_frames.items():
-        if key == name:
-            frame.grid(row=0, column=0, sticky="nsew")
-        else:
-            frame.grid_remove()
+    app.stage.itemconfigure(app.page_item, window=app.page_frames[name])
     _nav_select(app, name)
     app.page_title.configure(text=name)
     app.page_subtitle.configure(text=PAGE_DETAILS.get(name, ""))
 
 
 # --------------------------------------------------------------------------
-# Navigation rail.
+# Sidebar: one canvas with the gradient, the outline, the tree art, the brand and the pages.
 
 
-def _nav_hover(app, name, active):
-    parts = app.nav_items[name]
-    if app.page == name:
-        return
-    bg = gui_theme.RAIL_HOVER if active else gui_theme.RAIL_BG
-    fg = gui_theme.TEXT if active else gui_theme.MUTED
-    for key in ("frame", "inner", "bar"):
-        parts[key].configure(background=bg)
-    if parts.get("icon") is not None:
-        parts["icon"].configure(background=bg, foreground=fg)
-    parts["text"].configure(background=bg, foreground=fg)
+def _nav_paint(app, name):
+    rail, parts, t = app.rail, app.nav_items[name], gui_theme
+    selected, hover = app.page == name, app.nav_hover == name
+    rail.itemconfigure(parts["bar"], fill=t.ACCENT if selected else t.NAV_BAR_IDLE)
+    if parts["icon"] is not None:
+        rail.itemconfigure(parts["icon"], fill=t.ACCENT if selected else (t.TEXT if hover else t.MUTED))
+    rail.itemconfigure(parts["text"], fill=t.TEXT if (selected or hover) else t.MUTED)
 
 
 def _nav_select(app, name):
-    for key, parts in app.nav_items.items():
-        selected = key == name
-        bg = gui_theme.RAIL_SEL if selected else gui_theme.RAIL_BG
-        parts["frame"].configure(background=bg)
-        parts["inner"].configure(background=bg)
-        parts["bar"].configure(background=gui_theme.ACCENT if selected else bg)
-        if parts.get("icon") is not None:
-            parts["icon"].configure(background=bg,
-                                    foreground=gui_theme.ACCENT if selected else gui_theme.MUTED)
-        parts["text"].configure(background=bg, foreground=gui_theme.TEXT if selected else gui_theme.MUTED)
+    rail = app.rail
+    top = app.nav_items[name]["top"]
+    rail.coords(app.nav_selected, 0, top)
+    rail.itemconfigure(app.nav_selected, state="normal")
+    _nav_hover(app, app.nav_hover)
+    for key in app.nav_items:
+        _nav_paint(app, key)
 
 
-def _nav_item(app, parent, name, glyph, icon_family, label):
-    bg = gui_theme.RAIL_BG
-    item = tk.Frame(parent, background=bg, cursor="hand2")
-    item.pack(fill="x")
-    bar = tk.Frame(item, background=bg, width=px(3))
-    bar.pack(side="left", fill="y")
-    inner = tk.Frame(item, background=bg)
-    inner.pack(side="left", fill="x", expand=True, padx=_pad((13, 8)), pady=px(10))
-    icon = None
-    if glyph and icon_family:
-        icon = tk.Label(inner, text=glyph, font=(icon_family, 11),
-                        background=bg, foreground=gui_theme.MUTED)
-        icon.pack(side="left", padx=_pad((0, 10)))
-    text = tk.Label(inner, text=label, font=gui_theme.FONT, background=bg, foreground=gui_theme.MUTED)
-    text.pack(side="left")
-    app.nav_items[name] = {"frame": item, "bar": bar, "inner": inner, "icon": icon, "text": text}
-    bind_tree(item, "<Button-1>", lambda _event, n=name: show_page(app, n))
-    bind_tree(item, "<Enter>", lambda _event, n=name: _nav_hover(app, n, True))
-    bind_tree(item, "<Leave>", lambda _event, n=name: _nav_hover(app, n, False))
+def _nav_hover(app, name):
+    app.nav_hover = name
+    rail = app.rail
+    if name is None or name == app.page:
+        rail.itemconfigure(app.nav_hovered, state="hidden")
+    else:
+        rail.coords(app.nav_hovered, 0, app.nav_items[name]["top"])
+        rail.itemconfigure(app.nav_hovered, state="normal")
+    for key in app.nav_items:
+        _nav_paint(app, key)
+
+
+def _nav_at(app, y):
+    for name, parts in app.nav_items.items():
+        if parts["top"] <= y < parts["top"] + px(NAV_HEIGHT):
+            return name
+    return None
+
+
+def _fade_image(master, width, height, start, end, strength):
+    """Horizontal fade from ``start`` (opaque) to ``end`` (transparent), as RGBA."""
+    a = [int(start[i:i + 2], 16) for i in (1, 3, 5)]
+    b = [int(end[i:i + 2], 16) for i in (1, 3, 5)]
+    row = bytearray()
+    for x in range(width):
+        k = (x + 0.5) / width
+        row += bytes([int(a[i] + (b[i] - a[i]) * k + 0.5) for i in range(3)] + [int(255 * (1 - k) * strength + 0.5)])
+    return rgba_image(master, width, height, [row] * height)
+
+
+def _paint_sidebar(app, rail):
+    """Rebuild the sidebar's gradient fill and right-edge outline for the current height."""
+    width, height = px(RAIL_WIDTH), max(1, rail.winfo_height())
+    if getattr(app, "rail_height", None) == height:
+        return
+    app.rail_height = height
+    stops = tuple((pos, color, alpha) for pos, (color, alpha) in zip((0.0, 0.68, 1.0), gui_theme.SIDEBAR))
+    edge = hairline()
+    try:
+        import numpy as np
+    except ImportError:
+        np = None
+    if np is not None:
+        # Fast path (this runs on every step of a window resize).
+        rgb = lambda color: [int(color[i:i + 2], 16) for i in (1, 3, 5)]  # noqa: E731
+        t = 0.98 * (np.arange(height) + 0.5) / height + 0.02
+        positions = [stop[0] for stop in stops]
+        alpha = np.interp(t, positions, [stop[2] for stop in stops])[:, None]
+        fill = np.stack([np.interp(t, positions, [rgb(stop[1])[i] for stop in stops]) for i in range(3)], 1)
+        base = np.array(gui_theme.screen_rgb(BASE_COLOR), float)
+        column = base + (fill - base) * alpha
+        t = np.clip(1.1 * (np.arange(height) + 0.5) / height + 0.21, 0, 1)[:, None]
+        top, bottom = np.array(rgb(gui_theme.RAIL_EDGE_TOP), float), np.array(rgb(gui_theme.RAIL_EDGE_BOTTOM), float)
+        pixels = np.repeat((column + 0.5).astype(np.uint8)[:, None, :], width, axis=1)
+        pixels[:, width - edge:] = (top + (bottom - top) * t + 0.5).astype(np.uint8)[:, None, :]
+        image = tk.PhotoImage(master=rail, format="ppm", data=b"P6 %d %d 255 " % (width, height) + pixels.tobytes())
+    else:
+        column = []
+        for y in range(height):
+            color, alpha = _blend(stops, 0.98 * (y + 0.5) / height + 0.02)
+            column.append("{" + _over(color, alpha) + "}")
+        image = tk.PhotoImage(master=rail, width=width, height=height)
+        image.put(" ".join(column), to=(0, 0, width, height))
+        outline = ["{" + gradient_color(((0.0, gui_theme.RAIL_EDGE_TOP), (1.0, gui_theme.RAIL_EDGE_BOTTOM)),
+                                        1.1 * (y + 0.5) / height + 0.21) + "}" for y in range(height)]
+        image.put(" ".join(outline), to=(width - edge, 0, width, height))
+    app.rail_image = image
+    rail.itemconfigure(app.rail_fill, image=image)
+    if app.rail_art is not None:
+        if getattr(app, "rail_art_job", None) is not None:
+            rail.after_cancel(app.rail_art_job)
+            app.rail_art_job = None
+        if app.chrome.sizing:
+            # Mid-drag: keep the current tree (just moved along) and resize it once the drag ends.
+            _place_rail_art(app)
+            app.rail_art_job = rail.after(300, lambda: _scale_rail_art(app))
+        else:
+            _scale_rail_art(app)  # a jump in size (maximize, restore): resize in the same step
+            _place_rail_art(app)
+
+
+def _place_rail_art(app):
+    """The tree hugs the bottom of the sidebar as in the design, and never climbs into the pages."""
+    x, from_bottom = app.rail_art_place
+    top = max(px(NAV_TOP + 3 * NAV_HEIGHT + 20), app.rail.winfo_height() - from_bottom)
+    app.rail.coords(app.rail_art, x, top)
+
+
+def _scale_rail_art(app):
+    """Size the tree in proportion to the sidebar's height (bigger in a maximized window).
+
+    The design size uses the art exported for this display scale; other heights resample the
+    largest export, so the tree stays sharp when it grows."""
+    app.rail_art_job = None
+    rail = app.rail
+    if app.chrome.sizing:  # still being dragged: try again once it settles
+        app.rail_art_job = rail.after(300, lambda: _scale_rail_art(app))
+        return
+    grow = max(0.8, min(2.5, rail.winfo_height() / (WINDOW_H * gui_theme.SCALE)))
+    if abs(grow - getattr(app, "rail_art_grow", 1.0)) < 0.02:
+        return
+    art = _rail_art_for(app, grow)
+    if art is None:
+        return
+    app.rail_art_grow = grow
+    app.rail_art_image, app.rail_art_place = art
+    rail.itemconfigure(app.rail_art, image=art[0])
+    _place_rail_art(app)
+
+
+def _rail_art_for(app, grow):
+    """(image, place) of the tree drawn ``grow`` times its design size; cached, so sizes seen
+    before (maximize <-> restore) come back instantly."""
+    if abs(grow - 1.0) < 0.03:
+        return app.rail_art_native
+    cache = app.__dict__.setdefault("rail_art_sizes", {})
+    key = round(grow, 2)
+    if key in cache:
+        return cache[key]
+    try:
+        import numpy as np
+    except ImportError:
+        return None
+    from .gui_backdrop import resample
+    source_scale = max(gui_assets.RAIL_ART)
+    x0, y0, width, height, data = gui_assets.RAIL_ART[source_scale]
+    factor = gui_theme.SCALE * key / source_scale
+    pixels = np.frombuffer(zlib.decompress(base64.b64decode(data)), np.uint8).reshape(height, width, 4)
+    out_w, out_h = max(1, int(width * factor + 0.5)), max(1, int(height * factor + 0.5))
+    scaled = resample(pixels, factor, factor, np.arange(out_w) + 0.5, np.arange(out_h) + 0.5).copy()
+    scaled[:, :, :3] = gui_theme.screen_pixels(scaled[:, :, :3])
+    image = rgba_image(app.rail, out_w, out_h, [scaled[y].tobytes() for y in range(out_h)])
+    if len(cache) > 6:
+        cache.clear()
+    cache[key] = (image, (int(x0 * factor), int((WINDOW_H * source_scale - y0) * factor)))
+    return cache[key]
+
+
+def _prepare_maximized_art(app):
+    """Build the tree for the maximized window ahead of time, so the first maximize has it ready."""
+    chrome = app.chrome
+    if app.rail_art is None or not chrome.active:
+        return
+    area = chrome.api.maximized_area(chrome.hwnd)
+    if area:
+        rail_height = area[3] - (app.root.winfo_height() - app.rail.winfo_height())
+        _rail_art_for(app, max(0.8, min(2.5, rail_height / (WINDOW_H * gui_theme.SCALE))))
 
 
 def _build_rail(app, parent, beta):
-    rail = tk.Frame(parent, background=gui_theme.RAIL_BG, width=px(RAIL_WIDTH))
+    t = gui_theme
+    rail = tk.Canvas(parent, width=px(RAIL_WIDTH), background=t.SIDEBAR[0][0], highlightthickness=0, bd=0)
     rail.grid(row=0, column=0, sticky="ns")
-    rail.grid_propagate(False)
-    rail.pack_propagate(False)
-    # Faint emblem anchored to the bottom of the rail, below the navigation. The image is
-    # pre-blended for the bone colors and exported per display scale; use the closest one.
-    if gui_theme.SKIN_NAME == "bone":
-        scale = min(gui_assets.RAIL_WATERMARK_PNG, key=lambda s: abs(s - gui_theme.SCALE))
-        app.rail_watermark = tk.PhotoImage(master=rail, data=gui_assets.RAIL_WATERMARK_PNG[scale])
-        watermark = tk.Label(rail, image=app.rail_watermark, bd=0, highlightthickness=0,
-                             background=gui_theme.RAIL_BG)
-        watermark.place(x=0, rely=1.0, anchor="sw")
-        tk.Misc.lower(watermark)
-    brand = tk.Frame(rail, background=gui_theme.RAIL_BG)
-    brand.pack(fill="x", padx=px(17), pady=_pad((HEADER_TOP, 31)))
-    app.rail_logo = app.app_icon.subsample(max(1, round(app.app_icon.width() / px(40))))
-    tk.Label(brand, image=app.rail_logo, background=gui_theme.RAIL_BG, bd=0).pack(
-        anchor="w", pady=_pad((0, 8)))
-    tk.Label(brand, text="RenderLock", font=gui_theme.FONT_WORDMARK, background=gui_theme.RAIL_BG,
-             foreground=gui_theme.ACCENT).pack(anchor="w")
-    tk.Label(brand, text=f"{__version__}  ·  " + ("Character beta" if beta else "Development"),
-             font=gui_theme.FONT_TINY, background=gui_theme.RAIL_BG,
-             foreground=gui_theme.DIM).pack(anchor="w", pady=_pad((1, 0)))
-    icon_family = gui_theme.icon_font(app.root)
-    items = [(PAGE_EXPORT, "\ue896", "Export"),
-             (PAGE_SETUP, "\ue713", "Setup"),
-             (PAGE_ADVANCED, "\ue9e9", "Advanced"),
-             (PAGE_MAP, "\ue826", "Map"),
-             (PAGE_LIGHTING, "\ue945", "Lighting lab"),
-             (PAGE_UPDATES, "\ue895", "Updates")]
+    app.rail = rail
+    app.rail_fill = rail.create_image(0, 0, anchor="nw")
+    app.rail_art = None
+    if t.SKIN_NAME == "bone":
+        scale = min(gui_assets.RAIL_ART, key=lambda s: abs(s - t.SCALE))
+        x0, y0, art_w, art_h, data = gui_assets.RAIL_ART[scale]
+        app.rail_art_image = _asset_image(rail, art_w, art_h, data)
+        # Position as (x, distance of the top from the sidebar's bottom at the design height).
+        app.rail_art_place = (x0, int(WINDOW_H * t.SCALE + 0.5) - y0)
+        app.rail_art_native = (app.rail_art_image, app.rail_art_place)
+        app.rail_art = rail.create_image(x0, y0, anchor="nw", image=app.rail_art_image)
+    rail.bind("<Configure>", lambda _e: _paint_sidebar(app, rail), add="+")
+
+    # Brand: emblem and wordmark on one line, then the app name and version.
+    if t.SKIN_NAME == "bone":
+        scale = min(gui_assets.EMBLEM, key=lambda s: abs(s - t.SCALE))
+        app.emblem_image = _asset_image(rail, *gui_assets.EMBLEM[scale])
+        rail.create_image(px(17), px(35), anchor="nw", image=app.emblem_image)
+        wordmark_x = 38
+    else:
+        wordmark_x = 17
+    rail.create_text(px(wordmark_x), px(43), anchor="w", text=WORDMARK, font=t.FONT_WORDMARK, fill=t.BRAND)
+    rail.create_text(px(17), px(67), anchor="w", text="Deadlock 2 Blender", font=t.FONT_SMALL, fill=t.TEXT)
+    rail.create_text(px(17), px(83), anchor="w", font=t.FONT_TINY, fill=t.DIM,
+                     text=f"{__version__}  ·  " + ("Character beta" if beta else "Development"))
+
+    # Pages.
+    nav_w, nav_h = px(RAIL_WIDTH - 1), px(NAV_HEIGHT)
+    app.nav_selected_image = _fade_image(rail, nav_w, nav_h, t.NAV_SEL_FROM, t.NAV_SEL_TO, 1.0)
+    app.nav_hover_image = _fade_image(rail, nav_w, nav_h, t.NAV_SEL_FROM, t.NAV_SEL_TO, 0.5)
+    app.nav_selected = rail.create_image(0, 0, anchor="nw", image=app.nav_selected_image, state="hidden")
+    app.nav_hovered = rail.create_image(0, 0, anchor="nw", image=app.nav_hover_image, state="hidden")
+    icon_family = t.icon_font(app.root)
+    items = [(PAGE_EXPORT, "", "Export"),
+             (PAGE_SETUP, "", "Setup"),
+             (PAGE_ADVANCED, "", "Advanced")]
+    items.extend(((PAGE_MAP, "", "Map"), (PAGE_LIGHTING, "", "Lighting lab"),
+                  (PAGE_UPDATES, "", "Updates")))
     app.nav_items = {}
-    for name, glyph, label in items:
-        _nav_item(app, rail, name, glyph, icon_family, label)
-    # The rail is a raised panel: rounded corners and a 1 px gradient outline facing the content.
-    outline_right_rounded(rail, px(RAIL_RADIUS), gui_theme.RAIL_BG, gui_theme.BG, _rail_edge_color,
-                          width=hairline(), linear_gradient=True)
+    app.nav_hover = None
+    for index, (name, glyph, label) in enumerate(items):
+        top = px(NAV_TOP) + index * nav_h
+        middle = top + nav_h // 2
+        bar = rail.create_rectangle(0, top, px(3), top + nav_h, fill=t.NAV_BAR_IDLE, width=0)
+        icon = None
+        if icon_family:
+            icon = rail.create_text(px(24), middle, text=glyph, font=(icon_family, 11), fill=t.MUTED)
+        text = rail.create_text(px(42), middle, anchor="w", text=label, font=t.FONT_SMALL, fill=t.MUTED)
+        app.nav_items[name] = {"top": top, "bar": bar, "icon": icon, "text": text}
+
+    def motion(event):
+        name = _nav_at(app, event.y)
+        rail.configure(cursor="hand2" if name else "")
+        if name != app.nav_hover:
+            _nav_hover(app, name)
+
+    def click(event):
+        name = _nav_at(app, event.y)
+        if name:
+            show_page(app, name)
+
+    rail.bind("<Motion>", motion)
+    rail.bind("<Leave>", lambda _e: _nav_hover(app, None))
+    rail.bind("<Button-1>", click)
     return rail
 
 
@@ -471,22 +812,6 @@ def _build_advanced(app, page):
 # Development-only lighting page.
 
 
-def _build_map(app, page):
-    body, row = _card(app, page, 0, "Map region",
-                      "The lighting tools read one prepared region of the installed map. "
-                      "The region is decoded once per map and reused; map geometry is not exported in this beta.",
-                      label_column=WIDE_LABEL_COLUMN)
-    _check(app, body, "Prepare installed map region", app.values["map_enabled"])
-    _path_row(app, body, "Installed map", "map_name", None, button=False)
-    _path_row(app, body, "Extra margin (metres)", "map_margin", None, button=False)
-    _path_row(app, body, "Regional exporter", "world_region_probe", app._browse_world_region_probe)
-    _path_row(app, body, ".NET executable", "lighting_dotnet", app._browse_lighting_dotnet)
-    _check(app, body, "Characters only; omit prepared map geometry", app.values["character_only"])
-    _note(body, "Source lighting on the Lighting lab page needs this region. "
-                "Add maps separately in Blender.")
-    return row
-
-
 def _development_lighting(app, page):
     body, row = _card(app, page, 0, "Lighting lab",
                       "Experimental character look. Partial and artistic by design; the coverage report lists what was and was not applied.",
@@ -502,14 +827,309 @@ def _development_lighting(app, page):
          lambda: app._browse_hero_decoder("cubemap_decoder", "CubemapDecode.dll")),
         ("Elagrimm shader .blend", "character_shader", app._browse_character_shader)):
         _path_row(app, body, label, key, command)
-    _note(body, "Prepare the map region on the Map tab first. The optional "
+    _note(body, "Source/NPR lighting reads the installed map's lighting data; an external map .blend is not enough. "
+                "Enable Prepare installed map region on Map; this runs with the export. "
+                "Start with one selected character and a short tick range. A follow camera does not limit character selection. The optional "
                 "Elagrimm's BLENDER-Deadlock-Shader.blend uses Eevee, a partial bridge and artistic rim. "
                 "Other shader libraries are not supported.")
     return row
 
 
 # --------------------------------------------------------------------------
+# Content stage: page title, the page, the log drawer and the footer, drawn over the background.
+
+
+def _build_stage(app, parent, backdrop):
+    t = gui_theme
+    stage = tk.Canvas(parent, background=t.BACKDROP, highlightthickness=0, bd=0, width=1, height=1)
+    stage.grid(row=0, column=1, sticky="nsew")
+    app.stage = stage
+    app.page_rect = (0, 0, 0, 0)
+
+    def open_areas():
+        # Everything around the page (header, margins, footer); the page draws its own background.
+        width, height = stage.winfo_width(), stage.winfo_height()
+        x0, y0, x1, y1 = app.page_rect
+        return [(0, 0, width, y0), (0, y0, x0, y1), (x1, y0, width, y1), (0, y1, width, height)]
+
+    backdrop.attach(stage, areas=open_areas)
+
+    app.page_title = CanvasText(stage, text=PAGE_EXPORT, font=t.FONT_TITLE, fill=t.TEXT)
+    app.page_subtitle = CanvasText(stage, text=PAGE_DETAILS[PAGE_EXPORT], font=t.FONT_SMALL, fill=t.MUTED)
+
+    app.app_icon = gui_theme.brand_window(app.root)
+    app.page_frames = {}
+    app.page_layouts = {}
+    for name, builder in ((PAGE_EXPORT, _build_export), (PAGE_SETUP, _build_setup),
+                          (PAGE_ADVANCED, _build_advanced), (PAGE_MAP, _build_map),
+                          (PAGE_LIGHTING, _development_lighting), (PAGE_UPDATES, _build_updates)):
+        page = _Page(stage, backdrop)
+        app.page_layouts[name] = page
+        app.page_frames[name] = page.shell
+        builder(app, page)
+        page.watch_focus()
+    app.page_item = stage.create_window(0, 0, anchor="nw", window=app.page_frames[PAGE_EXPORT])
+
+    # Log drawer, hidden by default: a field-colored card above the footer.
+    app.log_frame = Card(stage, theme=t.palette(), fill=t.FIELD, edge=None, radius=6, pad_x=12, pad_y=10,
+                         background=t.BACKDROP)
+    app.log_item = stage.create_window(0, 0, anchor="nw", window=app.log_frame, state="hidden")
+    log_body = app.log_frame.body
+    log_body.columnconfigure(0, weight=1)
+    app.log = tk.Text(log_body, wrap="word", state="disabled", height=6, font=t.FONT_LOG,
+                      background=t.FIELD, foreground=t.MUTED, insertbackground=t.TEXT,
+                      relief="flat", bd=0, padx=0, pady=0, highlightthickness=0)
+    app.log.grid(row=0, column=0, sticky="ew")
+    log_bar = ttk.Scrollbar(log_body, orient="vertical", command=app.log.yview)
+
+    def log_scrolled(first, last):
+        # Show the log scrollbar only once the text overflows the drawer.
+        if float(first) <= 0.0 and float(last) >= 1.0:
+            log_bar.grid_remove()
+        else:
+            log_bar.grid(row=0, column=1, sticky="ns", padx=_pad((8, 0)))
+        log_bar.set(first, last)
+
+    app.log.configure(yscrollcommand=log_scrolled)
+    app.log_visible = False
+
+    # Footer: text links on the left, the job buttons as tilted paper stickers on the right
+    # (they snap between poses like Deadlock's hero tags), the status line below the links.
+    focus = CanvasFocus(stage)
+    app.output_link = focus.add(CanvasLink(stage, text="Open output folder", command=app._open_output,
+                                           theme=t.palette(), font=t.FONT))
+    app.log_button = focus.add(CanvasLink(stage, text="Show log", theme=t.palette(), font=t.FONT,
+                                          command=lambda: set_log_visible(app, not app.log_visible)))
+    app.cancel_button = focus.add(CanvasSticker(stage, text="Cancel", style="secondary", tilt=-1.41, seed=3,
+                                                paper_offset=(0.5, -1.34), font=t.FONT_STICKER,
+                                                command=app._cancel, theme=t.palette()))
+    app.cancel_button.configure(state="disabled")
+    app.convert_button = focus.add(CanvasSticker(stage, text="Export", style="primary", tilt=2.28, seed=7,
+                                                 paper_offset=(-1.27, 2.0), font=t.FONT_STICKER,
+                                                 command=app._convert, theme=t.palette()))
+    app.mutable_widgets.append(app.convert_button)
+    app.status_dot = CanvasDot(stage, color=t.DOT_READY, size=5)
+    status = CanvasText(stage, text=app.status.get(), font=t.FONT, fill=t.MUTED)
+    app.status.trace_add("write", lambda *_a: status.configure(text=app.status.get()))
+    app.progress = CanvasProgress(stage, theme=t.palette(), height=3)
+    app.progress.grid_remove()
+
+    def layout_stage(_event=None):
+        width, height = stage.winfo_width(), stage.winfo_height()
+        left, right = px(CONTENT_PAD_X), width - px(CONTENT_PAD_X)
+        app.page_title.place(left, px(HEADER_TOP + 13))
+        app.page_subtitle.place(left, px(HEADER_TOP + 29 + 8))
+        page_top, page_bottom = px(PAGE_TOP), height - px(PAGE_BOTTOM)
+        # Mid-drag the page and the log drawer (with all their fields) keep their size; only what
+        # sits directly on the stage follows the window. They settle in one go when the drag ends.
+        if not _Page.held:
+            if app.log_visible:
+                log_height = app.log_frame.winfo_reqheight()
+                stage.coords(app.log_item, left, page_bottom - log_height)
+                stage.itemconfigure(app.log_item, width=right - left, state="normal")
+                page_bottom -= log_height + px(LOG_GAP)
+            else:
+                stage.itemconfigure(app.log_item, state="hidden")
+            stage.coords(app.page_item, left, page_top)
+            stage.itemconfigure(app.page_item, width=max(1, right - left), height=max(1, page_bottom - page_top))
+            if app.page_rect != (left, page_top, right, page_bottom):
+                app.page_rect = (left, page_top, right, page_bottom)
+                backdrop.sync(stage, redraw=True)
+        links = height - px(ACTIONS_BOTTOM) + px(18)
+        app.output_link.place(left, links)
+        app.log_button.place(left + app.output_link.width() + px(20), links)
+        if not _Page.held:
+            # On bigger windows the stickers grow a little: half as fast as the window, at most 30 %.
+            grow = min(width / px(WINDOW_W - RAIL_WIDTH), height / px(WINDOW_H))
+            scale = round(min(1.3, max(1.0, 1 + (grow - 1) * 0.5)) * 20) / 20
+            app.convert_button.set_scale(scale)
+            app.cancel_button.set_scale(scale)
+        scale = app.convert_button.scale
+        # Anchored at the bottom-right corner of the footer; distances grow with the stickers.
+        stickers = height - px(STICKER_CENTER_BOTTOM - 15) - px(15) * scale
+        app.convert_button.place(right - px(41.76) * scale, stickers)
+        app.cancel_button.place(right - px(135) * scale, stickers)
+        line = height - px(STATUS_BOTTOM) + px(18)
+        app.status_dot.place(left + px(2.5), line)
+        status.place(left + px(10), line)
+        # Wrap long status messages before they reach the stickers on the right.
+        status.configure(wraplength=max(px(120), right - left - px(230) * scale))
+        app.progress.place(left, right, height - px(24))
+
+    app.layout_stage = layout_stage
+    stage.bind("<Configure>", layout_stage, add="+")
+    app.log_frame.bind("<Configure>", lambda _e: app.log_visible and layout_stage(), add="+")
+    return stage
+
+
+def _window_edges(root, chrome):
+    """A 1 px outline around the frameless window, for Windows versions that cannot draw one."""
+    edge = hairline()
+    lines = [tk.Frame(root, background=gui_theme.WINDOW_EDGE, bd=0, highlightthickness=0) for _ in range(4)]
+    places = ({"x": 0, "y": 0, "relwidth": 1, "height": edge}, {"x": 0, "rely": 1, "y": -edge, "relwidth": 1, "height": edge},
+              {"x": 0, "y": 0, "relheight": 1, "width": edge}, {"relx": 1, "x": -edge, "y": 0, "relheight": 1, "width": edge})
+
+    def update(event=None):
+        if event is not None and event.widget is not root:
+            return
+        for line, place in zip(lines, places):
+            if chrome.zoomed():
+                line.place_forget()   # a maximized window has no outline
+            else:
+                line.place(**place)
+                line.lift()
+
+    root.bind("<Configure>", update, add="+")
+    update()
+
+
+# --------------------------------------------------------------------------
 # Top-level assembly.
+
+
+def build(app):
+    beta = character_beta()
+    app.beta = beta
+    root = app.root
+    gui_theme.initialize(root)
+    root.configure(background=gui_theme.BACKDROP)
+    root.title(f"RenderLock | {__version__}" + (" · Character beta" if beta else " · Development"))
+
+    # The design's own title bar on a frameless window that keeps native moving, snapping and
+    # resizing; if that is not available the normal Windows title bar is used instead.
+    chrome = WindowChrome(root)
+    app.chrome = chrome
+    custom = chrome.prepare()
+    bar_height = px(BAR_HEIGHT) if custom else 0
+    width, height = px(WINDOW_W), px(WINDOW_H) + bar_height
+    app.min_height = px(MIN_H) + bar_height
+    left, top, right, bottom = _work_area(root)
+    x = left + max(0, (right - left - width) // 2)
+    y = top + max(0, (bottom - top - height) // 2)
+    root.geometry(f"{width}x{height}+{x}+{y}")
+    root.minsize(px(MIN_W), app.min_height)
+
+    title_bar = None
+    if custom:
+        title_bar = TitleBar(root, chrome, theme=gui_theme.palette())
+        title_bar.pack(side="top", fill="x")
+    shell = tk.Frame(root, background=gui_theme.BACKDROP)
+    shell.pack(fill="both", expand=True)
+    shell.columnconfigure(1, weight=1)
+    shell.rowconfigure(0, weight=1)
+
+    backdrop = Backdrop(root, title_height=bar_height, left=px(RAIL_WIDTH))
+    app.backdrop = backdrop
+
+    def size_move(dragging):
+        # While the window is dragged (moved or resized) the background and the card layout wait,
+        # so every step of the drag stays quick; both catch up once the mouse is released.
+        _Page.hold(dragging)
+        backdrop.set_frozen(dragging)
+        if not dragging:
+            root.after_idle(app.layout_stage)
+
+    # Windows reports its drag loop only through a flag (chrome.sizing); notice a size drag from Tk's
+    # side and poll for its end. Moving the window without resizing it needs no pause.
+    drag = {"active": False, "size": None}
+
+    def drag_end():
+        if chrome.sizing:
+            root.after(80, drag_end)
+        else:
+            drag["active"] = False
+            size_move(False)
+
+    def watch_drag(event):
+        if event.widget is not root:
+            return
+        size = (event.width, event.height)
+        if chrome.sizing and not drag["active"] and drag["size"] not in (None, size):
+            drag["active"] = True
+            size_move(True)
+            root.after(80, drag_end)
+        if not chrome.sizing:
+            drag["size"] = size
+
+    root.bind("<Configure>", watch_drag, add="+")
+    root.bind("<Configure>", lambda event: _restored(app, event), add="+")
+
+    # After a size jump (maximize, restore, snap) Tk moves many small windows; Windows may carry
+    # their old pixels along for a moment. Once the layout has settled, repaint everything once.
+    repaint = {"job": None, "size": None}
+
+    def repaint_now():
+        repaint["job"] = None
+        if chrome.sizing:
+            repaint["job"] = root.after(150, repaint_now)
+        else:
+            root.update_idletasks()  # finish the new layout first, then show it in one piece
+            chrome.repaint()
+
+    def repaint_later(event):
+        size = (event.width, event.height)
+        if event.widget is not root or size == repaint["size"]:
+            return
+        repaint["size"] = size
+        if repaint["job"] is not None:
+            root.after_cancel(repaint["job"])
+        repaint["job"] = root.after(40, repaint_now)
+
+    def watchdog():
+        chrome.check_hidden(0.5)
+        root.after(250, watchdog)
+
+    root.bind("<Configure>", repaint_later, add="+")
+    root.after(250, watchdog)
+    _build_rail(app, shell, beta)
+    _build_stage(app, shell, backdrop)
+    resizer = EdgeResizer(root, chrome)
+
+    def first_map(event):
+        if event.widget is not root or getattr(app, "window_ready", False):
+            return
+        app.window_ready = True
+        if custom and not chrome.finish():
+            title_bar.pack_forget()
+            backdrop.title_height = 0
+            app.min_height -= bar_height
+            root.minsize(px(MIN_W), app.min_height)
+        if not chrome.active:
+            gui_theme.style_title_bar(root)  # recolor the native title bar instead
+        elif not chrome.native_border:
+            _window_edges(root, chrome)      # Windows 10: draw the 1 px window outline ourselves
+        resizer.attach()
+        backdrop.sync(redraw=True)
+        root.after(1500, lambda: _prepare_maximized_art(app))
+
+    root.bind("<Map>", first_map, add="+")
+
+    set_log_visible(app, False)
+    show_page(app, PAGE_EXPORT)
+    app._mode_changed()
+    app._append_log("Choose a recording, check Setup, then inspect a short range.\n" + app.discovery_note)
+
+
+def _build_map(app, page):
+    body, row = _card(app, page, 0, "Map region",
+                      "The lighting tools read one prepared region of the installed map. "
+                      "Prepared regions are cached by map content and export bounds. "
+                      + ("This character beta omits map geometry from the Blender scene." if character_beta()
+                         else "Map geometry can be omitted from the Blender scene."),
+                      label_column=WIDE_LABEL_COLUMN)
+    _check(app, body, "Prepare installed map region", app.values["map_enabled"])
+    _path_row(app, body, "Installed map", "map_name", None, button=False)
+    _path_row(app, body, "Extra margin (metres)", "map_margin", None, button=False)
+    _path_row(app, body, "Regional exporter", "world_region_probe", app._browse_world_region_probe)
+    _path_row(app, body, ".NET executable", "lighting_dotnet", app._browse_lighting_dotnet)
+    if character_beta():
+        _note(body, "Character beta: map geometry is always omitted; lighting data remains available.")
+    else:
+        _check(app, body, "Characters only; omit prepared map geometry", app.values["character_only"])
+    _note(body, "Source/NPR lighting needs data from the installed map. Character-only exports retain "
+                "that lighting data so you can add your own map separately in Blender. Preparing lighting "
+                "does not require importing map geometry into your final scene.")
+    return row
 
 
 def _build_updates(app, page):
@@ -544,112 +1164,3 @@ def _build_updates(app, page):
         command=lambda: app.update_ui.open_notes(), theme=gui_theme.palette())
     app.update_notes_link.grid(row=_next_row(body), column=0, columnspan=3, sticky="w", pady=_pad((8, 0)))
 
-
-def build(app):
-    beta = character_beta()
-    root = app.root
-    gui_theme.initialize(root)
-    root.configure(background=gui_theme.BG)
-    root.title(f"RenderLock | {__version__}" + (" · Character beta" if beta else " · Development"))
-    app.app_icon = gui_theme.brand_window(root)
-    root.geometry(f"{px(1040)}x{px(760)}")
-    root.minsize(px(900), px(660))
-
-    shell = tk.Frame(root, background=gui_theme.BG)
-    shell.pack(fill="both", expand=True)
-    shell.columnconfigure(1, weight=1)
-    shell.rowconfigure(0, weight=1)
-    _build_rail(app, shell, beta)
-
-    # Content sits directly on the window color; cards provide the raised surfaces.
-    main = tk.Frame(shell, background=gui_theme.BG)
-    main.grid(row=0, column=1, sticky="nsew", padx=px(CONTENT_PAD_X), pady=_pad((HEADER_TOP, 21)))
-    main.columnconfigure(0, weight=1)
-    main.rowconfigure(1, weight=1)
-
-    header = tk.Frame(main, background=gui_theme.BG)
-    header.grid(row=0, column=0, sticky="ew", pady=_pad((0, 26)))
-    app.page_title = tk.Label(header, text=PAGE_EXPORT, font=gui_theme.FONT_TITLE,
-                              background=gui_theme.BG, foreground=gui_theme.TEXT)
-    app.page_title.pack(anchor="w")
-    app.page_subtitle = tk.Label(header, text=PAGE_DETAILS[PAGE_EXPORT], font=gui_theme.FONT_SMALL,
-                                 background=gui_theme.BG, foreground=gui_theme.MUTED)
-    app.page_subtitle.pack(anchor="w", pady=_pad((TITLE_GAP, 0)))
-
-    body = tk.Frame(main, background=gui_theme.BG)
-    body.grid(row=1, column=0, sticky="nsew")
-    body.columnconfigure(0, weight=1)
-    body.rowconfigure(0, weight=1)
-
-    app.page_frames = {}
-    for name, builder in ((PAGE_EXPORT, _build_export), (PAGE_SETUP, _build_setup),
-                          (PAGE_ADVANCED, _build_advanced), (PAGE_MAP, _build_map),
-                          (PAGE_LIGHTING, _development_lighting), (PAGE_UPDATES, _build_updates)):
-        page_shell, page = _page(body)
-        app.page_frames[name] = page_shell
-        builder(app, page)
-
-    # Log drawer, hidden by default: a field-colored card above the footer.
-    app.log_frame = Card(main, theme=gui_theme.palette(), fill=gui_theme.FIELD, radius=9, pad_x=12, pad_y=10)
-    app.log_frame.grid(row=2, column=0, sticky="ew", pady=_pad((12, 0)))
-    log_body = app.log_frame.body
-    log_body.columnconfigure(0, weight=1)
-    app.log = tk.Text(log_body, wrap="word", state="disabled", height=6, font=gui_theme.FONT_LOG,
-                      background=gui_theme.FIELD, foreground=gui_theme.MUTED, insertbackground=gui_theme.TEXT,
-                      relief="flat", bd=0, padx=0, pady=0, highlightthickness=0)
-    app.log.grid(row=0, column=0, sticky="ew")
-    log_bar = ttk.Scrollbar(log_body, orient="vertical", command=app.log.yview)
-
-    def log_scrolled(first, last):
-        # Show the log scrollbar only once the text overflows the drawer.
-        if float(first) <= 0.0 and float(last) >= 1.0:
-            log_bar.grid_remove()
-        else:
-            log_bar.grid(row=0, column=1, sticky="ns", padx=_pad((8, 0)))
-        log_bar.set(first, last)
-
-    app.log.configure(yscrollcommand=log_scrolled)
-
-    # Footer: text links on the left, the job buttons on the right.
-    actions = tk.Frame(main, background=gui_theme.BG)
-    actions.grid(row=3, column=0, sticky="ew", pady=_pad((14, 0)))
-    RoundedButton(actions, text="Open output folder", style="quiet", pad_x=0, command=app._open_output,
-                  theme=gui_theme.palette()).pack(side="left", padx=_pad((0, 20)))
-    app.log_button = RoundedButton(actions, text="Show log", style="quiet", pad_x=0,
-                                   command=lambda: set_log_visible(app, not bool(app.log_frame.winfo_manager())),
-                                   theme=gui_theme.palette())
-    app.log_button.pack(side="left")
-    app.convert_button = RoundedButton(actions, text="Export scene", style="primary", pad_x=13,
-                                       command=app._convert, theme=gui_theme.palette())
-    app.convert_button.pack(side="right")
-    app.mutable_widgets.append(app.convert_button)
-    app.cancel_button = RoundedButton(actions, text="Cancel", pad_x=13, command=app._cancel,
-                                      theme=gui_theme.palette())
-    app.cancel_button.configure(state="disabled")
-    app.cancel_button.pack(side="right", padx=_pad((0, 5)))
-
-    # Status on its own line, pinned to the bottom of the window.
-    status_row = tk.Frame(main, background=gui_theme.BG, height=px(36))
-    status_row.grid(row=4, column=0, sticky="ew")
-    status_row.pack_propagate(False)
-    app.status_dot = StatusDot(status_row, color=gui_theme.DOT_READY, background=gui_theme.BG, size=6)
-    app.status_dot.pack(side="left", padx=_pad((1, 7)))
-    status_label = tk.Label(status_row, textvariable=app.status, background=gui_theme.BG,
-                            foreground=gui_theme.MUTED, font=gui_theme.FONT, justify="left", anchor="w")
-    status_label.pack(side="left", fill="x", expand=True)
-    ResizeRedraw(status_label, lambda width, _height: status_label.configure(wraplength=max(px(120), width)), idle=False)
-
-    # Progress line in a fixed-height slot, so starting a job never moves anything.
-    slot = tk.Frame(main, background=gui_theme.BG, height=px(3))
-    slot.grid(row=5, column=0, sticky="ew", pady=_pad((6, 0)))
-    slot.grid_propagate(False)
-    slot.columnconfigure(0, weight=1)
-    slot.rowconfigure(0, weight=1)
-    app.progress = ProgressLine(slot, theme=gui_theme.palette(), height=3, background=gui_theme.BG)
-    app.progress.grid(row=0, column=0, sticky="nsew")
-    app.progress.grid_remove()
-
-    set_log_visible(app, False)
-    show_page(app, PAGE_EXPORT)
-    app._mode_changed()
-    app._append_log("Choose a recording, check Setup, then inspect a short range.\n" + app.discovery_note)

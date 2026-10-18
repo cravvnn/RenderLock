@@ -228,12 +228,21 @@ class Widget:
         self.text = args[-1]
 
 
+class Rail:
+    def __init__(self):
+        self.items = {}
+
+    def itemconfigure(self, item, **options):
+        assert type(item) is int
+        self.items.setdefault(item, {}).update(options)
+
+
 def ui(tmp_path, monkeypatch):
     monkeypatch.setattr(u, "installation_enabled", lambda root: True)
     app = SimpleNamespace(root=SimpleNamespace(after=lambda *a: None, grab_current=lambda: None),
         values={"check_updates": SimpleNamespace(get=lambda: "0")}, busy=False,
         update_status=Widget(), update_check=Widget(), update_action=Widget(),
-        update_notes=Widget(), update_notes_link=Widget(), nav_items={"Updates": {"text": Widget()}})
+        update_notes=Widget(), update_notes_link=Widget(), rail=Rail(), nav_items={"Updates": {"text": 42}})
     controller = UpdateUI(app, tmp_path)
     return app, controller
 
@@ -244,12 +253,25 @@ def test_metadata_check_and_download_completion_never_install(tmp_path, monkeypa
     controller.events.put((0, "checked", metadata))
     controller.poll()
     assert controller.available == metadata and not controller.restarting
+    assert app.rail.items[42]['text'] == 'Updates (new)'
     assert "Before:" in app.update_notes.text and "**" not in app.update_notes.text
     controller.running = True
     controller.events.put((0, "downloaded", tmp_path))
     controller.poll()
     assert controller.ready == tmp_path and not controller.restarting
     assert app.update_action.options["text"] == "Install and restart"
+
+
+def test_no_new_release_clears_canvas_badge_and_polling_continues(tmp_path, monkeypatch):
+    app, controller = ui(tmp_path, monkeypatch)
+    scheduled = []
+    app.root.after = lambda delay, fn: scheduled.append((delay, fn))
+    controller.events.put((0, 'checked', None))
+    controller.poll()
+    assert app.rail.items[42]['text'] == 'Updates'
+    assert 'up to date' in app.update_status.value
+    assert not controller.running and controller.available is None
+    assert scheduled == [(150, controller.poll)]
 
 
 def test_job_blocks_download_and_install_and_close_revokes_ui_action(tmp_path, monkeypatch):

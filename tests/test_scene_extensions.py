@@ -10,6 +10,38 @@ from agr.scene_extensions import prepare_scene_extensions
 from agr.scene_package import read_scene, save_scene
 
 
+@pytest.fixture(autouse=True)
+def lighting_inventory_stub(monkeypatch):
+    # Orchestration fixtures have no installed map; selection/budgets have their
+    # own tests. Tests below can replace this stub to exercise early failure.
+    from agr import source_hero_lighting
+    monkeypatch.setattr(source_hero_lighting, 'preflight_hero_lighting', lambda *a, **k: {})
+
+
+def test_oversized_lighting_region_stops_before_map_or_other_optional_conversion(tmp_path, monkeypatch):
+    from agr import source_hero_lighting, source_region, installed_effects
+    from agr.source_probe_assets import validate_probe_budget, LightingRegionError
+    original = scene()
+    manifest = save_scene(original, tmp_path / 'segment.json')
+    def fail(*args, **kwargs):
+        validate_probe_budget(76, 555673328)
+    monkeypatch.setattr(source_hero_lighting, 'preflight_hero_lighting', fail)
+    monkeypatch.setattr(source_region, 'prepare_source_map', lambda *a, **k: pytest.fail('Map conversion started'))
+    monkeypatch.setattr(installed_effects, 'prepare_installed_effects', lambda *a, **k: pytest.fail('Effects conversion started'))
+    with pytest.raises(LightingRegionError):
+        prepare_scene_extensions(manifest, tmp_path, object(), object(), [],
+            include_map=True, source_lighting=True, source_hero_lighting=True,
+            prepare_npr_materials=True, log=lambda _: None)
+    saved = json.loads(manifest.read_text())
+    report = json.loads((tmp_path / 'scene_extension_report.json').read_text())
+    assert saved['entities'] == original['entities']
+    assert saved['coverage']['scene_extras'] == report
+    assert report['hero_lighting']['stage'] == 'preflight'
+    assert report['hero_lighting']['details']['selected_probe_count'] == 76
+    assert report['npr_materials']['status'] == 'unavailable'
+    assert 'hero_lighting' not in saved and 'npr_runtime' not in saved
+
+
 def scene():
     return {"schema_version": 1, "tick_rate": 64, "start_tick": 10, "end_tick": 11,
             "metadata": {}, "markers": [{"tick": 10, "label": "recorded event"}],

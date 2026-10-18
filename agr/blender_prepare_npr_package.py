@@ -29,8 +29,10 @@ def prepare_material_package(hero_package, material_package, primary, *, materia
             entries=authored[key]
             source[target]={r['m_name']:r[value] for r in entries}
             if len(source[target])!=len(entries):raise ValueError('Duplicate authored parameter')
-        expected=neutral_tint_controls(source,assume_white_instance_color=True)
-        converted=neutral_tint_controls(mat['vmat'],assume_white_instance_color=True)
+        expected=neutral_tint_controls(source,assume_white_instance_color=True,
+                                       shader_sha256=material_package['shader_sha256'])
+        converted=neutral_tint_controls(mat['vmat'],assume_white_instance_color=True,
+                                        shader_sha256=material_package['shader_sha256'])
         if any(not np.array_equal(expected[k],converted[k]) for k in expected):
             raise ValueError('Converted/authored albedo controls differ')
         for parameter,texture in row['textures'].items():
@@ -47,6 +49,7 @@ def prepare_material_package(hero_package, material_package, primary, *, materia
                  world_sha256=world_sha256,manifest_dir=manifest_dir,
                  allow_partial=True,albedo_controls=controls)
     return dict(materials=rows,pixels=pixels,
-                assumptions=['White instance color; network-to-GPU binding unproven.',
+                assumptions=['Omitted albedo controls resolved from the qualified pbr shader metadata defaults.',
+                             'White instance color; network-to-GPU binding unproven.',
                              'Reference primary/exposure/DFAO/screen inputs.'],
                 limits='Caller-qualified converted color images/probe coverage; frame-specific rim not applied.')

@@ -51,6 +51,25 @@ def prepare_scene_extensions(segment_path, pack, provider, decoder, bindings, *,
     data.setdefault("coverage", {})["scene_extras"] = report
     _write(segment_path, data)
 
+    if source_hero_lighting:
+        from .source_hero_lighting import preflight_hero_lighting
+        log('Checking Source/NPR lighting region before map preparation...')
+        try:
+            preflight_hero_lighting(data, provider, decoder, map_name=map_name,
+                                    margin_metres=map_margin)
+        except Exception as exc:
+            report['hero_lighting'] = dict(status='failed', stage='preflight',
+                                           error=str(exc), error_type=type(exc).__name__)
+            if isinstance(getattr(exc, 'details', None), dict):
+                report['hero_lighting']['details'] = exc.details
+            if prepare_npr_materials:
+                report['npr_materials'] = dict(status='unavailable', stage='preflight',
+                                              reason='Required hero Source lighting was not prepared.')
+            data['coverage']['scene_extras'] = report
+            _write(segment_path, data)
+            _write(Path(pack) / 'scene_extension_report.json', report)
+            raise
+
     def stage(name, callback):
         log(f"Preparing scene {name.replace('_', ' ')}...")
         try:

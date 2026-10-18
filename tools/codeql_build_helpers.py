@@ -18,7 +18,8 @@ LIGHTING_REVISION = "9e2e6c7f67e3c4e5a5f443a60c3a5d841ba8f304"  # Source 2 Viewe
 PARTICLE_REVISION = "42743fb93030c552f834fabb30708dad84d0cbf5"
 PROJECTS = ("ParticleProbe", "WorldRegionProbe", "ProbeAtlasDecode", "CubemapDecode")
 PATCHES = ("vrf-ramp-scalar-spline.patch", "vrf-invalid-transform-identity.patch",
-           "vrf-create-on-model-bones.patch")
+           "vrf-create-on-model-bones.patch", "vrf-kv3-v5-unsigned-constants.patch",
+           "vrf-bounded-model-extraction.patch")
 
 
 def run(*args, cwd=ROOT):

@@ -9,6 +9,8 @@ patches, in order:
 1. `vrf-ramp-scalar-spline.patch`
 2. `vrf-invalid-transform-identity.patch`
 3. `vrf-create-on-model-bones.patch`
+4. `vrf-kv3-v5-unsigned-constants.patch`
+5. `vrf-bounded-model-extraction.patch`
 
 The patches are retained here so a clean CI checkout can resolve the same types
 as the helper sources. They do not broaden the application's supported particle
@@ -16,8 +18,12 @@ coverage or establish whole-system parity. Model sampling remains an experimenta
 bone-only subset; incomplete providers are rejected. Upstream is MIT licensed;
 see the ValveResourceFormat notices and credits already included in this repository.
 
-The separate `vrf-kv3-v5-unsigned-constants.patch` is retained for compatibility
-work. The CodeQL build does not need that parser-only patch to resolve helper types.
+The unsigned KV3 constants patch reads the current model data without changing
+signed constant semantics. The bounded model extraction patch adds an explicit
+animation-export switch, enabled by default. RenderLock's cloth extractor disables
+it and limits output to LOD0 render meshes and reconstructed proxies; ordinary
+upstream extraction retains its existing behavior. This does not add particle
+operators or expand qualified model sampling beyond the bone-only subset.
 
 ## CodeQL build
 

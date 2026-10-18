@@ -8,6 +8,7 @@ using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Buffers.Binary;
+if(args.Length==4 && args[0]=="--decompile-cloth") { ClothExtractCommand.Run(args[1],args[2],args[3]);return; }
 if(args.Length>0 && args[0]=="--model-sampling-oracle") { ModelSamplingOracle.Check(args[1],args[2]);return; }
 if(args.Length>0 && args[0]=="--ramp-spline-oracle") { RampSplineOracle.Check(args[1],args[2]);return; }
 if(args.Length>0 && args[0]=="--invalid-transform-oracle") { TransformOracle.Check(args[1]);return; }

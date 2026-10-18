@@ -85,6 +85,18 @@ def test_disabled_and_unsupported_selections_are_distinct_and_zero_counted():
     assert 'failed' not in scene_completion_message({'secondary_motion': unsupported})
 
 
+def test_approximate_complete_garment_does_not_claim_missing_cloth_parts():
+    render = dict(surface_bake(), approximation_only=True, unsupported_parts=[])
+    result = merge_secondary_motion_coverage(None, [
+        {'id':'8:1','hero_name':'McGinnis','secondary_motion':render}])
+    assert result['status'] == 'partial' and result['baked_entity_count'] == 1
+    warning = scene_coverage_warnings({'secondary_motion':result})[0]
+    assert 'Approximate cloth simulation' in warning
+    assert 'Additional cloth parts remain unsupported' not in warning
+    assert 'simulation is approximate' in scene_completion_message({'secondary_motion':result})
+    assert 'Additional cloth parts remain unsupported' not in scene_completion_message({'secondary_motion':result})
+
+
 def test_all_supported_bakes_and_actual_saved_package_bakes_are_recognized():
     prep = preparation()
     prep['unsupported_entities'] = []

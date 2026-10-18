@@ -4,7 +4,7 @@ The clip decompressor is a Python implementation of the format exposed by [Valve
 
 Mask feathering and pose-operation research used the [Esoterica animation implementation](https://github.com/BobbyAnguelov/Esoterica/tree/47e629344e569f2a8638aab97fbfddc12dcbafea/Code/Engine/Animation), under the MIT license in `licenses/Esoterica_MIT.md`. The notice is retained with the Python implementation; the upstream C++ reference files are not bundled. The supplied Deadlock binary's behavior takes precedence where numerical inspection establishes a difference.
 
-Historical DMX and cloth checks used Tom Edwards' MIT-licensed [Blender Source Tools `datamodel.py`](https://github.com/Artfunkel/BlenderSourceTools/blob/master/io_scene_valvesource/datamodel.py). That external research tool retains its license header upstream and is not bundled with RenderLock.
+Automatic decompiled cloth reconstruction uses Tom Edwards' MIT-licensed [Blender Source Tools `datamodel.py`](https://github.com/Artfunkel/BlenderSourceTools/blob/master/io_scene_valvesource/datamodel.py), included here as `datamodel.py`. Its original copyright and complete MIT license remain at the top of that file. Game-derived DMX files are generated into the user's asset cache and are not bundled.
 
 Unicorn and pefile are optional installed dependencies for the numerical oracle; their binaries are not bundled. The playable Blender file needs neither dependency.
 

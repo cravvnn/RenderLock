@@ -1,0 +1,31 @@
+diff --git a/ValveResourceFormat/IO/Extract/ModelExtract.cs b/ValveResourceFormat/IO/Extract/ModelExtract.cs
+index 3a2c213..7fa8a86 100644
+--- a/ValveResourceFormat/IO/Extract/ModelExtract.cs
++++ b/ValveResourceFormat/IO/Extract/ModelExtract.cs
+@@ -43,6 +43,9 @@ public enum ModelExtractType
+     /// </summary>
+     public bool ReconstructSoftbody { get; init; } = true;
+ 
++    /// <summary>Emit animation subfiles. Geometry/cloth-only consumers can disable their decoding.</summary>
++    public bool ExtractAnimations { get; init; } = true;
++
+     /// <summary>
+     /// Initializes a new instance of the <see cref="ModelExtract"/> class.
+     /// </summary>
+@@ -167,6 +170,7 @@ public ContentFile ToContentFile()
+ 
+         foreach (var anim in AnimationsToExtract)
+         {
++            if (!ExtractAnimations) break;
+             if (!WritesOwnAnimation(anim.Anim))
+             {
+                 continue;
+@@ -182,7 +186,7 @@ public ContentFile ToContentFile()
+             );
+         }
+ 
+-        AddAnimationGraphClips(vmdl);
++        if (ExtractAnimations) AddAnimationGraphClips(vmdl);
+ 
+         return vmdl;
+     }

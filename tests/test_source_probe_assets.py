@@ -77,3 +77,25 @@ def test_new_world_cube_index_bound_does_not_reinterpret_old_packages():
 
 def test_unknown_world_layout_still_requires_requalification():
     with pytest.raises(ValueError,match='requalification'):probe_layout('f'*64)
+
+
+def test_tester_wide_region_reports_measurements_and_character_selection_remedy():
+    from agr.source_probe_assets import validate_probe_budget, LightingRegionError
+    with pytest.raises(LightingRegionError) as caught:
+        validate_probe_budget(76, 555673328)
+    error = caught.value
+    assert error.details['selected_probe_count'] == 76
+    assert error.details['atlas_bytes'] == 555673328
+    assert error.details['code'] == 'lighting_region_unsupported'
+    assert 'Select fewer characters' in str(error)
+    assert 'follow camera does not restrict' in str(error)
+    assert 'external map .blend does not supply' in str(error)
+
+
+def test_small_probe_inventory_still_checks_storage_budget_before_decode():
+    from agr.source_probe_assets import validate_probe_budget, LightingRegionError
+    validate_probe_budget(32, 256 * 1024 * 1024)
+    with pytest.raises(LightingRegionError):
+        validate_probe_budget(1, 256 * 1024 * 1024 + 1)
+    with pytest.raises(LightingRegionError, match='No installed lighting probes'):
+        validate_probe_budget(0, 0)

@@ -14,11 +14,15 @@ converts them with ``px()`` so it stays proportional on scaled displays.
 """
 from __future__ import annotations
 
+import base64
 import math
+import random
+import struct
 import tkinter as tk
-from functools import lru_cache
+import zlib
 from tkinter import font as tkfont
 
+from . import gui_theme
 from .gui_theme import px
 
 _SUPERSAMPLE = 4
@@ -33,7 +37,6 @@ def _parent_bg(parent, fallback):
         return fallback
 
 
-@lru_cache(maxsize=256)
 def _rgb(color):
     return tuple(int(color[i:i + 2], 16) for i in (1, 3, 5))
 
@@ -113,19 +116,6 @@ def draw_rounded(canvas, x0, y0, x1, y1, radius, fill, outline=None, bg=None, ta
             canvas.create_rectangle(cx, cy, cx + r, cy + r, fill=fill, width=0, tags=tag)
 
 
-def round_frame_corners(frame, radius, fill, bg, corners=("nw", "sw")):
-    """Overlay anti-aliased corners on a plain frame (e.g. the content panel)."""
-    labels = []
-    for which in corners:
-        label = tk.Label(frame, image=_corner(frame, radius, fill, None, bg, which), bd=0,
-                         highlightthickness=0, background=fill)
-        relx = 1.0 if which in ("ne", "se") else 0.0
-        rely = 1.0 if which in ("sw", "se") else 0.0
-        label.place(relx=relx, rely=rely, anchor=which)
-        labels.append(label)
-    return labels
-
-
 def gradient_color(stops, t):
     """Color at position ``t`` along gradient ``stops`` [(position 0-1, "#rrggbb"), ...]."""
     t = min(1.0, max(0.0, t))
@@ -135,139 +125,6 @@ def gradient_color(stops, t):
             a, b = _rgb(c0), _rgb(c1)
             return _hex([a[i] + (b[i] - a[i]) * k for i in range(3)])
     return stops[-1][1]
-
-
-class IdleUpdate:
-    """Combine a burst of layout notifications into one update after layout settles."""
-
-    def __init__(self, widget, callback):
-        self.widget = widget
-        self.callback = callback
-        self._job = None
-        widget.bind("<Destroy>", self._destroy, add="+")
-
-    def __call__(self, _event=None):
-        if self._job is None:
-            self._job = self.widget.after_idle(self._flush)
-
-    def _flush(self):
-        self._job = None
-        self.callback()
-
-    def _destroy(self, event):
-        if event.widget is self.widget and self._job is not None:
-            self.widget.after_cancel(self._job)
-            self._job = None
-
-
-class ResizeRedraw(IdleUpdate):
-    """Redraw once per settled size; moving a widget does not repaint its shape."""
-
-    def __init__(self, widget, callback, *, idle=True):
-        self._size = None
-        self._redraw = callback
-        self._idle = idle
-        super().__init__(widget, self._resize)
-        widget.bind("<Configure>", self, add="+")
-
-    def __call__(self, event=None):
-        if event is None or (event.widget is self.widget and
-                             (event.width, event.height) != self._size):
-            if self._idle:
-                super().__call__(event)
-            else:
-                self._resize()
-
-    def _resize(self):
-        size = self.widget.winfo_width(), self.widget.winfo_height()
-        if size != self._size:
-            self._size = size
-            self._redraw(*size)
-
-
-def _strip_colors(length, color_at, linear):
-    """Sample a strip; a linear RGB gradient has constant-color runs after rounding.
-
-    Equal endpoint colors imply an equal interior only for a linear gradient.
-    Splitting at color changes preserves the exact pixel colors without running
-    interpolation and hex formatting for every pixel of the rail on every resize.
-    """
-    if not linear:
-        return [color_at(index) for index in range(length)]
-    colors = [None] * length
-
-    def fill(first, last, left, right):
-        if left == right or first == last:
-            colors[first:last + 1] = [left] * (last - first + 1)
-        elif last - first == 1:
-            colors[first], colors[last] = left, right
-        else:
-            middle = (first + last) // 2
-            center = color_at(middle)
-            fill(first, middle, left, center)
-            fill(middle, last, center, right)
-
-    if length:
-        fill(0, length - 1, color_at(0), color_at(length - 1))
-    return colors
-
-
-def outline_right_rounded(frame, radius, fill, bg, color_at, width=1, linear_gradient=False):
-    """Gradient outline on the top, right and bottom edges of a frame with rounded right corners.
-
-    ``color_at(u, v)`` gives the outline color at normalized frame coordinates
-    (0-1 across, 0-1 down), so any linear gradient from the design can be used.
-    Set ``linear_gradient`` only for a single linear RGB gradient, allowing exact
-    constant-color runs to be sampled together during resize.
-    The rounded corners themselves (fill, outline ring and outside color) are
-    drawn here too. Call after the frame's content is built so the pieces sit on top.
-    """
-    pieces = {name: tk.Label(frame, bd=0, highlightthickness=0, background=fill)
-              for name in ("top", "bottom", "right", "ne", "se")}
-    pieces["top"].place(x=0, y=0, relwidth=1.0, width=-radius, height=width)
-    pieces["bottom"].place(x=0, rely=1.0, y=-width, relwidth=1.0, width=-radius, height=width)
-    pieces["ne"].place(relx=1.0, y=0, anchor="ne")
-    pieces["se"].place(relx=1.0, rely=1.0, anchor="se")
-    pieces["right"].place(relx=1.0, x=-width, y=radius, width=width, relheight=1.0, height=-2 * radius)
-
-    def strip(colors, horizontal):
-        image = tk.PhotoImage(master=frame, width=len(colors) if horizontal else width,
-                              height=width if horizontal else len(colors))
-        if horizontal:
-            image.put(" ".join(["{" + " ".join(colors) + "}"] * width))
-        else:
-            image.put(" ".join("{" + " ".join([c] * width) + "}" for c in colors))
-        return image
-
-    last_size = None
-
-    def redraw(w, h):
-        nonlocal last_size
-        if w <= radius or h <= 2 * radius:
-            return
-        run = w - radius
-        images = {}
-        # The rail has a fixed width. A height-only resize needs only its right
-        # strip; re-creating the top/bottom images adds work to every drag event.
-        if last_size is None or w != last_size[0]:
-            images.update(
-                top=strip(_strip_colors(run, lambda x: color_at(x / w, 0.0), linear_gradient), True),
-                bottom=strip(_strip_colors(run, lambda x: color_at(x / w, 1.0), linear_gradient), True))
-        if last_size is None or h != last_size[1]:
-            images["right"] = strip(_strip_colors(h - 2 * radius,
-                lambda y: color_at(1.0, (radius + y) / h), linear_gradient), False)
-        if last_size is None:
-            images.update(ne=_corner(frame, radius, fill, color_at(1.0, 0.0), bg, "ne"),
-                          se=_corner(frame, radius, fill, color_at(1.0, 1.0), bg, "se"))
-        for name, image in images.items():
-            pieces[name].configure(image=image)
-            pieces[name].image = image  # keep a reference; Tk does not
-        last_size = w, h
-
-    ResizeRedraw(frame, redraw)()
-    for piece in pieces.values():
-        piece.lift()
-    return pieces
 
 
 def bind_tree(widget, sequence, callback, add="+"):
@@ -298,8 +155,11 @@ class _StateMixin:
             self._state = "disabled" if value == "disabled" else "normal"
             if self._state == "disabled":
                 self._hover = self._pressed = False
-            tk.Canvas.configure(self, cursor="arrow" if self._state == "disabled" else "hand2",
-                                takefocus=self._state != "disabled")
+            # ``focus_script`` (set by a scrolling page) replaces plain takefocus while enabled, so
+            # Tab can reach the control and scroll it into view even when it is out of sight.
+            enabled = self._state != "disabled"
+            tk.Canvas.configure(self, cursor="hand2" if enabled else "arrow",
+                                takefocus=(getattr(self, "focus_script", None) or 1) if enabled else 0)
             self._draw()
 
     def cget(self, key):
@@ -331,7 +191,7 @@ class RoundedButton(_StateMixin, tk.Canvas):
         self._pad_x = px(pad_x)
         self._radius = px(radius)
         self._ch = px(height)
-        self._font = tkfont.Font(family="Segoe UI", size=10, weight="bold" if bold else "normal")
+        self._font = tkfont.Font(font=gui_theme.FONT_BOLD if bold else gui_theme.FONT)
         self._bg = background or _parent_bg(parent, theme["BG"])
         self._cw = self._font.measure(text) + 2 * self._pad_x
         tk.Canvas.__init__(self, parent, width=self._cw, height=self._ch, background=self._bg,
@@ -446,12 +306,10 @@ class RoundedEntry(_StateMixin, tk.Canvas):
         self.entry = tk.Entry(self, textvariable=variable, relief="flat", bd=0, highlightthickness=0,
                               background=t["FIELD"], foreground=t["TEXT"], insertbackground=t["TEXT"],
                               disabledbackground=t["FIELD"], disabledforeground=t["DIM"],
-                              readonlybackground=t["FIELD"], selectbackground=t["RAIL_SEL"],
+                              readonlybackground=t["FIELD"], selectbackground=t["SELECTION"],
                               selectforeground=t["TEXT"], font=font)
         self._window = self.create_window(self._pad_x, height // 2, window=self.entry, anchor="w")
-        # Small shapes are cheaper to paint in the same layout pass. Only the
-        # expensive rail gradient is deferred; avoid an extra paint pass here.
-        ResizeRedraw(self, lambda _w, _h: self._draw(), idle=False)
+        self.bind("<Configure>", lambda _e: self._draw())
         self.bind("<Button-1>", lambda _e: self.entry.focus_set())
         for widget in (self, self.entry):
             widget.bind("<Enter>", lambda _e: self._set_hover(True), add="+")
@@ -495,27 +353,27 @@ class RoundedEntry(_StateMixin, tk.Canvas):
 class Card(tk.Frame):
     """Rounded section card. Put content in ``card.body``; the card grows to fit it.
 
-    The rounded shape is drawn on a canvas placed behind an ordinary padded
-    frame, so normal geometry propagation sizes the card from its content.
+    The rounded shape (with its 1 px edge) is drawn on a canvas placed behind an
+    ordinary padded frame, so normal geometry propagation sizes the card from its content.
     """
 
-    def __init__(self, parent, *, theme, fill=None, edge=None, radius=15, pad_x=20, pad_y=15,
+    def __init__(self, parent, *, theme, fill=None, edge="card", radius=6, pad_x=20, pad_y=15,
                  background=None):
         self._fill = fill or theme["CARD"]
-        self._edge = edge
+        self._edge = theme["CARD_EDGE"] if edge == "card" else edge
         self._radius = px(radius)
         self._bg = background or _parent_bg(parent, theme["BG"])
         super().__init__(parent, background=self._bg)
         self._shape = tk.Canvas(self, background=self._bg, highlightthickness=0, bd=0)
         self._shape.place(x=0, y=0, relwidth=1, relheight=1)
-        ResizeRedraw(self._shape, self._redraw, idle=False)
+        self._shape.bind("<Configure>", self._redraw)
         self.body = tk.Frame(self, background=self._fill)
         self.body.pack(fill="both", expand=True, padx=px(pad_x), pady=px(pad_y))
         tk.Misc.lower(self._shape)  # Canvas.lower is tag_lower; this lowers the widget itself.
 
-    def _redraw(self, width, height):
+    def _redraw(self, event):
         self._shape.delete("shape")
-        draw_rounded(self._shape, 0, 0, width, height, self._radius, self._fill, self._edge, self._bg)
+        draw_rounded(self._shape, 0, 0, event.width, event.height, self._radius, self._fill, self._edge, self._bg)
 
 
 class SegmentedControl(_StateMixin, tk.Canvas):
@@ -524,7 +382,7 @@ class SegmentedControl(_StateMixin, tk.Canvas):
     _handled = ("state", "command")
 
     def __init__(self, parent, *, options, variable, command=None, theme,
-                 height=34, radius=12, pad_x=10, background=None):
+                 height=34, radius=9, inner_radius=5, pad_x=10, background=None):
         self._seg_defs = list(options)
         self._variable = variable
         self._command = command
@@ -532,13 +390,14 @@ class SegmentedControl(_StateMixin, tk.Canvas):
         self._state = "normal"
         self._hover = self._pressed = self._focused = False
         self._hover_index = None
-        self._font = tkfont.Font(family="Segoe UI", size=10)
+        self._font = tkfont.Font(font=gui_theme.FONT)
         self._inset = px(4)
         self._seg_widths = [self._font.measure(label) + 2 * px(pad_x) for label, _ in self._seg_defs]
         self._gap = px(2)
         self._cw = sum(self._seg_widths) + self._gap * (len(self._seg_widths) - 1) + 2 * self._inset
         self._ch = px(height)
         self._radius = px(radius)
+        self._inner_radius = px(inner_radius)
         self._bg = background or _parent_bg(parent, theme["BG"])
         tk.Canvas.__init__(self, parent, width=self._cw, height=self._ch, background=self._bg,
                            highlightthickness=0, bd=0, takefocus=True, cursor="hand2")
@@ -565,11 +424,11 @@ class SegmentedControl(_StateMixin, tk.Canvas):
         edge = t["ACCENT"] if self._focused and not disabled else None
         draw_rounded(self, 0, 0, self._cw, self._ch, self._radius, t["FIELD"], edge, self._bg)
         current = self._variable.get()
-        inner = max(2, self._radius - self._inset - 1)
+        inner = self._inner_radius
         for index, (label, value, x0, x1) in enumerate(self._segments()):
             selected = value == current
             if selected:
-                face = t["EDGE_SOFT"] if disabled else t["BUTTON"]
+                face = t["EDGE_SOFT"] if disabled else t["SEGMENT_SEL"]
                 draw_rounded(self, x0, self._inset, x1, self._ch - self._inset, inner, face, None, t["FIELD"])
             if disabled:
                 fg = t["DIM"]
@@ -656,7 +515,7 @@ class CheckBox(_StateMixin, tk.Canvas):
         self._onvalue, self._offvalue = onvalue, offvalue
         self._state = "normal"
         self._hover = self._pressed = self._focused = False
-        self._font = tkfont.Font(family="Segoe UI", size=10)
+        self._font = tkfont.Font(font=gui_theme.FONT)
         self._bg = background or _parent_bg(parent, theme["BG"])
         self._box = px(self.BOX)
         self._ch = px(26)
@@ -716,6 +575,714 @@ class CheckBox(_StateMixin, tk.Canvas):
         self.create_text(box + px(10), self._ch / 2, text=self._text, anchor="w", fill=fg, font=self._font)
 
 
+class DisplayText(tk.Canvas):
+    """One line of text that never crops its descenders.
+
+    Some display faces report a shallower descent than their glyphs use, so a
+    tk.Label cuts off "p", "y", ... ``room`` adds that many pixels below the line.
+    Supports ``configure(text=..., foreground=...)`` like a label.
+    """
+
+    def __init__(self, parent, *, text, font, foreground, room=0, background=None):
+        self._font = tkfont.Font(font=font)
+        self._text = text
+        self._room = room
+        super().__init__(parent, width=1, height=1, highlightthickness=0, bd=0,
+                         background=background or _parent_bg(parent, "#000000"))
+        self._item = self.create_text(0, 0, anchor="nw", text=text, font=self._font, fill=foreground)
+        self._fit()
+
+    def _fit(self):
+        tk.Canvas.configure(self, width=self._font.measure(self._text) + px(2),
+                            height=self._font.metrics("linespace") + self._room)
+
+    def configure(self, cnf=None, **kw):
+        if cnf:
+            kw.update(cnf)
+        if "text" in kw:
+            self._text = kw.pop("text")
+            self.itemconfigure(self._item, text=self._text)
+            self._fit()
+        color = kw.pop("foreground", None) or kw.pop("fg", None)
+        if color:
+            self.itemconfigure(self._item, fill=color)
+        if kw:
+            super().configure(**kw)
+
+    config = configure
+
+    def cget(self, key):
+        if key == "text":
+            return self._text
+        return super().cget(key)
+
+
+# --------------------------------------------------------------------------
+# Controls drawn straight onto a host canvas (the content stage), so the animated
+# background shows around them: Tk widgets are always opaque rectangles, canvas
+# items are not. Images carry real alpha, which Tk blends over whatever is below.
+
+
+def _png(width, height, rows):
+    """Base64 PNG (8-bit RGBA) from ``rows`` of width*4 bytes, for tk.PhotoImage(data=...)."""
+    raw = b"".join(b"\0" + bytes(row) for row in rows)
+
+    def chunk(tag, body):
+        return struct.pack(">I", len(body)) + tag + body + struct.pack(">I", zlib.crc32(tag + body) & 0xFFFFFFFF)
+    data = (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(raw, 6)) + chunk(b"IEND", b""))
+    return base64.b64encode(data).decode("ascii")
+
+
+def rgba_image(master, width, height, rows):
+    return tk.PhotoImage(master=master, data=_png(width, height, rows))
+
+
+_ALPHA_CACHE: dict[tuple, tk.PhotoImage] = {}
+
+
+def _cached(key, make):
+    image = _ALPHA_CACHE.get(key)
+    if image is None:
+        if len(_ALPHA_CACHE) > 256:
+            _ALPHA_CACHE.clear()
+        image = _ALPHA_CACHE[key] = make()
+    return image
+
+
+def dot_image(master, size, color):
+    """Anti-aliased filled circle with a transparent surround."""
+    def make():
+        r, g, b = _rgb(color)
+        n = _SUPERSAMPLE
+        rows = []
+        for y in range(size):
+            row = bytearray()
+            for x in range(size):
+                inside = sum(1 for sy in range(n) for sx in range(n)
+                             if math.hypot(x + (sx + 0.5) / n - size / 2, y + (sy + 0.5) / n - size / 2) <= size / 2)
+                row += bytes((r, g, b, round(255 * inside / (n * n))))
+            rows.append(row)
+        return rgba_image(master, size, size, rows)
+    return _cached(("dot", size, color), make)
+
+
+def paper_image(master, size, rect, angle, dx, dy, fill):
+    """Anti-aliased rotated rectangle ``rect`` (w, h), centred in ``size`` and moved by (dx, dy)."""
+    def make():
+        cw, ch = size
+        half_w, half_h = rect[0] / 2.0, rect[1] / 2.0
+        a = math.radians(angle)
+        cos_a, sin_a = math.cos(a), math.sin(a)
+        cx, cy = cw / 2.0 + dx, ch / 2.0 + dy
+        r, g, b = _rgb(fill)
+        rows = []
+        for y in range(ch):
+            py = y + 0.5 - cy
+            row = bytearray()
+            for x in range(cw):
+                qx = x + 0.5 - cx
+                # Screen -> paper coordinates (counter-clockwise visual rotation in y-down space).
+                u = qx * cos_a - py * sin_a
+                v = qx * sin_a + py * cos_a
+                cover = min(1.0, max(0.0, half_w - abs(u) + 0.5)) * min(1.0, max(0.0, half_h - abs(v) + 0.5))
+                row += bytes((r, g, b, int(cover * 255 + 0.5)))
+            rows.append(row)
+        return rgba_image(master, cw, ch, rows)
+    return _cached(("paper", size, rect, round(angle, 3), round(dx, 2), round(dy, 2), fill), make)
+
+
+class CanvasText:
+    """A text item that behaves like a label for ``configure(text=, foreground=)``."""
+
+    def __init__(self, canvas, *, text, font, fill, anchor="w", width=0):
+        self.canvas = canvas
+        self.item = canvas.create_text(0, 0, text=text, font=font, fill=fill, anchor=anchor, width=width)
+
+    def place(self, x, y):
+        self.canvas.coords(self.item, x, y)
+
+    def configure(self, cnf=None, **kw):
+        if cnf:
+            kw.update(cnf)
+        options = {}
+        if "text" in kw:
+            options["text"] = kw.pop("text")
+        color = kw.pop("foreground", None) or kw.pop("fg", None)
+        if color:
+            options["fill"] = color
+        if "wraplength" in kw:
+            options["width"] = kw.pop("wraplength")
+        if options:
+            self.canvas.itemconfigure(self.item, **options)
+
+    config = configure
+
+    def cget(self, key):
+        return self.canvas.itemcget(self.item, "text" if key == "text" else key)
+
+
+class _CanvasControl:
+    """Shared state, hover, press and focus handling for controls drawn on a host canvas."""
+
+    _cursor = "hand2"
+
+    def __init__(self, canvas, *, command, theme):
+        self.canvas = canvas
+        self._theme = dict(theme)
+        self._command = command
+        self._state = "normal"
+        self._hover = self._pressed = self._focused = False
+        self.tag = "control%d" % id(self)
+
+    def _bind(self):
+        c, tag = self.canvas, self.tag
+        c.tag_bind(tag, "<Enter>", lambda _e: self._set_hover(True))
+        c.tag_bind(tag, "<Leave>", lambda _e: self._set_hover(False))
+        c.tag_bind(tag, "<ButtonPress-1>", self._on_press)
+        c.tag_bind(tag, "<ButtonRelease-1>", self._on_release)
+
+    def _set_hover(self, hover):
+        hover = hover and self._state != "disabled"
+        self._entered(hover and not self._hover)
+        self._hover = hover
+        if not hover:
+            self._pressed = False
+        try:
+            self.canvas.configure(cursor=self._cursor if hover else "")
+        except tk.TclError:
+            pass
+        self._draw()
+
+    def _entered(self, fresh):
+        pass
+
+    def _on_press(self, _event):
+        if self._state != "disabled":
+            self._pressed = True
+            self._draw()
+
+    def _on_release(self, event):
+        was, self._pressed = self._pressed, False
+        self._draw()
+        x, y = self.canvas.canvasx(event.x), self.canvas.canvasy(event.y)
+        x0, y0, x1, y1 = self.canvas.bbox(self.tag) or (0, 0, 0, 0)
+        if was and x0 <= x <= x1 and y0 <= y <= y1:
+            self.invoke()
+
+    def invoke(self):
+        if self._state != "disabled" and self._command is not None:
+            self._command()
+
+    def focusable(self):
+        return self._state != "disabled"
+
+    def set_focus(self, focused):
+        self._focused = focused
+        self._draw()
+
+    def configure(self, cnf=None, **kw):
+        if cnf:
+            kw.update(cnf)
+        if "command" in kw:
+            self._command = kw.pop("command")
+        if "text" in kw and kw["text"] is not None:
+            self._set_text(kw.pop("text"))
+        if "state" in kw:
+            value = kw.pop("state")
+            if value in ("normal", "disabled", "readonly", "!disabled"):
+                self._state = "disabled" if value == "disabled" else "normal"
+                if self._state == "disabled":
+                    self._hover = self._pressed = False
+                self._draw()
+
+    config = configure
+
+    def cget(self, key):
+        return {"state": self._state, "command": self._command}.get(key, getattr(self, "_text", None))
+
+    def __getitem__(self, key):
+        return self.cget(key)
+
+    def winfo_exists(self):
+        return self.canvas.winfo_exists()
+
+    def winfo_toplevel(self):
+        return self.canvas.winfo_toplevel()
+
+
+class CanvasLink(_CanvasControl):
+    """Text-only action (e.g. "Show log"): muted, brightens on hover."""
+
+    def __init__(self, canvas, *, text, command=None, theme, font):
+        super().__init__(canvas, command=command, theme=theme)
+        self._text = text
+        self._font = tkfont.Font(font=font)
+        self.item = canvas.create_text(0, 0, text=text, font=self._font, anchor="w", tags=(self.tag,))
+        self.ring = canvas.create_rectangle(0, 0, 0, 0, outline="", width=1, state="hidden")
+        self._bind()
+        self._draw()
+
+    def width(self):
+        return self._font.measure(self._text)
+
+    def place(self, x, y):
+        self.canvas.coords(self.item, x, y)
+        self._draw()
+
+    def _set_text(self, text):
+        self._text = text
+        self.canvas.itemconfigure(self.item, text=text)
+
+    def _draw(self):
+        t = self._theme
+        if self._state == "disabled":
+            color = t["DIM"]
+        else:
+            color = t["TEXT"] if (self._hover or self._pressed) else t["MUTED"]
+        self.canvas.itemconfigure(self.item, fill=color)
+        box = self.canvas.bbox(self.item)
+        if self._focused and box:
+            pad = px(3)
+            self.canvas.coords(self.ring, box[0] - pad, box[1] - px(1), box[2] + pad, box[3] + px(1))
+            self.canvas.itemconfigure(self.ring, outline=t["ACCENT"], state="normal")
+        else:
+            self.canvas.itemconfigure(self.ring, state="hidden")
+
+
+class CanvasSticker(_CanvasControl):
+    """Uppercase label on a slightly tilted paper rectangle that snaps between poses.
+
+    Like Deadlock's hero tags: every ~500 ms all stickers snap to a new pose at the same moment
+    (no tweening). Only the paper moves; the label stays put. ``style`` is ``primary`` (accent
+    paper) or ``secondary``; ``tilt`` is the resting angle in degrees (positive = counter-clockwise),
+    ``paper`` its size and ``paper_offset`` where its centre sits relative to the label (design px).
+    """
+
+    POSES = 6
+
+    def __init__(self, canvas, *, text, command=None, theme, font, style="primary", tilt=0.0,
+                 paper=(80.75, 29.35), paper_offset=(0.0, 0.0), seed=0):
+        super().__init__(canvas, command=command, theme=theme)
+        self._style = style
+        self._text = text
+        self._font = tkfont.Font(font=font)
+        self._tilt = tilt
+        self._paper_design = paper
+        self._offset_design = paper_offset
+        self.scale = 1.0
+        self._font_size = self._font.cget("size")   # the theme's size; grows with set_scale
+        self._rng = random.Random(seed)
+        self._pose_index = 0
+        self._x = self._y = 0
+        self._layout()
+        self.paper = canvas.create_image(0, 0, anchor="center", tags=(self.tag,))
+        self.ring = canvas.create_polygon(0, 0, 0, 0, 0, 0, fill="", outline="", width=1, state="hidden")
+        # The label ignores the pointer, so moving over it does not count as leaving the paper.
+        self.label = canvas.create_text(0, 0, text=text.upper(), font=self._font, state="disabled")
+        self._bind()
+        self._draw()
+        BoilClock.register(self)
+
+    def set_scale(self, scale):
+        """Draw the sticker ``scale`` times its design size (paper and label); for big windows."""
+        if abs(scale - self.scale) < 0.01:
+            return
+        self.scale = scale
+        self._font.configure(size=int(round(self._font_size * scale)))
+        self._layout()
+        self.canvas.itemconfigure(self.label, font=self._font)
+        self._draw()
+
+    def _layout(self):
+        s = self.scale
+        self._offset = (self._offset_design[0] * gui_theme.SCALE * s, self._offset_design[1] * gui_theme.SCALE * s)
+        self._paper_w = max(px(self._paper_design[0] * s), self._font.measure(self._text.upper()) + px(16 * s))
+        self._paper_h = px(self._paper_design[1] * s)
+        reach = math.sin(math.radians(abs(self._tilt) + 2.0))
+        margin = px(4) + 2 * max(abs(v) for v in self._offset)
+        self._cw = int(self._paper_w + self._paper_h * reach + margin) + 2
+        self._ch = int(self._paper_h + self._paper_w * reach + margin) + 2
+        unit = max(1, px(1))
+        self._poses = [(0.0, 0, 0)]  # the first pose is the design at rest
+        for _ in range(self.POSES - 1):
+            self._poses.append((self._rng.uniform(-1.1, 1.1), self._rng.choice((-unit, 0, unit)),
+                                self._rng.choice((-unit, 0, unit))))
+
+    def size(self):
+        return self._paper_w, self._paper_h
+
+    def place(self, x, y):
+        """Put the label's centre at (x, y)."""
+        self._x, self._y = x, y
+        self._draw()
+
+    def advance(self):
+        """Snap to another pose (never the same one twice in a row)."""
+        choices = [i for i in range(len(self._poses)) if i != self._pose_index]
+        self._pose_index = self._rng.choice(choices)
+        self._draw()
+
+    def _entered(self, fresh):
+        if fresh:
+            self.advance()  # a fresh pose under the pointer, like a tag being nudged
+
+    def _set_text(self, text):
+        self._text = text
+        self._layout()
+        self.canvas.itemconfigure(self.label, text=text.upper())
+
+    def _colors(self):
+        t = self._theme
+        if self._state == "disabled":
+            return t["EDGE_SOFT"], t["DIM"]
+        if self._style == "primary":
+            face = t["ACCENT_PRESSED"] if self._pressed else (t["ACCENT_HOVER"] if self._hover else t["ACCENT"])
+            return face, t["ACCENT_TEXT"]
+        face = t["BUTTON_PRESSED"] if self._pressed else (t["BUTTON_HOVER"] if self._hover else t["EDGE"])
+        return face, t["BUTTON_TEXT"]
+
+    def _draw(self):
+        paper_tilt, dx, dy = self._poses[self._pose_index]
+        if self._pressed:
+            dy += max(1, px(1))  # the paper dips when pressed; the label does not move
+        face, ink = self._colors()
+        angle = self._tilt + paper_tilt
+        dx, dy = dx + self._offset[0], dy + self._offset[1]
+        image = paper_image(self.canvas, (self._cw, self._ch), (self._paper_w, self._paper_h), angle, dx, dy, face)
+        c = self.canvas
+        c.itemconfigure(self.paper, image=image)
+        c.coords(self.paper, self._x, self._y)
+        c.coords(self.label, self._x, self._y)
+        c.itemconfigure(self.label, fill=ink, disabledfill=ink)
+        if self._focused and self._state != "disabled":
+            a = math.radians(angle)
+            cos_a, sin_a = math.cos(a), math.sin(a)
+            cx, cy = self._x + dx, self._y + dy
+            hw, hh = self._paper_w / 2 + px(2), self._paper_h / 2 + px(2)
+            points = []
+            for u, v in ((-hw, -hh), (hw, -hh), (hw, hh), (-hw, hh)):
+                points += [cx + u * cos_a + v * sin_a, cy - u * sin_a + v * cos_a]
+            c.coords(self.ring, *points)
+            color = self._theme["TEXT"] if self._style == "primary" else self._theme["ACCENT"]
+            c.itemconfigure(self.ring, outline=color, state="normal")
+        else:
+            c.itemconfigure(self.ring, state="hidden")
+
+
+class CanvasDot:
+    """A smooth status dot; ``configure(foreground=...)`` recolors it."""
+
+    def __init__(self, canvas, *, color, size=5):
+        self.canvas = canvas
+        self._size = max(3, px(size))
+        self._color = color
+        self.item = canvas.create_image(0, 0, anchor="center", image=dot_image(canvas, self._size, color))
+
+    def place(self, x, y):
+        self.canvas.coords(self.item, x, y)
+
+    def configure(self, cnf=None, **kw):
+        if cnf:
+            kw.update(cnf)
+        color = kw.pop("foreground", None) or kw.pop("fg", None)
+        if color:
+            self._color = color
+            self.canvas.itemconfigure(self.item, image=dot_image(self.canvas, self._size, color))
+
+    config = configure
+
+
+class CanvasProgress:
+    """Thin indeterminate progress line with the ttk ``start``/``stop`` and grid show/hide API.
+
+    A short accent segment glides across the slot set by ``place``. Showing or hiding it never
+    moves anything else.
+    """
+
+    def __init__(self, canvas, *, theme, height=3):
+        self.canvas = canvas
+        self._theme = dict(theme)
+        self._height = max(1, px(height))
+        self._job = None
+        self._pos = 0.0
+        self._interval = 12
+        self._visible = False
+        self._box = (0, 0, 1)
+        self.item = canvas.create_rectangle(0, 0, 0, 0, fill=self._theme["ACCENT"], width=0, state="hidden")
+
+    def place(self, x0, x1, y):
+        self._box = (x0, x1, y)
+
+    def grid(self, *_args, **_kw):
+        self._visible = True
+
+    def grid_remove(self):
+        self._visible = False
+        self.canvas.itemconfigure(self.item, state="hidden")
+
+    def start(self, interval=12):
+        self._interval = max(8, int(interval))
+        if self._job is None:
+            self._tick()
+
+    def stop(self):
+        if self._job is not None:
+            self.canvas.after_cancel(self._job)
+            self._job = None
+        self.canvas.itemconfigure(self.item, state="hidden")
+
+    def _tick(self):
+        x0, x1, y = self._box
+        width = max(1, x1 - x0)
+        span = max(px(60), width * 0.22)
+        self._pos = (self._pos + width / 140.0) % (width + span)
+        self.canvas.coords(self.item, x0 + max(0, self._pos - span), y, x0 + min(width, self._pos), y + self._height)
+        self.canvas.itemconfigure(self.item, state="normal" if self._visible else "hidden")
+        self._job = self.canvas.after(self._interval, self._tick)
+
+
+class CanvasFocus:
+    """Keyboard focus for controls drawn on one canvas: Tab/Shift+Tab move between them
+    (and on to the next widget after the last), Return/Space activate the focused one.
+
+    Focus sits on a 1 px stand-in widget on the canvas, not on the canvas itself: a canvas that
+    holds other widgets (the pages) also hears their focus changes, which would light the ring
+    while the user types in a field. Created after the canvas's other widgets, the stand-in comes
+    after them in Tab order; arriving with Shift+Tab starts at the last control.
+    """
+
+    def __init__(self, canvas):
+        self.canvas = canvas
+        self.controls = []
+        self.index = None
+        self.backward = False
+        self.proxy = tk.Frame(canvas, width=1, height=1, background=canvas.cget("background"),
+                              highlightthickness=0, bd=0, takefocus=1)
+        canvas.create_window(0, 0, window=self.proxy, anchor="nw")
+        self.proxy.bind("<FocusIn>", self._on_focus_in)
+        self.proxy.bind("<FocusOut>", lambda _e: self._show(None))
+        self.proxy.bind("<Tab>", lambda _e: self._move(1))
+        self.proxy.bind("<Shift-Tab>", lambda _e: self._move(-1))
+        for key in ("<Return>", "<space>"):
+            self.proxy.bind(key, self._activate)
+        # Remember which way the user is tabbing, anywhere in the window.
+        top = canvas.winfo_toplevel()
+        top.bind("<Tab>", lambda _e: setattr(self, "backward", False), add="+")
+        top.bind("<Shift-Tab>", lambda _e: setattr(self, "backward", True), add="+")
+
+    def add(self, control):
+        self.controls.append(control)
+        return control
+
+    def _show(self, index):
+        for i, control in enumerate(self.controls):
+            control.set_focus(i == index)
+
+    def _on_focus_in(self, _event):
+        order = range(len(self.controls) - 1, -1, -1) if self.backward else range(len(self.controls))
+        self.index = next((i for i in order if self.controls[i].focusable()), None)
+        self._show(self.index)
+
+    def _move(self, step):
+        start = self.index if self.index is not None else (-1 if step > 0 else len(self.controls))
+        i = start + step
+        while 0 <= i < len(self.controls):
+            if self.controls[i].focusable():
+                self.index = i
+                self._show(i)
+                return "break"
+            i += step
+        self.index = None
+        self._show(None)
+        return None  # past the last control: let Tk move on to the next widget
+
+    def _activate(self, _event):
+        if self.index is not None:
+            self.controls[self.index].invoke()
+        return "break"
+
+
+# --------------------------------------------------------------------------
+# The shared "boil" clock (Deadlock's hero tags snap every ~500 ms, all at once).
+
+BOIL_INTERVAL_MS = 500
+
+
+class BoilClock:
+    """Single timer that advances every registered animation together.
+
+    Anything with ``advance()``, ``winfo_exists()`` and ``winfo_toplevel()`` can register.
+    Nothing moves when Windows animation effects are off (see ``gui_theme.motion_enabled``).
+    """
+
+    members: list = []
+    job = None
+    root = None
+
+    @classmethod
+    def register(cls, member):
+        cls.members.append(member)
+        if cls.job is None and gui_theme.motion_enabled():
+            cls.root = member.winfo_toplevel()
+            cls.job = cls.root.after(BOIL_INTERVAL_MS, cls.tick)
+
+    @classmethod
+    def tick(cls):
+        alive = []
+        for member in cls.members:
+            try:
+                if member.winfo_exists():
+                    member.advance()
+                    alive.append(member)
+            except tk.TclError:
+                pass
+        cls.members = alive
+        cls.job = cls.root.after(BOIL_INTERVAL_MS, cls.tick) if alive else None
+
+
+# Compatibility controls retained for updater windows and resize consumers.
+def round_frame_corners(frame, radius, fill, bg, corners=("nw", "sw")):
+    """Overlay anti-aliased corners on a plain frame (e.g. the content panel)."""
+    labels = []
+    for which in corners:
+        label = tk.Label(frame, image=_corner(frame, radius, fill, None, bg, which), bd=0,
+                         highlightthickness=0, background=fill)
+        relx = 1.0 if which in ("ne", "se") else 0.0
+        rely = 1.0 if which in ("sw", "se") else 0.0
+        label.place(relx=relx, rely=rely, anchor=which)
+        labels.append(label)
+    return labels
+
+class IdleUpdate:
+    """Combine a burst of layout notifications into one update after layout settles."""
+
+    def __init__(self, widget, callback):
+        self.widget = widget
+        self.callback = callback
+        self._job = None
+        widget.bind("<Destroy>", self._destroy, add="+")
+
+    def __call__(self, _event=None):
+        if self._job is None:
+            self._job = self.widget.after_idle(self._flush)
+
+    def _flush(self):
+        self._job = None
+        self.callback()
+
+    def _destroy(self, event):
+        if event.widget is self.widget and self._job is not None:
+            self.widget.after_cancel(self._job)
+            self._job = None
+
+class ResizeRedraw(IdleUpdate):
+    """Redraw once per settled size; moving a widget does not repaint its shape."""
+
+    def __init__(self, widget, callback, *, idle=True):
+        self._size = None
+        self._redraw = callback
+        self._idle = idle
+        super().__init__(widget, self._resize)
+        widget.bind("<Configure>", self, add="+")
+
+    def __call__(self, event=None):
+        if event is None or (event.widget is self.widget and
+                             (event.width, event.height) != self._size):
+            if self._idle:
+                super().__call__(event)
+            else:
+                self._resize()
+
+    def _resize(self):
+        size = self.widget.winfo_width(), self.widget.winfo_height()
+        if size != self._size:
+            self._size = size
+            self._redraw(*size)
+
+def _strip_colors(length, color_at, linear):
+    """Sample a strip; a linear RGB gradient has constant-color runs after rounding.
+
+    Equal endpoint colors imply an equal interior only for a linear gradient.
+    Splitting at color changes preserves the exact pixel colors without running
+    interpolation and hex formatting for every pixel of the rail on every resize.
+    """
+    if not linear:
+        return [color_at(index) for index in range(length)]
+    colors = [None] * length
+
+    def fill(first, last, left, right):
+        if left == right or first == last:
+            colors[first:last + 1] = [left] * (last - first + 1)
+        elif last - first == 1:
+            colors[first], colors[last] = left, right
+        else:
+            middle = (first + last) // 2
+            center = color_at(middle)
+            fill(first, middle, left, center)
+            fill(middle, last, center, right)
+
+    if length:
+        fill(0, length - 1, color_at(0), color_at(length - 1))
+    return colors
+
+def outline_right_rounded(frame, radius, fill, bg, color_at, width=1, linear_gradient=False):
+    """Gradient outline on the top, right and bottom edges of a frame with rounded right corners.
+
+    ``color_at(u, v)`` gives the outline color at normalized frame coordinates
+    (0-1 across, 0-1 down), so any linear gradient from the design can be used.
+    Set ``linear_gradient`` only for a single linear RGB gradient, allowing exact
+    constant-color runs to be sampled together during resize.
+    The rounded corners themselves (fill, outline ring and outside color) are
+    drawn here too. Call after the frame's content is built so the pieces sit on top.
+    """
+    pieces = {name: tk.Label(frame, bd=0, highlightthickness=0, background=fill)
+              for name in ("top", "bottom", "right", "ne", "se")}
+    pieces["top"].place(x=0, y=0, relwidth=1.0, width=-radius, height=width)
+    pieces["bottom"].place(x=0, rely=1.0, y=-width, relwidth=1.0, width=-radius, height=width)
+    pieces["ne"].place(relx=1.0, y=0, anchor="ne")
+    pieces["se"].place(relx=1.0, rely=1.0, anchor="se")
+    pieces["right"].place(relx=1.0, x=-width, y=radius, width=width, relheight=1.0, height=-2 * radius)
+
+    def strip(colors, horizontal):
+        image = tk.PhotoImage(master=frame, width=len(colors) if horizontal else width,
+                              height=width if horizontal else len(colors))
+        if horizontal:
+            image.put(" ".join(["{" + " ".join(colors) + "}"] * width))
+        else:
+            image.put(" ".join("{" + " ".join([c] * width) + "}" for c in colors))
+        return image
+
+    last_size = None
+
+    def redraw(w, h):
+        nonlocal last_size
+        if w <= radius or h <= 2 * radius:
+            return
+        run = w - radius
+        images = {}
+        # The rail has a fixed width. A height-only resize needs only its right
+        # strip; re-creating the top/bottom images adds work to every drag event.
+        if last_size is None or w != last_size[0]:
+            images.update(
+                top=strip(_strip_colors(run, lambda x: color_at(x / w, 0.0), linear_gradient), True),
+                bottom=strip(_strip_colors(run, lambda x: color_at(x / w, 1.0), linear_gradient), True))
+        if last_size is None or h != last_size[1]:
+            images["right"] = strip(_strip_colors(h - 2 * radius,
+                lambda y: color_at(1.0, (radius + y) / h), linear_gradient), False)
+        if last_size is None:
+            images.update(ne=_corner(frame, radius, fill, color_at(1.0, 0.0), bg, "ne"),
+                          se=_corner(frame, radius, fill, color_at(1.0, 1.0), bg, "se"))
+        for name, image in images.items():
+            pieces[name].configure(image=image)
+            pieces[name].image = image  # keep a reference; Tk does not
+        last_size = w, h
+
+    ResizeRedraw(frame, redraw)()
+    for piece in pieces.values():
+        piece.lift()
+    return pieces
+
 class StatusDot(tk.Canvas):
     """A smooth status dot; ``configure(foreground=...)`` recolors it."""
 
@@ -741,7 +1308,6 @@ class StatusDot(tk.Canvas):
             super().configure(**kw)
 
     config = configure
-
 
 class ProgressLine(tk.Canvas):
     """Thin indeterminate progress line with the ttk ``start``/``stop`` API.

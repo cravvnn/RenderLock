@@ -1,9 +1,9 @@
 """Installed FE inputs for version-matched decompiled cloth proxies.
 
 The experimental native resimulation (Seven waist surface cloth and the Haze
-hose prototype) was retired in 0.3.0b1. Preparation now only accepts prepared
-decompiled proxy definitions whose compiled model, decoded physics, resource
-identity and definition integrity match the installed game build.
+hose prototype) was retired in 0.3.0b1. Preparation reconstructs supported
+decompiled proxies automatically and caches definitions whose compiled model,
+decoded physics, resource identity and integrity match the installed game build.
 """
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ def decode_physics(resource, provider, decoder):
     return json.loads((path / 'physics.json').read_text(encoding='utf-8')), resolved.sha256
 
 
-def prepare_cloth_assets(segment, bindings, provider, decoder, pack, log=print):
+def prepare_cloth_assets(segment, bindings, provider, decoder, pack, log=print, *, extractor_command=None):
     """Mutate matched entities with secondary_motion_file; return full coverage."""
     pack = Path(pack)
     dest = pack / 'secondary-motion'
@@ -48,7 +48,7 @@ def prepare_cloth_assets(segment, bindings, provider, decoder, pack, log=print):
     entities = {str(e['id']): e for e in segment['entities']}
     for entity in entities.values():
         entity.pop('secondary_motion_file', None)
-    report = {'status': 'prepared', 'supported_entities': [], 'unsupported_entities': [],
+    report = {'status': 'prepared', 'supported_entities': [], 'unsupported_entities': [], 'not_applicable_entities': [],
               'scope': 'Version-matched prepared decompiled cloth proxies; all other layouts explicitly reported'}
     decoded = {}
     for binding in bindings:
@@ -62,10 +62,16 @@ def prepare_cloth_assets(segment, bindings, provider, decoder, pack, log=print):
                 cache = getattr(provider, 'cache_dir', None)
                 prepared = load(cache, compiled(resource), digest, physics) if cache is not None else None
                 if prepared is None:
-                    raise UnsupportedCloth(
-                        'No version-matched prepared cloth proxy matches this model. '
-                        'The experimental native resimulation was retired in 0.3.0b1; '
-                        'register a decompiled definition to use cloth.')
+                    from .reconstructed_cloth import reconstruct
+                    generated = reconstruct(resource, provider, decoder, physics, command=extractor_command)
+                    if generated['status'] == 'not_applicable':
+                        row.update(status='not_applicable', reason=generated['reason'])
+                        report['not_applicable_entities'].append(row)
+                        continue
+                    prepared = generated['definition']
+                    if cache is not None:
+                        from .prepared_cloth import register
+                        register(cache, compiled(resource), digest, prepared, physics)
                 target = dest / (hashlib.sha256(resource.encode()).hexdigest()[:20] + '.json')
                 target.write_text(json.dumps(prepared, indent=2) + '\n', encoding='utf-8')
                 decoded[resource] = (target, prepared)
@@ -79,7 +85,7 @@ def prepare_cloth_assets(segment, bindings, provider, decoder, pack, log=print):
             row.update(status='unsupported', reason=str(exc))
             report['unsupported_entities'].append(row)
     if not report['supported_entities']:
-        report['status'] = 'no_supported_entities'
+        report['status'] = 'no_supported_entities' if report['unsupported_entities'] else 'not_applicable'
     elif report['unsupported_entities']:
         report['status'] = 'prepared_partial'
     (dest / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')

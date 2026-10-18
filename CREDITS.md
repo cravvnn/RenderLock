@@ -27,7 +27,7 @@ Third-party shader libraries remain separate downloads, under their authors' ter
 | People / project | Contribution to RenderLock |
 | --- | --- |
 | [w1tcherrr](https://github.com/w1tcherrr) and the ValveResourceFormat contributors | [PR #1317: Decompile compiled cloth physics (FeModel)](https://github.com/ValveResourceFormat/ValveResourceFormat/pull/1317), used in the original cloth tests to recover authored proxies, cloth paint and collision data. It informed the prepared decompiled-proxy workflow. That development branch is separate from the bundled Source 2 Viewer 20.1 CLI. |
-| Tom Edwards and the [Blender Source Tools contributors](https://github.com/Artfunkel/BlenderSourceTools) | The MIT-licensed `datamodel.py` reader used to parse decompiled DMX during cloth research. This was a development tool. |
+| Tom Edwards and the [Blender Source Tools contributors](https://github.com/Artfunkel/BlenderSourceTools) | The MIT-licensed `datamodel.py` reader used to parse decompiled DMX for cloth reconstruction. Its copyright and license remain in the included reader. |
 | [juliancz-a / Deadlock Playground](https://github.com/juliancz-a/deadlock-playground) | Cloth and material implementations reviewed as research references. No code was ported from that review. |
 | [Unicorn](https://github.com/unicorn-engine/unicorn), [Capstone](https://github.com/capstone-engine/capstone) and [pefile](https://github.com/erocarrera/pefile) contributors | Tools used for offline binary inspection and bounded numerical checks during compatibility research. They are not required to open exported Blender scenes. |
 

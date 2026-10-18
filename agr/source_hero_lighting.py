@@ -7,6 +7,15 @@ from .source_hero_lighting_package import build_hero_lighting_package,REFERENCE_
 from .source_lighting_profiles import qualified_probe_helpers
 
 
+def preflight_hero_lighting(scene, provider, decoder, *, map_name, margin_metres):
+    """Fail bounded look selection before exporting thousands of map meshes."""
+    from .game_assets import GameAssetProvider
+    from .installed_map import replay_bounds
+    mounted = GameAssetProvider(provider.install_path, provider.cache_dir,
+                               map_name=map_name or getattr(provider, 'map_name', None))
+    return plan_probe_assets(mounted, decoder, replay_bounds(scene, margin_metres))
+
+
 def validate_hero_decoder_paths(atlas,cube,dotnet):
     if not atlas or not cube or not dotnet:raise ConversionError('Hero lighting requires atlas/cube decoders and .NET')
     atlas,cube,dotnet=map(lambda p:Path(p).expanduser().resolve(),(atlas,cube,dotnet))

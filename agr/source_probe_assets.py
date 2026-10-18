@@ -17,6 +17,39 @@ from .source_lightmap import SHADER_RESOURCE,SHADER_SHA256
 from .source_lighting_profiles import probe_layout,qualified_probe_helpers
 
 WORLD_SHA256='4459031ca1fe3900c7c4516a4db552eb330369895b5b3aa228157695e5a0485b'
+MAX_SELECTED_PROBES = 32
+MAX_ATLAS_BYTES = 256 * 1024 * 1024
+MAX_CUBE_BYTES = 256 * 1024 * 1024
+
+
+class LightingRegionError(ConversionError):
+    """A qualified lighting selection that exceeds the bounded preview workflow."""
+
+    def __init__(self, message, **details):
+        super().__init__(message)
+        self.details = dict(code='lighting_region_unsupported', **details)
+
+
+def validate_probe_budget(selected_count, atlas_bytes, *, max_decoded_bytes=MAX_ATLAS_BYTES):
+    """Check both decoders before either writes lighting payloads."""
+    cube_bytes = selected_count * sum((256 >> m)**2 * 6 * 16 for m in range(7))
+    details = dict(selected_probe_count=selected_count, max_probe_count=MAX_SELECTED_PROBES,
+                   atlas_bytes=atlas_bytes, atlas_limit_bytes=max_decoded_bytes,
+                   cube_bytes=cube_bytes, cube_limit_bytes=MAX_CUBE_BYTES)
+    remedy = ('Select fewer characters in Export, shorten the tick range, or reduce the Map margin. '
+              'A follow camera does not restrict which characters are exported. '
+              'For a character export without Source/NPR lighting, turn off the Lighting lab options '
+              'and clear the optional Elagrimm shader field. An external map .blend does not supply this lighting data.')
+    if not selected_count:
+        raise LightingRegionError('No installed lighting probes intersect the selected map region. '
+                                  'Check the installed map name and replay positions. ' + remedy, **details)
+    if (selected_count > MAX_SELECTED_PROBES or atlas_bytes > max_decoded_bytes
+            or cube_bytes > MAX_CUBE_BYTES):
+        raise LightingRegionError(
+            f'Source/NPR lighting region is too large: {selected_count} probes '
+            f'(preview limit {MAX_SELECTED_PROBES}), {atlas_bytes / 1024**2:.1f} MiB atlas data '
+            f'and {cube_bytes / 1024**2:.1f} MiB reflection data. ' + remedy, **details)
+
 ATLAS_HELPER_HASHES={
     'ProbeAtlasDecode.dll':'9411eb82a939e63c86ce4c8023edca2f5774392d4c370ea91cac76b70140ee4a',
     'ValveResourceFormat.dll':'5475c86ef49bab2163e5f8e8e83f0e01514c4a2c07ec734abad5e42a28c18951',
@@ -99,14 +132,14 @@ def plan_probe_assets(provider,decoder,source_bounds,*,max_decoded_bytes=256*102
             if p.get('classname') not in ('env_light_probe_volume','env_combined_light_probe_volume'):continue
             inventory+=1
             if intersects_bounds(p,bounds):selected.append(p)
-    if not selected or len(selected)>32:raise ConversionError('Unqualified bounded probe count')
     if len({str(p['hammeruniqueid']) for p in selected})!=len(selected) or len({p['array_index'] for p in selected})!=len(selected):
         raise ConversionError('Duplicate selected probe identity/index')
     selected.sort(key=lambda p:(-p['indoor_outdoor_level'],p['array_index']))
     regions=[r for p in selected for r in probe_regions(p,identity['sha256'])]
     total=sum(int(np.prod(r['size']))*16 for r in regions)
-    if type(max_decoded_bytes) is not int or max_decoded_bytes<=0 or total>max_decoded_bytes:
-        raise ConversionError('Bounded probe decode exceeds explicit storage budget')
+    if type(max_decoded_bytes) is not int or max_decoded_bytes<=0:
+        raise ConversionError('Invalid explicit probe storage budget')
+    validate_probe_budget(len(selected), total, max_decoded_bytes=max_decoded_bytes)
     resources={r['resource'] for r in regions}|{compiled(p['cubemaptexture']) for p in selected}
     for resource in sorted(resources):inputs[resource]=provider.resource_identity(resource)
     return dict(schema_version=1,status='planned_not_applied',world_sha256=identity['sha256'],shader_sha256=SHADER_SHA256,

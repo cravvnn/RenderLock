@@ -1,10 +1,29 @@
 """Bounded authored brightness case qualified by C107 installed emulation."""
 import numpy as np
 
+# Read from the qualified compiled pbr pixel shader's variable descriptions.
+# These are static metadata defaults (no dynamic expression/layer override),
+# not inferred values for arbitrary materials or shader revisions.
+DEFAULT_SHADER_SHA256 = '13cc4576f69be8411f1b1400ea5c0bcedcb947c9406e24102cc6ccd7a33e41ef'
+STATIC_DEFAULTS = {
+    'VectorParams': {'g_vAlbedoContrastSaturationBrightness1': [1, 1, 1, 0],
+                     'g_vColorTint1': [1, 1, 1, 0]},
+    'IntParams': {'g_nTextureColorTintMode1': 0, 'g_bApplyTintToVertexColors': 0,
+                  'g_bMaskVertexColorTint1': 1, 'g_bMaskColorTint1': 1},
+    'FloatParams': {'g_fVertexColorStrength1': 1},
+}
 
-def neutral_tint_controls(vmat, *, assume_white_instance_color):
+
+def neutral_tint_controls(vmat, *, assume_white_instance_color, shader_sha256=None):
     if assume_white_instance_color is not True:
         raise ValueError('Explicit white instance-color assumption required')
+    if shader_sha256 is not None:
+        if shader_sha256 != DEFAULT_SHADER_SHA256:
+            raise ValueError('NPR albedo shader defaults require requalification')
+        # Preserve explicit authored values, including invalid/null values which
+        # the normal checks below must reject. Never mutate retained metadata.
+        vmat = {section: dict(values, **vmat.get(section, {}))
+                for section, values in STATIC_DEFAULTS.items()}
     vectors=vmat.get('VectorParams',{});ints=vmat.get('IntParams',{})
     csb=np.asarray(vectors.get('g_vAlbedoContrastSaturationBrightness1'),dtype=float)
     tint=np.asarray(vectors.get('g_vColorTint1'),dtype=float)
