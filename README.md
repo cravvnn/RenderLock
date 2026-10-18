@@ -78,3 +78,7 @@ Run the source checks with `python -m pytest -q` after installing pytest. Third-
 ## Compatibility
 
 Game updates can change models, animation tasks and replay data. Unsupported operations fail explicitly. Partial export must be selected deliberately, and the coverage report distinguishes decoded animation, omitted effects and experimental features. Saved-scene consistency checks do not establish identical in-game lighting or visual parity.
+
+## Contributing
+
+Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for setup, the fail-closed contract, and what makes a change reviewable.
