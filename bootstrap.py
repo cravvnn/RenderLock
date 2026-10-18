@@ -1,4 +1,4 @@
-"""Standard-library-only Windows setup; all output is captured by Launch_DeadBlend.bat."""
+"""Standard-library-only Windows setup; all output is captured by Launch_RenderLock.bat."""
 from __future__ import annotations
 
 import hashlib
@@ -50,9 +50,9 @@ def run(argv, *, cwd=None):
 
 
 def verify_program_files(root):
-    """Check source bytes before importing DeadBlend or touching its environment/cache."""
+    """Check source bytes before importing RenderLock or touching its environment/cache."""
     root = Path(root)
-    print("Checking DeadBlend program files...", flush=True)
+    print("Checking RenderLock program files...", flush=True)
     try:
         manifest = json.loads((root / "release_manifest.json").read_text(encoding="utf-8"))
         if manifest["version"] != STARTUP_VERSION:
@@ -73,10 +73,10 @@ def verify_program_files(root):
                 entries[name] = item
         required = {"bootstrap.py", "agr/__init__.py", "agr/gui.py", "agr/cli.py"}
         if not required.issubset(entries):
-            raise ValueError("manifest is missing required DeadBlend source entries")
+            raise ValueError("manifest is missing required RenderLock source entries")
     except (OSError, ValueError, KeyError, TypeError, IndexError) as exc:
         print("ERROR: release_manifest.json: " + str(exc), flush=True)
-        print("Extract ALL files from the latest DeadBlend update beside Launch_DeadBlend.bat, replacing files.", flush=True)
+        print("Extract ALL files from the latest RenderLock update beside Launch_RenderLock.bat, replacing files.", flush=True)
         return False
 
     errors = []
@@ -95,21 +95,21 @@ def verify_program_files(root):
                 errors.append(f"{name}: invalid Python source ({exc})")
         actual = hashlib.sha256(data).hexdigest()
         if len(data) != item["bytes"] or actual != item["sha256"]:
-            errors.append(f"{name}: differs from DeadBlend {STARTUP_VERSION} release "
+            errors.append(f"{name}: differs from RenderLock {STARTUP_VERSION} release "
                           f"(bytes {len(data)}/{item['bytes']}; SHA256 {actual}/{item['sha256']})")
     if errors:
         for error in errors:
             print("ERROR: " + error, flush=True)
-        print("Program file check failed before opening DeadBlend.", flush=True)
-        print("Extract ALL files from the latest DeadBlend update beside Launch_DeadBlend.bat, replacing files.", flush=True)
+        print("Program file check failed before opening RenderLock.", flush=True)
+        print("Extract ALL files from the latest RenderLock update beside Launch_RenderLock.bat, replacing files.", flush=True)
         print("Keep your asset cache, settings and .venv. Send this complete startup log if it still fails.", flush=True)
         return False
-    print(f"DeadBlend {STARTUP_VERSION}: {len(entries)} program source files passed SHA256 and syntax checks.", flush=True)
+    print(f"RenderLock {STARTUP_VERSION}: {len(entries)} program source files passed SHA256 and syntax checks.", flush=True)
     return True
 
 
 def main():
-    print("DeadBlend " + STARTUP_VERSION + " startup diagnostics", flush=True)
+    print("RenderLock " + STARTUP_VERSION + " startup diagnostics", flush=True)
     print("System:", platform.platform(), flush=True)
     print("Program folder:", ROOT, flush=True)
     if sys.version_info < (3, 12) or struct.calcsize("P") != 8:
@@ -127,7 +127,7 @@ def main():
         if venv.exists():
             print("ERROR: The existing .venv is incomplete. Rename it to .venv_old, then relaunch.", flush=True)
             return 1
-        print("Creating DeadBlend's local Python environment...", flush=True)
+        print("Creating RenderLock's local Python environment...", flush=True)
         if run([sys.executable, "-m", "venv", venv]):
             print("ERROR: Could not create .venv. Use a writable extracted folder and Python with pip/venv.", flush=True)
             return 1
@@ -150,12 +150,12 @@ def main():
     helper = ROOT / "bin" / ("agr-extract.exe" if os.name == "nt" else "agr-extract")
     print("Native replay helper present:", helper.is_file(), flush=True)
     print("Bundled asset pack present:", (ROOT / "assets" / "assets.json").is_file(), flush=True)
-    print("Opening the DeadBlend desktop window...", flush=True)
+    print("Opening the RenderLock desktop window...", flush=True)
     code = run([python, "-u", "-X", "faulthandler", "-m", "agr.gui"])
     if code:
-        print("ERROR: DeadBlend desktop exited with code", code, flush=True)
+        print("ERROR: RenderLock desktop exited with code", code, flush=True)
     else:
-        print("DeadBlend desktop process exited normally. If no window appeared, send this startup log.", flush=True)
+        print("RenderLock desktop process exited normally. If no window appeared, send this startup log.", flush=True)
     return code
 
 

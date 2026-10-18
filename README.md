@@ -1,8 +1,8 @@
-# DeadBlend
+# RenderLock
 
-DeadBlend turns a selected section of a Deadlock replay into an animated Blender scene. Use it to bring player performances into cinematics, animation edits and still renders.
+RenderLock turns a selected section of a Deadlock replay into an animated Blender scene. Use it to bring player performances into cinematics, animation edits and still renders.
 
-DeadBlend reads local replay and installed game files. It does not launch or attach to Deadlock. Blender scenes retain the original world coordinates so a separate map can be added later.
+RenderLock reads local replay and installed game files. It does not launch or attach to Deadlock. Blender scenes retain the original world coordinates so a separate map can be added later.
 
 ## Character beta
 
@@ -27,9 +27,9 @@ Everything the look pipeline needs is included in the portable package, except t
 
 ## Windows portable
 
-Ready-to-run Windows packages are published on the Releases page of this repository. Extract the complete portable ZIP, then double-click **DeadBlend.exe**. Python, its runtime dependencies, the **Source 2 Viewer 20.1 command-line exporter**, the character-look helper tools and a .NET runtime are included; the launcher does not download packages. A `Launch_DeadBlend.cmd` fallback remains for troubleshooting.
+Ready-to-run Windows packages are published on the Releases page of this repository. Extract the complete portable ZIP, then double-click **RenderLock.exe**. Python, its runtime dependencies, the **Source 2 Viewer 20.1 command-line exporter**, the character-look helper tools and a .NET runtime are included; the launcher does not download packages. A `Launch_RenderLock.cmd` fallback remains for troubleshooting.
 
-Install Blender separately. The candidate is checked with Blender 5.2.1 LTS. DeadBlend does not include replays, game assets or third-party shader libraries.
+Install Blender separately. The candidate is checked with Blender 5.2.1 LTS. RenderLock does not include replays, game assets or third-party shader libraries.
 
 1. In **Setup**, select Blender and your Deadlock folder. The bundled Source 2 Viewer CLI and asset cache are filled in automatically; choose an asset cache outside the game folder if you prefer another location.
 2. In **Export**, choose a `.dem` and select **Inspect replay**.
@@ -39,7 +39,7 @@ Install Blender separately. The candidate is checked with Blender 5.2.1 LTS. Dea
 
 The output includes a `.blend`, a companion `.agrscene` package and an `.agr-report.json` report. Keep the companions for validation or reuse. Packed textures make the `.blend` independent of the temporary conversion folder.
 
-The launcher writes its startup log under `%LOCALAPPDATA%/DeadBlend/logs`. Preferences are stored under `%APPDATA%/DeadBlend`.
+The launcher writes its startup log under `%LOCALAPPDATA%/RenderLock/logs`. Preferences are stored under `%APPDATA%/RenderLock`.
 
 ## Source checkout
 
@@ -50,7 +50,7 @@ python -m agr gui
 python -m agr --help
 ```
 
-On Windows, `Launch_DeadBlend.bat` checks the local Python, installs the pinned dependencies and opens the desktop app; `Launch_DeadBlend_Development.bat` uses an existing `.venv`. On Linux or macOS run `./launch_deadblend.sh`.
+On Windows, `Launch_RenderLock.bat` checks the local Python, installs the pinned dependencies and opens the desktop app; `Launch_RenderLock_Development.bat` uses an existing `.venv`. On Linux or macOS run `./launch_renderlock.sh`.
 
 The native replay helper belongs at `bin/agr-extract.exe`. Build it with Rust using `cargo build --release --locked --manifest-path native/Cargo.toml`, then copy the executable from `native/target/release`. The source ZIP contains the same character-beta feature profile as the portable candidate, including the Lighting lab look tools.
 
@@ -65,12 +65,12 @@ python tools/package_character_beta.py --source . --output <new-folder> `
   --lighting-kit <built helper kit> `
   --particles-dir <built ParticleProbe folder> `
   --dotnet-runtime <dotnet shared runtime folder> `
-  --launcher-exe tools/launcher/target/release/DeadBlend.exe
+  --launcher-exe tools/launcher/target/release/RenderLock.exe
 ```
 
 - The Source 2 Viewer CLI comes from the ValveResourceFormat 20.1 release (github.com/ValveResourceFormat/ValveResourceFormat/releases); the folder must contain `Source2Viewer-CLI.exe`.
 - The lighting kit and particle helper are built from the `research/` projects (WorldRegionProbe, ProbeAtlasDecode, CubemapDecode, ParticleProbe) against the ValveResourceFormat library.
-- The launcher is built with `cargo build --release --manifest-path tools/launcher/Cargo.toml`; `python tools/launcher/set_icon.py` then embeds the app icon (`artwork/DeadBlend.ico`, regenerated from the artwork with `blender -b --factory-startup --python tools/make_app_icon.py`).
+- The launcher is built with `cargo build --release --manifest-path tools/launcher/Cargo.toml`; `python tools/launcher/set_icon.py` then embeds the app icon (`artwork/RenderLock.ico`, regenerated from the artwork with `blender -b --factory-startup --python tools/make_app_icon.py`).
 - The .NET runtime is any win-x64 `Microsoft.NETCore.App` shared runtime folder.
 
 Run the source checks with `python -m pytest -q` after installing pytest. Third-party notices are in `THIRD_PARTY.md`, `agr/vendor` and `native/licenses`; the portable runtime also retains each dependency's license files.

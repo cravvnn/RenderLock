@@ -1,4 +1,4 @@
-"""Embed the DeadBlend icon into a built launcher executable.
+"""Embed the RenderLock icon into a built launcher executable.
 
 The launcher is a plain Rust executable; this tool adds the standard Windows
 icon resources (RT_ICON + RT_GROUP_ICON) with the resource update API, so no
@@ -20,8 +20,8 @@ from ctypes import wintypes
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_EXE = ROOT / "tools" / "launcher" / "target" / "release" / "DeadBlend.exe"
-DEFAULT_ICO = ROOT / "artwork" / "DeadBlend.ico"
+DEFAULT_EXE = ROOT / "tools" / "launcher" / "target" / "release" / "RenderLock.exe"
+DEFAULT_ICO = ROOT / "artwork" / "RenderLock.ico"
 
 RT_ICON = 3
 RT_GROUP_ICON = 14

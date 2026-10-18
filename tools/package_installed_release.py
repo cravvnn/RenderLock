@@ -81,8 +81,8 @@ def package(root, output):
     prefix = "Deadlock_AGR_" + version + "_Alpha"
     folders = {"agr", "bin", "native", "tests", "tools", "validation"}
     files = {
-        "bootstrap.py", "requirements.txt", "pyproject.toml", "Launch_DeadBlend.bat",
-        "Launch_DeadBlend_Windows.cmd", "launch_deadblend.sh", "README.md", "START_HERE.txt",
+        "bootstrap.py", "requirements.txt", "pyproject.toml", "Launch_RenderLock.bat",
+        "Launch_RenderLock_Windows.cmd", "launch_renderlock.sh", "README.md", "START_HERE.txt",
         "THIRD_PARTY.md", "VALIDATION.md", "CHANGELOG.md", "STARTUP_REPAIR_README.txt",
         "MAP_WORKFLOW.md", "CLOTH_WORKFLOW.md",
     }

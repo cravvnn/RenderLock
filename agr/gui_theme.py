@@ -1,8 +1,8 @@
-"""Desktop colors, type and ttk styling for DeadBlend.
+"""Desktop colors, type and ttk styling for RenderLock.
 
 Each skin is a restrained tool palette: one neutral surface scale plus a single
 accent used for primary actions, selection and focus. No marketing styling; the
-interface should sit naturally next to Blender. ``DEADBLEND_UI_SKIN`` may select an
+interface should sit naturally next to Blender. ``RENDERLOCK_UI_SKIN`` may select an
 alternative skin for comparison builds; normal use always takes the default.
 """
 from __future__ import annotations
@@ -109,9 +109,9 @@ def enable_dpi_awareness():
 
     Must run before the first Tk window is created. Without it, Windows renders the
     window at 96 DPI and enlarges the bitmap on scaled displays, which blurs text.
-    Set DEADBLEND_UI_DPI_AWARE=0 to opt out.
+    Set RENDERLOCK_UI_DPI_AWARE=0 to opt out.
     """
-    if sys.platform != "win32" or os.environ.get("DEADBLEND_UI_DPI_AWARE", "1") == "0":
+    if sys.platform != "win32" or os.environ.get("RENDERLOCK_UI_DPI_AWARE", "1") == "0":
         return False
     import ctypes
     try:
@@ -181,7 +181,7 @@ def palette():
 
 def initialize(root):
     """Apply the selected skin and return its palette."""
-    name = os.environ.get("DEADBLEND_UI_SKIN", DEFAULT_SKIN)
+    name = os.environ.get("RENDERLOCK_UI_SKIN", DEFAULT_SKIN)
     skin = dict(SKINS.get(name, SKINS[DEFAULT_SKIN]))
     globals().update(skin)
     globals()["SKIN_NAME"] = name

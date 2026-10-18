@@ -3,15 +3,16 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "deadlock-agr"
+name = "renderlock"
 version = "0.3.0b1"
-description = "DeadBlend: offline character and animation export from Deadlock replays"
+description = "RenderLock: offline character and animation export from Deadlock replays"
 requires-python = ">=3.12"
 dependencies = ["numpy>=1.26,<3", "boon-deadlock==0.15.0", "polars==1.44.1", "python-snappy==0.7.3"]
 
 [project.scripts]
 d2b = "agr.cli:main"
 deadlock-agr = "agr.cli:main"
+renderlock = "agr.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

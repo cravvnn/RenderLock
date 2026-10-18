@@ -17,7 +17,7 @@ def bootstrap(tmp_path, monkeypatch):
     spec.loader.exec_module(module)
     monkeypatch.setattr(module, "STARTUP_VERSION", "0.2.1")
     # Exercise punctuation in real paths; subprocess receives argument arrays.
-    root = tmp_path / "DeadBlend test (alpha) & other!"
+    root = tmp_path / "RenderLock test (alpha) & other!"
     (root / "agr").mkdir(parents=True)
     (root / "agr" / "gui.py").touch()
     (root / "agr" / "__init__.py").write_text('__version__ = "0.2.1"\n')
@@ -56,7 +56,7 @@ def test_gui_failure_is_reported_and_preserved(bootstrap, monkeypatch, capsys):
     calls = outcomes(bootstrap, monkeypatch, [0, 0, 0, 23])
     assert bootstrap.main() == 23
     assert calls[-1][-2:] == ["-m", "agr.gui"]
-    assert "DeadBlend desktop exited with code 23" in capsys.readouterr().out
+    assert "RenderLock desktop exited with code 23" in capsys.readouterr().out
 
 
 def test_normal_exit_includes_no_window_log_guidance(bootstrap, monkeypatch, capsys):
@@ -125,7 +125,7 @@ def test_null_source_stops_before_setup_and_names_file(bootstrap, monkeypatch, c
     assert calls == []
     output = capsys.readouterr().out
     assert "agr/__init__.py: 1 null byte(s)" in output
-    assert "differs from DeadBlend 0.2.1 release" in output
+    assert "differs from RenderLock 0.2.1 release" in output
     assert "Keep your asset cache, settings and .venv" in output
 
 

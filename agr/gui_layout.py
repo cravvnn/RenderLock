@@ -28,7 +28,7 @@ PAGE_LIGHTING = "Lighting lab"
 
 PAGE_DETAILS = {
     PAGE_EXPORT: "Choose a recording, inspect it, then export a Blender scene.",
-    PAGE_SETUP: "Point DeadBlend at Blender and your game files. Conversion never launches Deadlock.",
+    PAGE_SETUP: "Point RenderLock at Blender and your game files. Conversion never launches Deadlock.",
     PAGE_ADVANCED: "Experimental character options and output policy.",
     PAGE_MAP: "Prepare the installed map region used by the lighting tools. Map geometry is not exported in this beta.",
     PAGE_LIGHTING: "Experimental character look: partial Source lighting, probe reflections and the Toilet Horse Shoe shader.",
@@ -291,7 +291,7 @@ def _build_rail(app, parent, beta):
         tk.Misc.lower(watermark)
     brand = tk.Frame(rail, background=gui_theme.RAIL_BG)
     brand.pack(fill="x", padx=px(17), pady=_pad((HEADER_TOP, 31)))
-    tk.Label(brand, text="DeadBlend", font=gui_theme.FONT_WORDMARK, background=gui_theme.RAIL_BG,
+    tk.Label(brand, text="RenderLock", font=gui_theme.FONT_WORDMARK, background=gui_theme.RAIL_BG,
              foreground=gui_theme.ACCENT).pack(anchor="w")
     tk.Label(brand, text=f"{__version__}  ·  " + ("Character beta" if beta else "Development"),
              font=gui_theme.FONT_TINY, background=gui_theme.RAIL_BG,
@@ -483,7 +483,7 @@ def build(app):
     root = app.root
     gui_theme.initialize(root)
     root.configure(background=gui_theme.BG)
-    root.title(f"DeadBlend | {__version__}" + (" · Character beta" if beta else " · Development"))
+    root.title(f"RenderLock | {__version__}" + (" · Character beta" if beta else " · Development"))
     app.app_icon = tk.PhotoImage(master=root, data=gui_assets.APP_ICON_PNG)
     root.iconphoto(True, app.app_icon)
     root.geometry(f"{px(1040)}x{px(760)}")

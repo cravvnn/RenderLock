@@ -661,7 +661,7 @@ RAIL_WATERMARK_PNG = {
 }
 
 
-# Application icon: the DeadBlend emblem at 256 x 256, used for the window and taskbar.
+# Application icon: the RenderLock emblem at 256 x 256, used for the window and taskbar.
 APP_ICON_PNG = (
     "iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAYAAABccqhmAAAAAXNSR0IDN8dNUwAAAARnQU1BAACxjwv8YQUAAAAgY0hSTQAAeiYA"
     "AICEAAD6AAAAgOgAAHUwAADqYAAAOpgAABdwnLpRPAAAADZlWElmTU0AKgAAABgAAABIAAAAAQAAAEgAAAABAAIBGgAFAAAAAQAA"

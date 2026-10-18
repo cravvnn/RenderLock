@@ -1,4 +1,4 @@
-//! Native DeadBlend launcher: starts the bundled portable runtime without a
+//! Native RenderLock launcher: starts the bundled portable runtime without a
 //! console window and shows a dialog when startup fails.
 
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
@@ -13,7 +13,7 @@ fn log_path() -> PathBuf {
     let base = std::env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
         .unwrap_or_else(std::env::temp_dir);
-    base.join("DeadBlend").join("logs").join("startup.log")
+    base.join("RenderLock").join("logs").join("startup.log")
 }
 
 fn read_tail(path: &Path) -> String {
@@ -50,7 +50,7 @@ fn fail(message: &str, log: Option<&Path>) {
         Some(path) => format!("{message}\n\nLog: {}", path.display()),
         None => message.to_string(),
     };
-    message_box("DeadBlend", &text);
+    message_box("RenderLock", &text);
 }
 
 fn main() -> ExitCode {
@@ -107,13 +107,13 @@ fn main() -> ExitCode {
             }
             let tail = read_tail(&log);
             fail(
-                &format!("DeadBlend closed unexpectedly (exit code {:?}).\n\n{tail}", code),
+                &format!("RenderLock closed unexpectedly (exit code {:?}).\n\n{tail}", code),
                 Some(&log),
             );
             ExitCode::FAILURE
         }
         Err(error) => {
-            fail(&format!("DeadBlend could not start the runtime: {error}"), Some(&log));
+            fail(&format!("RenderLock could not start the runtime: {error}"), Some(&log));
             ExitCode::FAILURE
         }
     }

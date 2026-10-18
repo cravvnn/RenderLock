@@ -2,7 +2,7 @@
 
 Enable **Cloth / secondary motion (experimental)** with **Installed game**. Map conversion can remain off.
 
-DeadBlend matches each character's compiled model against the version-matched prepared cloth definitions in the selected asset cache (`prepared-cloth-v1`). A matching definition reconstructs the authored proxy, pins and collision shapes, binds the FE-weighted garment in the rest pose and stores the resulting motion as shape keys. The coverage report lists which entities were baked and which were explicitly unsupported.
+RenderLock matches each character's compiled model against the version-matched prepared cloth definitions in the selected asset cache (`prepared-cloth-v1`). A matching definition reconstructs the authored proxy, pins and collision shapes, binds the FE-weighted garment in the rest pose and stores the resulting motion as shape keys. The coverage report lists which entities were baked and which were explicitly unsupported.
 
 ## Coverage and limits
 

@@ -20,8 +20,8 @@ from package_installed_release import digest, validate_archive
 
 SOURCE_ROOT_FILES = {
     "README.md", "START_HERE.txt", "THIRD_PARTY.md", "requirements.txt", "pyproject.toml",
-    "LICENSE", "bootstrap.py", "Launch_DeadBlend.bat", "Launch_DeadBlend_Windows.cmd",
-    "launch_deadblend.sh", "portable_launcher.py", "Launch_DeadBlend.cmd",
+    "LICENSE", "bootstrap.py", "Launch_RenderLock.bat", "Launch_RenderLock_Windows.cmd",
+    "launch_renderlock.sh", "portable_launcher.py", "Launch_RenderLock.cmd",
 }
 RUNTIME_REQUIREMENTS = ("numpy", "boon-deadlock", "polars", "python-snappy")
 SKIP_PARTS = {"__pycache__", ".pytest_cache", ".git", ".venv", "target", "bin", "obj"}
@@ -195,17 +195,17 @@ def package(root, output, native_helper, source2viewer_dir=None, lighting_kit=No
         raise ValueError("A verified Windows native replay helper is required")
     from agr import __version__
     output.mkdir(parents=True)
-    source = output / f"DeadBlend-{__version__}-source"
+    source = output / f"RenderLock-{__version__}-source"
     excluded_tests = stage_source(root, source)
     write_manifest(source, __version__, "source")
-    portable = output / f"DeadBlend-{__version__}-Windows-x64"
+    portable = output / f"RenderLock-{__version__}-Windows-x64"
     for folder in ("agr",):
         shutil.copytree(source / folder, portable / folder)
-    for name in ("README.md", "START_HERE.txt", "THIRD_PARTY.md", "LICENSE", "Launch_DeadBlend.cmd", "portable_launcher.py", "release_profile.json"):
+    for name in ("README.md", "START_HERE.txt", "THIRD_PARTY.md", "LICENSE", "Launch_RenderLock.cmd", "portable_launcher.py", "release_profile.json"):
         copy_file(source / name, portable / name)
     copy_file(native_helper, portable / "bin/agr-extract.exe")
     if launcher_exe is not None:
-        copy_file(launcher_exe, portable / "DeadBlend.exe")
+        copy_file(launcher_exe, portable / "RenderLock.exe")
     if source2viewer_dir is not None:
         stage_source2viewer(portable, source2viewer_dir)
     if lighting_kit is not None:

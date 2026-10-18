@@ -1,11 +1,11 @@
-"""Regenerate artwork/DeadBlend.ico from the project artwork.
+"""Regenerate artwork/RenderLock.ico from the project artwork.
 
 Run inside Blender (it decodes WebP and scales with the render pipeline):
 
     blender -b --factory-startup --python tools/make_app_icon.py
 
-Source: artwork/deadblendmain.png (WebP data, 1280 x 1280)
-Output: artwork/DeadBlend.ico (16-64 BMP entries, 128/256 PNG entries)
+Source: artwork/renderlockmain.png (WebP data, 1280 x 1280)
+Output: artwork/RenderLock.ico (16-64 BMP entries, 128/256 PNG entries)
 
 The .ico is then embedded into the launcher with tools/launcher/set_icon.py.
 """
@@ -17,8 +17,8 @@ from pathlib import Path
 import bpy
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / "artwork" / "deadblendmain.png"
-OUTPUT = ROOT / "artwork" / "DeadBlend.ico"
+SOURCE = ROOT / "artwork" / "renderlockmain.png"
+OUTPUT = ROOT / "artwork" / "RenderLock.ico"
 BMP_SIZES = (16, 24, 32, 48, 64)
 PNG_SIZES = (128, 256)
 

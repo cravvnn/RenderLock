@@ -1,13 +1,13 @@
-# DeadBlend artwork
+# RenderLock artwork
 
-Source artwork for the DeadBlend identity, as delivered by the designer.
+Source artwork for the RenderLock identity, as delivered by the designer.
 
-- `deadblendmain.png` — the main emblem. Used for the program icon: the window
+- `renderlockmain.png` — the main emblem. Used for the program icon: the window
   and taskbar icon in the app, and the icon embedded in the launcher
   executable. 1280 x 1280.
-- `deadblend.png` — alternate composition.
-- `deadblendclear.png` — alternate composition.
-- `DeadBlend.ico` — multi-size icon generated from `deadblendmain.png`
+- `renderlock.png` — alternate composition.
+- `renderlockclear.png` — alternate composition.
+- `RenderLock.ico` — multi-size icon generated from `renderlockmain.png`
   (16-64 px BMP entries, 128/256 px PNG entries).
 
 Note: the three source images carry WebP data exactly as delivered (browsers

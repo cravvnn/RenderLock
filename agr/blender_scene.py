@@ -651,7 +651,7 @@ def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime
         raise ValueError("Invalid coordinate system")
     bpy.ops.wm.read_factory_settings(use_empty=True)
     scene = bpy.context.scene
-    scene.name = "DeadBlend | replay segment"
+    scene.name = "RenderLock | replay segment"
     scene.render.fps = round(fps)
     scene.render.fps_base = round(fps) / fps
     scene.render.resolution_x, scene.render.resolution_y, scene.render.resolution_percentage = 1280, 800, 100
@@ -797,7 +797,7 @@ def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime
             evaluated = root.evaluated_get(bpy.context.evaluated_depsgraph_get())
             entry["transform_checks"].append({"frame": frame, "location": list(evaluated.location), "rotation_euler_radians": list(evaluated.rotation_euler), "world_matrix": [list(row) for row in evaluated.matrix_world]})
     readme = bpy.data.texts.new("AGR_README")
-    readme.write("DEADBLEND REPLAY SEGMENT\n\nSpace: play. Timeline event markers refer to recorded ticks.\n"
+    readme.write("RENDERLOCK REPLAY SEGMENT\n\nSpace: play. Timeline event markers refer to recorded ticks.\n"
                    + "Armature bones are hidden for a clean preview; unhide the rig in the Outliner to inspect or pose.\n"
                  + "Ticks " + str(data["start_tick"]) + "â€“" + str(data["end_tick"]) + " inclusive; " + str(fps) + " FPS.\n"
                  + "Meshes can be in rest pose when evaluated pose data is unavailable. Map/effect/secondary-motion coverage is listed below.\n"

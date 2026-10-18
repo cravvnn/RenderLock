@@ -1,7 +1,7 @@
-DeadBlend — character beta
+RenderLock — character beta
 
-Extract the entire portable ZIP, then double-click DeadBlend.exe (a
-Launch_DeadBlend.cmd fallback remains for troubleshooting).
+Extract the entire portable ZIP, then double-click RenderLock.exe (a
+Launch_RenderLock.cmd fallback remains for troubleshooting).
 No Python installation or first-run package download is needed; the Source 2
 Viewer command-line exporter and the character-look tools are included.
 

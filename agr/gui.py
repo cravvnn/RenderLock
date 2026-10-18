@@ -1,4 +1,4 @@
-"""Small local desktop launcher for the DeadBlend command line pipeline."""
+"""Small local desktop launcher for the RenderLock command line pipeline."""
 
 from __future__ import annotations
 
@@ -105,7 +105,7 @@ def settings_path() -> Path:
         base = Path.home() / "Library" / "Application Support"
     else:
         base = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
-    return base / "DeadBlend" / "settings.json"
+    return base / "RenderLock" / "settings.json"
 
 
 def asset_source_mode(values: dict[str, str]) -> str:
@@ -279,7 +279,7 @@ def build_convert_command(values: dict[str, str], *, partial: bool = False,
 class AGRApp:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
-        self.root.title(f"DeadBlend {__version__} — Replay to Blender")
+        self.root.title(f"RenderLock {__version__} — Replay to Blender")
         self.root.geometry("920x820")
         self.root.minsize(700, 640)
         self.events: queue.Queue[tuple[str, object]] = queue.Queue()
@@ -359,7 +359,7 @@ class AGRApp:
         if path:
             self.values["input"].set(path)
             if not self.values["output"].get():
-                output = Path.home() / "Documents" / "DeadBlend" / "Exports"
+                output = Path.home() / "Documents" / "RenderLock" / "Exports"
                 self.values["output"].set(str(output / (Path(path).stem + "_agr.blend")))
 
     def _browse_assets(self) -> None:

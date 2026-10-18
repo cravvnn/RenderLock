@@ -1,4 +1,4 @@
-"""Command line and conversion orchestration for DeadBlend."""
+"""Command line and conversion orchestration for RenderLock."""
 from __future__ import annotations
 
 import argparse
@@ -76,7 +76,7 @@ def default_asset_cache():
         base = Path.home() / "Library" / "Caches"
     else:
         base = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
-    return base / "DeadBlend" / "assets"
+    return base / "RenderLock" / "assets"
 
 
 def discover_source2viewer():
@@ -198,7 +198,7 @@ def publish_package(manifest, destination, overwrite=False):
         data.pop("map", None)
         data.pop('hero_lighting', None)
         data.pop('npr_materials', None)
-        data.setdefault("metadata", {})["application"] = "DeadBlend"
+        data.setdefault("metadata", {})["application"] = "RenderLock"
         data["metadata"]["application_version"] = __version__
         save_scene(data, temp / "manifest.json")
         (temp / "format.json").write_text(json.dumps(owner), encoding="utf-8")
@@ -470,7 +470,7 @@ def convert(args):
         stage = "publish_scene"
         publish_package(segment, package, args.overwrite)
         generated = read_scene(segment)
-        report = {"application": "DeadBlend", "version": __version__, "status": "converted", "output": str(output), "scene_package": str(package / "manifest.json"), "start_tick": generated["start_tick"], "end_tick": generated["end_tick"], "tick_rate": generated["tick_rate"], "export_fps": args.fps, "entities": len(generated["entities"]), "coverage": generated.get("coverage", {}), "seconds": round(time.monotonic() - started, 3), "scene_extras": generated.get("coverage", {}).get("scene_extras", {}), "ragdoll": "outside_current_scope", "death_workflow": "user_authored_animation",
+        report = {"application": "RenderLock", "version": __version__, "status": "converted", "output": str(output), "scene_package": str(package / "manifest.json"), "start_tick": generated["start_tick"], "end_tick": generated["end_tick"], "tick_rate": generated["tick_rate"], "export_fps": args.fps, "entities": len(generated["entities"]), "coverage": generated.get("coverage", {}), "seconds": round(time.monotonic() - started, 3), "scene_extras": generated.get("coverage", {}).get("scene_extras", {}), "ragdoll": "outside_current_scope", "death_workflow": "user_authored_animation",
                   "map_workflow": "installed_region" if args.include_map else "external_blend", "backward_dash_facing": "not_validated"}
         report["particles"] = report["scene_extras"].get("particles", {"status": "not_requested"})
         report["map"] = report["scene_extras"].get("map", {"status": "not_requested"})
@@ -525,7 +525,7 @@ def convert(args):
 
 
 def parser():
-    ap = argparse.ArgumentParser(prog="agr", description="DeadBlend — offline replay-to-Blender converter")
+    ap = argparse.ArgumentParser(prog="agr", description="RenderLock — offline replay-to-Blender converter")
     ap.add_argument("--version", action="version", version=__version__)
     sub = ap.add_subparsers(dest="command")
     sub.add_parser("gui", help="Open the converter window")

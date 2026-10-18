@@ -1,6 +1,6 @@
-# Contributing to DeadBlend
+# Contributing to RenderLock
 
-Thanks for helping. DeadBlend turns a selected section of a Deadlock replay into an animated Blender scene, and it is deliberately strict: unsupported data fails or reports itself, and never silently pretends to work. Contributions are held to the same standard.
+Thanks for helping. RenderLock turns a selected section of a Deadlock replay into an animated Blender scene, and it is deliberately strict: unsupported data fails or reports itself, and never silently pretends to work. Contributions are held to the same standard.
 
 ## Before you start
 
@@ -42,7 +42,7 @@ The native replay extractor: `cargo build --release --locked --manifest-path nat
 
 ## Reporting bugs
 
-Include the DeadBlend version, your game build (`ClientVersion`/`SourceRevision` from `game/citadel/steam.inf`), your Blender version, the `.agr-report.json` coverage report, the startup log (`%LOCALAPPDATA%/DeadBlend/logs`), and exact steps to reproduce. Only share replay data you have the right to share.
+Include the RenderLock version, your game build (`ClientVersion`/`SourceRevision` from `game/citadel/steam.inf`), your Blender version, the `.agr-report.json` coverage report, the startup log (`%LOCALAPPDATA%/RenderLock/logs`), and exact steps to reproduce. Only share replay data you have the right to share.
 
 ## Review and licensing
 

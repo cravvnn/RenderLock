@@ -38,11 +38,11 @@ def verify(root=ROOT):
 def main(argv=None):
     try:
         manifest = verify()
-        print(f"DeadBlend {manifest['version']} - portable files verified", flush=True)
+        print(f"RenderLock {manifest['version']} - portable files verified", flush=True)
         from agr.cli import main as run
         return run(sys.argv[1:] if argv is None else argv)
     except Exception as error:
-        print(f"DeadBlend could not start: {error}\nExtract the complete ZIP into a new folder and try again.", file=sys.stderr, flush=True)
+        print(f"RenderLock could not start: {error}\nExtract the complete ZIP into a new folder and try again.", file=sys.stderr, flush=True)
         return 1
 
 
