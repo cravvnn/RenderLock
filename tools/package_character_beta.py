@@ -20,7 +20,7 @@ from package_installed_release import digest, validate_archive
 
 SOURCE_ROOT_FILES = {
     "README.md", "START_HERE.txt", "THIRD_PARTY.md", "requirements.txt", "pyproject.toml",
-    "LICENSE", "bootstrap.py", "Launch_RenderLock.bat", "Launch_RenderLock_Windows.cmd",
+    "LICENSE", "CREDITS.md", "bootstrap.py", "Launch_RenderLock.bat", "Launch_RenderLock_Windows.cmd",
     "launch_renderlock.sh", "portable_launcher.py", "Launch_RenderLock.cmd",
 }
 RUNTIME_REQUIREMENTS = ("numpy", "boon-deadlock", "polars", "python-snappy")
@@ -201,7 +201,7 @@ def package(root, output, native_helper, source2viewer_dir=None, lighting_kit=No
     portable = output / f"RenderLock-{__version__}-Windows-x64"
     for folder in ("agr",):
         shutil.copytree(source / folder, portable / folder)
-    for name in ("README.md", "START_HERE.txt", "THIRD_PARTY.md", "LICENSE", "Launch_RenderLock.cmd", "portable_launcher.py", "release_profile.json"):
+    for name in ("README.md", "START_HERE.txt", "THIRD_PARTY.md", "LICENSE", "CREDITS.md", "Launch_RenderLock.cmd", "portable_launcher.py", "release_profile.json"):
         copy_file(source / name, portable / name)
     copy_file(native_helper, portable / "bin/agr-extract.exe")
     if launcher_exe is not None:

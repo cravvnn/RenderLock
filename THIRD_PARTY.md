@@ -1,5 +1,7 @@
 # Third-party components and asset provenance
 
+See [CREDITS.md](CREDITS.md) for people, projects and development research acknowledged by RenderLock. The component and license records below provide the detailed provenance.
+
 The native replay helper uses Boon 0.15.0, boon-proto, pbdems2, and their Rust dependencies. Exact resolved versions are retained in `native/Cargo.lock`; license notices are in `native/licenses` and described in `native/THIRD_PARTY.md`.
 
 The offline animation implementation uses research and format descriptions from ValveResourceFormat and Esoterica. Applicable MIT notices and references are retained in `agr/vendor/licenses` and `agr/vendor/THIRD_PARTY.md`.

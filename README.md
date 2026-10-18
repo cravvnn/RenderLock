@@ -79,6 +79,10 @@ Run the source checks with `python -m pytest -q` after installing pytest. Third-
 
 Game updates can change models, animation tasks and replay data. Unsupported operations fail explicitly. Partial export must be selected deliberately, and the coverage report distinguishes decoded animation, omitted effects and experimental features. Saved-scene consistency checks do not establish identical in-game lighting or visual parity.
 
+## Credits
+
+RenderLock builds on community tools, shaders and research. See [CREDITS.md](CREDITS.md) for the people and projects behind it, including Source 2 Viewer, the shader authors and the original cloth work. License notices are in [THIRD_PARTY.md](THIRD_PARTY.md).
+
 ## Contributing
 
 Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for setup, the fail-closed contract, and what makes a change reviewable.
