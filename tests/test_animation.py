@@ -78,8 +78,36 @@ def test_silver_case_aliases_preserve_recorded_bone_indices():
     (['root', 1], ['root', 1]),
 ])
 def test_bone_aliases_reject_ambiguous_or_changed_identity(recorded, installed):
-    with pytest.raises(AnimationError, match='bone or mask order'):
+    with pytest.raises(AnimationError, match='bone or mask order') as caught:
         _bone_name_aliases(recorded, installed)
+    details = caught.value.details
+    assert details['component'] == 'bones'
+    assert details['recorded_count'] == len(recorded)
+    assert details['asset_count'] == len(installed)
+    assert json.loads(json.dumps(details)) == details
+
+
+@pytest.mark.parametrize(('recorded', 'installed', 'reason', 'index', 'side'), [
+    (['root', 'arm'], ['root'], 'count', 1, None),
+    (['root', 'arm'], ['root', 'leg', 'hand'], 'count', 1, None),
+    (['Root', 'arm'], ['root', 'arm', 'hand'], 'count', 2, None),
+    (['root', 'arm'], ['arm', 'root'], 'order', 0, None),
+    (['root', ''], ['root', 'arm'], 'invalid', 1, 'recorded'),
+    (['root', 'arm'], ['root', None], 'invalid', 1, 'asset'),
+    (['root', 'ROOT'], ['root', 'arm'], 'ambiguous', 0, 'recorded'),
+    (['root', 'arm'], ['root', 'ROOT'], 'ambiguous', 0, 'asset'),
+])
+def test_skeleton_mismatch_reports_reason_and_first_name(recorded, installed, reason, index, side):
+    with pytest.raises(AnimationError) as caught:
+        _bone_name_aliases(recorded, installed)
+    details = caught.value.details
+    assert details['reason'] == reason
+    assert details['first_index'] == index
+    assert details['recorded_name'] == (recorded[index] if index < len(recorded) else None)
+    assert details['asset_name'] == (installed[index] if index < len(installed) else None)
+    assert details.get('side') == side
+    if reason == 'ambiguous':
+        assert details['conflicting_index'] == 1
 
 
 def silver_binding_inputs():
@@ -123,8 +151,32 @@ def test_bind_records_case_aliases_without_changing_source_skeleton():
 def test_bind_still_rejects_mask_reordering_with_valid_bone_aliases():
     raw, recorded, entry, skeleton = silver_binding_inputs()
     skeleton['m_maskDefinitions'].reverse()
-    with pytest.raises(AnimationError, match='bone or mask order'):
+    with pytest.raises(AnimationError, match='masks names or order differ') as caught:
         _bind(raw, 100, recorded, REGISTRY, entry, skeleton)
+    assert caught.value.details == {
+        'code':'animation_skeleton_mismatch', 'component':'masks', 'reason':'order',
+        'recorded_count':2, 'asset_count':2, 'first_index':0,
+        'recorded_name':'upper_body', 'asset_name':'lower_body',
+        'skeleton':entry['skeleton'], 'graph':entry['graph'],
+        'demo_tick':raw['demo_tick'], 'server_tick':100,
+    }
+    assert entry['skeleton'] in str(caught.value)
+    assert 'replay tick 10' in str(caught.value)
+
+
+def test_bind_accepts_empty_masks_but_reports_missing_installed_masks():
+    raw, recorded, entry, skeleton = silver_binding_inputs()
+    recorded[entry['skeleton']]['masks'] = []
+    skeleton['m_maskDefinitions'] = []
+    assert _bind(raw, 100, recorded, REGISTRY, entry, skeleton)['complete_layout']
+    recorded[entry['skeleton']]['masks'] = ['upper_body']
+    with pytest.raises(AnimationError) as caught:
+        _bind(raw, 100, recorded, REGISTRY, entry, skeleton)
+    assert caught.value.details['component'] == 'masks'
+    assert caught.value.details['reason'] == 'count'
+    assert caught.value.details['first_index'] == 0
+    assert caught.value.details['recorded_name'] == 'upper_body'
+    assert caught.value.details['asset_name'] is None
 
 
 @pytest.fixture
@@ -187,6 +239,31 @@ def test_fresh_decode_carries_prior_pose_into_stale_range_start(workspace):
         assert poses['ticks'].tolist() == [11,12]
         assert poses['fresh'].tolist() == [False,True]
         np.testing.assert_array_equal(poses['t'][:,0,0], [10,0])
+
+
+@pytest.mark.parametrize('strict', [True, False])
+def test_evaluation_preserves_skeleton_mismatch_details(workspace, strict):
+    root, assets, inputs = workspace
+    skeleton_path = assets/'clip_cache/models/test.vnmskel.json'
+    skeleton = json.loads(skeleton_path.read_text())
+    skeleton['m_boneIDs'][1] = 'elbow'
+    write(skeleton_path, skeleton)
+    if strict:
+        with pytest.raises(AnimationError) as caught:
+            evaluate_segment(inputs/'segment.json', root/'output', assets)
+        details = caught.value.details
+        assert str(caught.value).startswith('Tester (7):')
+        assert not (root/'output/animated_segment.json').exists()
+    else:
+        path = evaluate_segment(inputs/'segment.json', root/'output', assets, strict=False)
+        result = json.loads(path.read_text())
+        details = result['animation']['diagnostics'][0]['details']
+        assert result['entities'][0]['animation_status'] == 'unsupported'
+        assert 'pose_file' not in result['entities'][0]
+        assert result['coverage']['skeletal_animation']['all_requested_entities'] is False
+    assert details['component'] == 'bones' and details['reason'] == 'order'
+    assert details['recorded_name'] == 'child' and details['asset_name'] == 'elbow'
+    assert details['demo_tick'] == 10 and details['server_tick'] == 100
 
 
 def test_registry_reordered_dispatches_by_recorded_name(workspace):

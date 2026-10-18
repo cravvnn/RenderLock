@@ -41,6 +41,22 @@ The output includes a `.blend`, a companion `.agrscene` package and an `.agr-rep
 
 The launcher writes its startup log under `%LOCALAPPDATA%/RenderLock/logs`. Preferences are stored under `%APPDATA%/RenderLock`.
 
+### Reusing models and textures
+
+Keep **Setup → Generated asset cache** pointed at the same folder between exports. RenderLock converts each model and its textures once for a matching set of source files and converter tools, then reuses the verified cache for other replay ranges. The log identifies cached models and any conversions that need rebuilding. Material repairs are cached separately from the original conversion.
+
+The first export after an affected game asset or conversion tool changes may need to rebuild that cache entry. Do not edit cached files in place. The exported `.blend` still packs its textures, so it can be moved independently of the cache.
+
+### Model bone rules
+
+**Model bone rules (experimental)** applies supported rules authored in the character model, such as making one bone aim at, follow or twist with another. These supplement the recorded skeletal animation. They are separate from cloth simulation, and unsupported rules remain explicitly reported.
+
+### Skeleton compatibility errors
+
+A replay's bone and animation-mask indices must match the installed animation skeleton. RenderLock stops when they differ, because applying those indices to another rig can animate the wrong bones. A different replay/game asset version is one possible cause; the diagnostic report identifies whether the failure concerns bones, masks or invalid names.
+
+If this happens, keep the diagnostic folder printed in the log. It contains `failure.json`, `segment.json`, `animation_tables.json`, `installed_asset_report.json` and the decoded skeleton below `installed-assets/clip_cache`; rig mismatches also include `installed-assets/animation_asset_report.json`. Include the RenderLock version, replay match ID, selected ticks and installed game build when reporting the issue. These diagnostic files can contain replay details, so share them privately when needed. A replay recorded with your currently installed game build is a useful compatibility check.
+
 ## Source checkout
 
 Requires 64-bit Python 3.12 or newer, Blender and the Source 2 Viewer CLI (a bundled copy lives in the portable package's `tools/source2viewer` folder). Create a virtual environment, install `requirements.txt`, then run:

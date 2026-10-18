@@ -5,8 +5,8 @@ import json
 from pathlib import Path
 import shutil
 
-from .asset_converter import AssetConverter, ConversionError
-from .game_assets import GameAssetProvider, GameAssetError
+from .asset_converter import AssetConverter, ConversionError, sha
+from .game_assets import GameAssetProvider, GameAssetError, safe_resource_path
 from .installed_animation import prepare_animation_assets
 from .vendor.resource_hash import resource_id
 
@@ -17,6 +17,66 @@ def _write(path, data):
     temp = path.with_name(path.name + '.part')
     temp.write_text(json.dumps(data, indent=2) + '\n', encoding='utf-8')
     temp.replace(path)
+
+
+def _cached_material_repairs(model, decoder):
+    """Keep the optional material variant beside other immutable derived assets.
+
+    The base conversion's verified manifest binds its model, external textures,
+    source resources and converter. Never modify that entry while repairing it.
+    """
+    from . import gltf_materials
+
+    model = Path(model)
+    manifest = model.parent / 'conversion.json'
+    record = json.loads(manifest.read_text(encoding='utf-8'))
+    files = record.get('files') if isinstance(record, dict) else None
+    if not isinstance(files, dict) or not files:
+        raise ConversionError('Invalid cached model file inventory for material preparation')
+
+    def member_path(root, relative):
+        # A manifest can change after model() verifies it. Recheck both native
+        # and Windows path syntax before reading or copying any listed file.
+        try:
+            # Validate portable Windows syntax without using the validator's
+            # lowercase result: exported image names retain their exact case.
+            safe_resource_path(relative)
+        except GameAssetError as exc:
+            raise ConversionError(f'Unsafe cached model dependency path: {relative!r}') from exc
+        normalized = relative.replace('\\', '/')
+        parts = normalized.split('/')
+        root = root.resolve()
+        member = root.joinpath(*parts)
+        if not member.resolve().is_relative_to(root):
+            raise ConversionError(f'Cached model dependency escapes its cache directory: {relative!r}')
+        return member
+
+    # Validate the whole inventory first, including source symlink targets.
+    # No material output is created if even a later entry is unsafe.
+    sources = [(relative, member_path(model.parent, relative), digest)
+               for relative, digest in files.items()]
+    inputs = {'base_conversion_sha256': sha(manifest)}
+    settings = {'approximate_glass': True,
+                'repair_sha256': sha(Path(gltf_materials.__file__)),
+                'adapter_sha256': sha(Path(__file__))}
+    def build(temp):
+        # Preserve all relative texture/buffer paths. This copy happens once
+        # per verified variant, never once per replay or selected tick range.
+        targets = [(relative, member_path(model.parent, relative), member_path(temp, relative), digest)
+                   for relative, _, digest in sources]
+        for relative, source, target, digest in targets:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, target)
+            if sha(target) != digest:
+                raise ConversionError(f'Cached model output changed during material preparation: {relative}')
+        original = temp / model.name
+        report = gltf_materials.repair_glb(original, temp / 'model-agr-materials.glb',
+                                           approximate_glass=True)
+        original.unlink()
+        _write(temp / 'material_repairs.json', report)
+    dest = decoder._entry('hero_material_repairs_v1', inputs, settings, build)
+    return dest / 'model-agr-materials.glb', json.loads(
+        (dest / 'material_repairs.json').read_text(encoding='utf-8'))
 
 
 def bind_models(segment, resource_paths):
@@ -76,7 +136,11 @@ def prepare_installed_assets(segment_path: Path, work_dir: Path, install_path: P
               'demo_sha256': segment.get('metadata', {}).get('demo_sha256'),
               'bindings': bindings, 'diagnostics': failures, 'models': [],
               'converter': decoder.identity,
+              'model_cache': {'root': str(decoder.root), 'reused': 0, 'converted': 0,
+                              'material_repairs_reused': 0, 'material_repairs_built': 0,
+                              'storage': 'shared_verified_cache'},
               'scope': 'Hero geometry, materials and recorded skeletal animation, plus requested scene extensions with separate coverage.'}
+    log(f'Shared model and texture cache: {decoder.root}')
     def checkpoint(status):
         report['status'] = status
         report['conversion_cache'] = dict(decoder.stats)
@@ -100,21 +164,26 @@ def prepare_installed_assets(segment_path: Path, work_dir: Path, install_path: P
                 if path not in converted:
                     if model_constraints:
                         constraints[path] = decoder.model_constraints(path, provider)
+                    hits = decoder.stats['cache_hits']
                     model, details = decoder.model(path, provider)
-                    dest = pack / 'models' / model.parent.name
-                    shutil.copytree(model.parent, dest, dirs_exist_ok=True)
-                    converted[path] = dest / model.name
+                    reused = decoder.stats['cache_hits'] > hits
+                    report['model_cache']['reused' if reused else 'converted'] += 1
+                    if reused:
+                        log(f'Reusing cached installed model and textures: {path}')
+                    # Blender imports and packs these verified files read-only.
+                    # Per-export work must not duplicate all hero textures.
+                    converted[path] = model
+                    details = dict(details)
+                    details['cache'] = {'status': 'reused' if reused else 'converted',
+                                        'storage': 'shared_verified_cache'}
                     if material_repairs:
-                        from .gltf_materials import repair_glb
-                        repaired = dest / 'model-agr-materials.glb'
-                        # Work output may be retried; the copied converter input
-                        # remains intact and the derived variant is regenerated.
-                        if repaired.exists():
-                            repaired.unlink()
-                        details = dict(details)
-                        details['material_repairs'] = repair_glb(converted[path], repaired, approximate_glass=True)
-                        _write(dest / 'material_repairs.json', details['material_repairs'])
-                        converted[path] = repaired
+                        hits = decoder.stats['cache_hits']
+                        converted[path], details['material_repairs'] = _cached_material_repairs(model, decoder)
+                        reused_repairs = decoder.stats['cache_hits'] > hits
+                        report['model_cache']['material_repairs_reused' if reused_repairs else 'material_repairs_built'] += 1
+                        details['cache']['material_repairs'] = 'reused' if reused_repairs else 'built'
+                        log(f"{'Reusing' if reused_repairs else 'Prepared'} cached material adjustments: {path}")
+                    details['cache']['model_file'] = str(converted[path])
                     report['models'].append(details)
                 entity = by_id[str(binding['id'])]
                 for key in ('asset_objects', 'asset_collection', 'rig_object', 'model_local_transform'):
@@ -168,6 +237,8 @@ def prepare_installed_assets(segment_path: Path, work_dir: Path, install_path: P
         checkpoint('prepared' if not report['diagnostics'] else 'prepared_partial')
         log(f'Installed assets ready: {len(converted)} distinct models; '
             f"{report['animation'].get('sampled_clip_count', 0)} sampled animation clips.")
+        log(f"Model cache: {report['model_cache']['reused']} reused, "
+            f"{report['model_cache']['converted']} converted; textures stay in the shared cache.")
         return pack
     except BaseException:
         checkpoint('failed')

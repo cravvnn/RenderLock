@@ -1,3 +1,11 @@
+# 0.3.0b2 — UI responsiveness, shared assets and compatibility diagnostics
+
+- Reduce repeated resize layout and decorative redraw work while retaining the interface design.
+- Rename the bone-constraint option to Model bone rules and explain how supported aim, follow and twist rules supplement animation separately from cloth.
+- Read verified character models and textures directly from the shared cache across exports and tick ranges; cache material repairs separately and show reuse in the log.
+- Explain skeleton compatibility failures with bones versus masks, counts, the first differing index/name and resource/tick context. Preserve structured diagnostics in failed and partial exports; strict rig validation remains unchanged.
+- Include the credits and changelog in portable packages, and the contributing/workflow documents in source archives.
+
 # 0.3.0b1 — RenderLock character beta
 
 - Rename the product to RenderLock (window, sidebar, docs, launchers, package names).

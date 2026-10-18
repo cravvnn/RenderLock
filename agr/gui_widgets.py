@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import math
 import tkinter as tk
+from functools import lru_cache
 from tkinter import font as tkfont
 
 from .gui_theme import px
@@ -32,6 +33,7 @@ def _parent_bg(parent, fallback):
         return fallback
 
 
+@lru_cache(maxsize=256)
 def _rgb(color):
     return tuple(int(color[i:i + 2], 16) for i in (1, 3, 5))
 
@@ -135,11 +137,88 @@ def gradient_color(stops, t):
     return stops[-1][1]
 
 
-def outline_right_rounded(frame, radius, fill, bg, color_at, width=1):
+class IdleUpdate:
+    """Combine a burst of layout notifications into one update after layout settles."""
+
+    def __init__(self, widget, callback):
+        self.widget = widget
+        self.callback = callback
+        self._job = None
+        widget.bind("<Destroy>", self._destroy, add="+")
+
+    def __call__(self, _event=None):
+        if self._job is None:
+            self._job = self.widget.after_idle(self._flush)
+
+    def _flush(self):
+        self._job = None
+        self.callback()
+
+    def _destroy(self, event):
+        if event.widget is self.widget and self._job is not None:
+            self.widget.after_cancel(self._job)
+            self._job = None
+
+
+class ResizeRedraw(IdleUpdate):
+    """Redraw once per settled size; moving a widget does not repaint its shape."""
+
+    def __init__(self, widget, callback, *, idle=True):
+        self._size = None
+        self._redraw = callback
+        self._idle = idle
+        super().__init__(widget, self._resize)
+        widget.bind("<Configure>", self, add="+")
+
+    def __call__(self, event=None):
+        if event is None or (event.widget is self.widget and
+                             (event.width, event.height) != self._size):
+            if self._idle:
+                super().__call__(event)
+            else:
+                self._resize()
+
+    def _resize(self):
+        size = self.widget.winfo_width(), self.widget.winfo_height()
+        if size != self._size:
+            self._size = size
+            self._redraw(*size)
+
+
+def _strip_colors(length, color_at, linear):
+    """Sample a strip; a linear RGB gradient has constant-color runs after rounding.
+
+    Equal endpoint colors imply an equal interior only for a linear gradient.
+    Splitting at color changes preserves the exact pixel colors without running
+    interpolation and hex formatting for every pixel of the rail on every resize.
+    """
+    if not linear:
+        return [color_at(index) for index in range(length)]
+    colors = [None] * length
+
+    def fill(first, last, left, right):
+        if left == right or first == last:
+            colors[first:last + 1] = [left] * (last - first + 1)
+        elif last - first == 1:
+            colors[first], colors[last] = left, right
+        else:
+            middle = (first + last) // 2
+            center = color_at(middle)
+            fill(first, middle, left, center)
+            fill(middle, last, center, right)
+
+    if length:
+        fill(0, length - 1, color_at(0), color_at(length - 1))
+    return colors
+
+
+def outline_right_rounded(frame, radius, fill, bg, color_at, width=1, linear_gradient=False):
     """Gradient outline on the top, right and bottom edges of a frame with rounded right corners.
 
     ``color_at(u, v)`` gives the outline color at normalized frame coordinates
     (0-1 across, 0-1 down), so any linear gradient from the design can be used.
+    Set ``linear_gradient`` only for a single linear RGB gradient, allowing exact
+    constant-color runs to be sampled together during resize.
     The rounded corners themselves (fill, outline ring and outside color) are
     drawn here too. Call after the frame's content is built so the pieces sit on top.
     """
@@ -160,26 +239,34 @@ def outline_right_rounded(frame, radius, fill, bg, color_at, width=1):
             image.put(" ".join("{" + " ".join([c] * width) + "}" for c in colors))
         return image
 
-    def redraw(_event=None):
-        w, h = frame.winfo_width(), frame.winfo_height()
+    last_size = None
+
+    def redraw(w, h):
+        nonlocal last_size
         if w <= radius or h <= 2 * radius:
             return
         run = w - radius
-        images = {
-            "top": strip([color_at(x / w, 0.0) for x in range(run)], True),
-            "bottom": strip([color_at(x / w, 1.0) for x in range(run)], True),
-            "right": strip([color_at(1.0, y / h) for y in range(radius, h - radius)], False),
-            "ne": _corner(frame, radius, fill, color_at(1.0, 0.0), bg, "ne"),
-            "se": _corner(frame, radius, fill, color_at(1.0, 1.0), bg, "se"),
-        }
+        images = {}
+        # The rail has a fixed width. A height-only resize needs only its right
+        # strip; re-creating the top/bottom images adds work to every drag event.
+        if last_size is None or w != last_size[0]:
+            images.update(
+                top=strip(_strip_colors(run, lambda x: color_at(x / w, 0.0), linear_gradient), True),
+                bottom=strip(_strip_colors(run, lambda x: color_at(x / w, 1.0), linear_gradient), True))
+        if last_size is None or h != last_size[1]:
+            images["right"] = strip(_strip_colors(h - 2 * radius,
+                lambda y: color_at(1.0, (radius + y) / h), linear_gradient), False)
+        if last_size is None:
+            images.update(ne=_corner(frame, radius, fill, color_at(1.0, 0.0), bg, "ne"),
+                          se=_corner(frame, radius, fill, color_at(1.0, 1.0), bg, "se"))
         for name, image in images.items():
             pieces[name].configure(image=image)
             pieces[name].image = image  # keep a reference; Tk does not
+        last_size = w, h
 
-    frame.bind("<Configure>", redraw, add="+")
+    ResizeRedraw(frame, redraw)()
     for piece in pieces.values():
         piece.lift()
-    redraw()
     return pieces
 
 
@@ -362,7 +449,9 @@ class RoundedEntry(_StateMixin, tk.Canvas):
                               readonlybackground=t["FIELD"], selectbackground=t["RAIL_SEL"],
                               selectforeground=t["TEXT"], font=font)
         self._window = self.create_window(self._pad_x, height // 2, window=self.entry, anchor="w")
-        self.bind("<Configure>", lambda _e: self._draw())
+        # Small shapes are cheaper to paint in the same layout pass. Only the
+        # expensive rail gradient is deferred; avoid an extra paint pass here.
+        ResizeRedraw(self, lambda _w, _h: self._draw(), idle=False)
         self.bind("<Button-1>", lambda _e: self.entry.focus_set())
         for widget in (self, self.entry):
             widget.bind("<Enter>", lambda _e: self._set_hover(True), add="+")
@@ -419,14 +508,14 @@ class Card(tk.Frame):
         super().__init__(parent, background=self._bg)
         self._shape = tk.Canvas(self, background=self._bg, highlightthickness=0, bd=0)
         self._shape.place(x=0, y=0, relwidth=1, relheight=1)
-        self._shape.bind("<Configure>", self._redraw)
+        ResizeRedraw(self._shape, self._redraw, idle=False)
         self.body = tk.Frame(self, background=self._fill)
         self.body.pack(fill="both", expand=True, padx=px(pad_x), pady=px(pad_y))
         tk.Misc.lower(self._shape)  # Canvas.lower is tag_lower; this lowers the widget itself.
 
-    def _redraw(self, event):
+    def _redraw(self, width, height):
         self._shape.delete("shape")
-        draw_rounded(self._shape, 0, 0, event.width, event.height, self._radius, self._fill, self._edge, self._bg)
+        draw_rounded(self._shape, 0, 0, width, height, self._radius, self._fill, self._edge, self._bg)
 
 
 class SegmentedControl(_StateMixin, tk.Canvas):

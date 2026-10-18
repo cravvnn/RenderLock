@@ -105,6 +105,28 @@ def test_adapter_failure_keeps_segment_and_stage(inputs):
     assert not args.output.exists()
 
 
+def test_animation_mismatch_failure_preserves_structured_details(inputs):
+    from agr.animation import AnimationError, _bone_name_aliases
+
+    def fail(**kwargs):
+        _bone_name_aliases(['root', 'arm'], ['root', 'tip'], component='bones',
+                           context={'skeleton':'models/test.vnmskel', 'graph':'graphs/test.vnmgraph',
+                                    'demo_tick':10, 'server_tick':100})
+    inputs.adapter.prepare_installed_assets = fail
+    args = arguments(inputs, '--game-install', str(inputs.install), '--source2viewer', str(inputs.converter))
+    with pytest.raises(AnimationError) as caught:
+        cli.convert(args)
+    failure = json.loads(next(inputs.root.glob('agr-*/failure.json')).read_text())
+    assert failure['stage'] == 'prepare_installed_assets'
+    assert failure['type'] == 'AnimationError'
+    assert failure['error'] == str(caught.value)
+    assert failure['details'] == caught.value.details
+    assert failure['details']['recorded_name'] == 'arm'
+    assert failure['details']['asset_name'] == 'tip'
+    assert failure['details']['demo_tick'] == 10
+    assert not args.output.exists()
+
+
 def test_partial_is_forwarded_without_pruning_the_roster(inputs):
     calls = []
     def prepare(**kwargs):

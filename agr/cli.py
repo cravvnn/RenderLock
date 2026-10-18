@@ -516,7 +516,11 @@ def convert(args):
             log("Completed with coverage warnings. Open the coverage report or AGR_README in Blender for missing/approximate features.")
         return report
     except BaseException as exc:
-        (work / "failure.json").write_text(json.dumps({"error": str(exc), "type": type(exc).__name__, "stage": stage}, indent=2), encoding="utf-8")
+        failure = {"error": str(exc), "type": type(exc).__name__, "stage": stage}
+        details = getattr(exc, "details", None)
+        if isinstance(details, dict) and details:
+            failure["details"] = details
+        (work / "failure.json").write_text(json.dumps(failure, indent=2), encoding="utf-8")
         log(f"Diagnostic files retained at: {work}")
         raise
     finally:

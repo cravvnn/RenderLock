@@ -112,6 +112,15 @@ def prepare_animation_assets(segment_path: Path, pack_root: Path, provider, conv
     skeletons, graphs, clips = {}, {}, {}
     cache = pack_root/'clip_cache'
 
+    def asset_report(status):
+        return {'schema_version': 1, 'source': 'installed-game', 'demo_sha256': digest,
+                'status': status, 'catalog': catalog, 'entities': reports, 'diagnostics': diagnostics,
+                'resources': sorted(sources.values(), key=lambda r: r['resource']),
+                'sampled_clip_count': len(clips), 'pose_evaluation_complete': False,
+                'limitations': ['Skeletal evaluation is a separate required stage.',
+                                'Replay identity, graph ID and skeleton bone/mask ordering are checked.',
+                                'Particle simulation, cloth and ragdoll are not part of this resource preparation.']}
+
     def source(name):
         if name not in sources:
             resolved = provider.resolve(name)
@@ -224,20 +233,20 @@ def prepare_animation_assets(segment_path: Path, pack_root: Path, provider, conv
                             'status': 'prepared'})
         except (AnimationError, ValueError, OSError, KeyError, AssertionError, IndexError, RuntimeError) as error:
             message = f'{label} ({identity}): {error}'
+            details = getattr(error, 'details', None)
+            diagnostic = {'id': entity['id'], 'hero_id': entity['hero_id'],
+                          'code': 'unsupported_animation_assets', 'message': message}
+            if details:
+                diagnostic['details'] = details
+            diagnostics.append(diagnostic)
             if strict:
-                raise AnimationError(message) from error
-            diagnostics.append({'id': entity['id'], 'hero_id': entity['hero_id'],
-                                'code': 'unsupported_animation_assets', 'message': message})
+                try:
+                    _write(pack_root/'animation_asset_report.json', asset_report('failed'))
+                except OSError as report_error:
+                    log(f'Could not save the animation asset diagnostics: {report_error}')
+                raise AnimationError(message, details=details) from error
             log(message)
-    report = {'schema_version': 1, 'source': 'installed-game', 'demo_sha256': digest,
-              'status': 'partial' if diagnostics else 'prepared',
-              'catalog': catalog, 'entities': reports, 'diagnostics': diagnostics,
-              'resources': sorted(sources.values(), key=lambda r: r['resource']),
-              'sampled_clip_count': len(clips),
-              'pose_evaluation_complete': False,
-              'limitations': ['Skeletal evaluation is a separate required stage.',
-                              'Replay identity, graph ID and skeleton bone/mask ordering are checked.',
-                              'Particle simulation, cloth and ragdoll are not part of this resource preparation.']}
+    report = asset_report('partial' if diagnostics else 'prepared')
     _write(pack_root/'animation_catalog.json', {'heroes': catalog})
     _write(pack_root/'animation_asset_report.json', report)
     return report

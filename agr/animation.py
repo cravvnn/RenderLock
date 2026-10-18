@@ -24,6 +24,10 @@ from .vendor.resource_hash import resource_id
 class AnimationError(ValueError):
     """An unsupported or unverifiable animation input; never invent a pose."""
 
+    def __init__(self, message: str, *, details: dict | None = None):
+        super().__init__(message)
+        self.details = dict(details) if details else {}
+
 TASKS = {
     'CNmCachedPoseWriteTask': 0, 'CNmSampleTask': 1, 'CNmCachedPoseReadTask': 5,
     'CNmTwoBoneIKTask': 4, 'CNmBlendTask': 6,
@@ -222,27 +226,69 @@ def _require_cached_clips(rows: list[dict], cache: Path) -> None:
                              + '; '.join(missing) + '. Build/import these clip cache resources first.')
 
 
-def _bone_name_aliases(recorded_bones: list[str], asset_bones: list[str]) -> list[dict]:
+def _bone_name_aliases(recorded_bones: list[str], asset_bones: list[str], *,
+                       component: str = 'bones', context: dict | None = None) -> list[dict]:
     """Accept only unambiguous ASCII-case spelling changes at the same index.
 
     Recipe bone indices keep their original meaning. This does not reorder or
     rename the installed skeleton, retarget poses, or establish build equality.
     The same indexed ASCII-case check is used separately for mask names.
     """
-    invalid = AnimationError('Asset skeleton bone or mask order differs from the replay')
-    if len(recorded_bones) != len(asset_bones):
-        raise invalid
     ascii_lower = str.maketrans('ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz')
+
+    def diagnostic_name(name):
+        return name.translate(ascii_lower) if isinstance(name, str) else name
+
+    def invalid(reason, index, *, side=None, conflicting_index=None):
+        details = dict(context or {})
+        details.update(code='animation_skeleton_mismatch', component=component, reason=reason,
+                       recorded_count=len(recorded_bones), asset_count=len(asset_bones),
+                       first_index=index,
+                       recorded_name=recorded_bones[index] if index < len(recorded_bones) else None,
+                       asset_name=asset_bones[index] if index < len(asset_bones) else None)
+        if side is not None:
+            details['side'] = side
+        if conflicting_index is not None:
+            details['conflicting_index'] = conflicting_index
+        explanation = {
+            'count': 'counts differ', 'order': 'names or order differ',
+            'invalid': 'an empty or non-text name is invalid',
+            'ambiguous': 'names collide when ignoring ASCII letter case',
+        }[reason]
+        location = f"; skeleton {details['skeleton']}" if 'skeleton' in details else ''
+        if 'graph' in details:
+            location += f"; graph {details['graph']}"
+        if 'demo_tick' in details:
+            location += f"; replay tick {details['demo_tick']}"
+        return AnimationError(
+            'Asset skeleton bone or mask order differs from the replay: '
+            f'{component} {explanation} (replay {len(recorded_bones)}, installed {len(asset_bones)}; '
+            f'index {index}: replay {details["recorded_name"]!r}, installed {details["asset_name"]!r}'
+            f'{location}). The recorded animation cannot be safely matched to these installed assets. '
+            'For compatibility checking, share failure.json and animation_asset_report.json '
+            'from the retained diagnostic folder, plus the replay ID and tick range.',
+            details=details)
+
+    if len(recorded_bones) != len(asset_bones):
+        index = next((i for i, (recorded, asset) in enumerate(zip(recorded_bones, asset_bones))
+                      if diagnostic_name(recorded) != diagnostic_name(asset)),
+                     min(len(recorded_bones), len(asset_bones)))
+        raise invalid('count', index)
     normalized = []
-    for names in (recorded_bones, asset_bones):
-        if any(not isinstance(name, str) or not name for name in names):
-            raise invalid
+    for side, names in [('recorded', recorded_bones), ('asset', asset_bones)]:
+        for index, name in enumerate(names):
+            if not isinstance(name, str) or not name:
+                raise invalid('invalid', index, side=side)
         folded = [name.translate(ascii_lower) for name in names]
-        if len(set(folded)) != len(folded):
-            raise invalid
+        seen = {}
+        for index, name in enumerate(folded):
+            if name in seen:
+                raise invalid('ambiguous', seen[name], side=side, conflicting_index=index)
+            seen[name] = index
         normalized.append(folded)
     if normalized[0] != normalized[1]:
-        raise invalid
+        index = next(i for i, (recorded, asset) in enumerate(zip(*normalized)) if recorded != asset)
+        raise invalid('order', index)
     return [{'index': index, 'recorded': recorded, 'asset': asset}
             for index, (recorded, asset) in enumerate(zip(recorded_bones, asset_bones))
             if recorded != asset]
@@ -262,8 +308,10 @@ def _bind(raw: dict, tick: int, recorded: dict, registry: list[str],
         raise AnimationError(f'Replay tables do not contain graph/skeleton {graph}')
     graph_asset = recorded[graph]; sk_asset = recorded[entry['skeleton']]
     bones = skeleton['m_boneIDs']; masks = [m['m_ID'] for m in skeleton['m_maskDefinitions']]
-    aliases = _bone_name_aliases(sk_asset['bones'], bones)
-    mask_aliases = _bone_name_aliases(sk_asset['masks'], masks)
+    context = {'skeleton': entry['skeleton'], 'graph': graph,
+               'demo_tick': raw['demo_tick'], 'server_tick': tick}
+    aliases = _bone_name_aliases(sk_asset['bones'], bones, context=context)
+    mask_aliases = _bone_name_aliases(sk_asset['masks'], masks, component='masks', context=context)
     lut = graph_asset['resources']
     if not lut or len(set(lut)) != len(lut):
         raise AnimationError('Recorded graph resource list is empty or ambiguous')
@@ -489,10 +537,14 @@ def evaluate_segment(segment_path: Path, output: Path, assets: Path,
                                 for row in selected for a in row.get('bone_name_aliases', [])}.values())})
         except (AnimationError, ValueError, FileNotFoundError, KeyError, AssertionError, IndexError) as error:
             message = f'{label} ({identity}): {error}'
+            details = getattr(error, 'details', None)
             if strict:
-                raise AnimationError(message) from error
+                raise AnimationError(message, details=details) from error
             entity['animation_status'] = 'unsupported'
-            diagnostics.append({'id': entity['id'], 'code': 'unsupported_animation', 'message': message})
+            diagnostic = {'id': entity['id'], 'code': 'unsupported_animation', 'message': message}
+            if details:
+                diagnostic['details'] = details
+            diagnostics.append(diagnostic)
     result['animation'] = {
         'source': source, 'demo_sha256': digest,
         'coordinates': {'space': 'source', 'quaternion_order': 'xyzw',

@@ -16,7 +16,7 @@ from tkinter import ttk
 
 from . import __version__, gui_assets, gui_theme
 from .gui_theme import hairline, px
-from .gui_widgets import (Card, CheckBox, ProgressLine, RoundedButton, RoundedEntry, SegmentedControl,
+from .gui_widgets import (Card, CheckBox, IdleUpdate, ProgressLine, ResizeRedraw, RoundedButton, RoundedEntry, SegmentedControl,
                           StatusDot, bind_tree, gradient_color, outline_right_rounded)
 from .release_profile import character_beta
 
@@ -187,17 +187,31 @@ def _page(container):
     content.columnconfigure(0, weight=1)
     window = canvas.create_window((0, 0), window=content, anchor="nw")
 
-    def resize(event=None):
-        canvas.itemconfigure(window, width=canvas.winfo_width())
-        canvas.configure(scrollregion=canvas.bbox("all"))
-        if content.winfo_reqheight() > canvas.winfo_height() + 1:
-            bar.grid(row=0, column=1, sticky="ns", padx=_pad((8, 0)))
-        else:
-            bar.grid_remove()
-            canvas.yview_moveto(0)
+    last_width = last_region = None
+    scrollbar_visible = False
 
-    content.bind("<Configure>", resize)
-    canvas.bind("<Configure>", resize)
+    def resize():
+        nonlocal last_width, last_region, scrollbar_visible
+        width = canvas.winfo_width()
+        if width != last_width:
+            canvas.itemconfigure(window, width=width)
+            last_width = width
+        region = canvas.bbox("all")
+        if region != last_region:
+            canvas.configure(scrollregion=region)
+            last_region = region
+        overflow = content.winfo_reqheight() > canvas.winfo_height() + 1
+        if overflow != scrollbar_visible:
+            if overflow:
+                bar.grid(row=0, column=1, sticky="ns", padx=_pad((8, 0)))
+            else:
+                bar.grid_remove()
+                canvas.yview_moveto(0)
+            scrollbar_visible = overflow
+
+    update = IdleUpdate(shell, resize)
+    content.bind("<Configure>", update)
+    canvas.bind("<Configure>", update)
 
     def wheel(event):
         # Scroll only the page under the pointer; logs keep their native wheel.
@@ -307,7 +321,7 @@ def _build_rail(app, parent, beta):
         _nav_item(app, rail, name, glyph, icon_family, label)
     # The rail is a raised panel: rounded corners and a 1 px gradient outline facing the content.
     outline_right_rounded(rail, px(RAIL_RADIUS), gui_theme.RAIL_BG, gui_theme.BG, _rail_edge_color,
-                          width=hairline())
+                          width=hairline(), linear_gradient=True)
     return rail
 
 
@@ -414,9 +428,13 @@ def _build_advanced(app, page):
                       "Experimental features depend on the selected hero and recorded data. "
                       "Check coverage after export.")
     for text, key in (("Cloth / secondary motion (experimental)", "cloth_enabled"),
-                      ("Authored bone constraints (experimental)", "model_constraints"),
+                      ("Model bone rules (experimental)", "model_constraints"),
                       ("Material repairs / approximate glass (experimental)", "material_repairs")):
         _check(app, body, text, app.values[key])
+        if key == "model_constraints":
+            _note(body, "Applies supported model rules for how bones aim at, follow or twist with other bones.\n"
+                        "This can refine the recorded pose. It does not simulate cloth or physics.",
+                  pady=(0, ROW_GAP))
 
     body, row = _card(app, page, row, "Particle simulation",
                       "Optional event simulation. Unsupported events are reported and omitted.",
@@ -578,7 +596,7 @@ def build(app):
     status_label = tk.Label(status_row, textvariable=app.status, background=gui_theme.BG,
                             foreground=gui_theme.MUTED, font=gui_theme.FONT, justify="left", anchor="w")
     status_label.pack(side="left", fill="x", expand=True)
-    status_label.bind("<Configure>", lambda event: status_label.configure(wraplength=max(px(120), event.width)))
+    ResizeRedraw(status_label, lambda width, _height: status_label.configure(wraplength=max(px(120), width)), idle=False)
 
     # Progress line in a fixed-height slot, so starting a job never moves anything.
     slot = tk.Frame(main, background=gui_theme.BG, height=px(3))

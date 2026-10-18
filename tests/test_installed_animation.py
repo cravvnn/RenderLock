@@ -63,10 +63,65 @@ def test_recorded_skeleton_order_mismatch_stops_before_clip_decode(workspace):
     skeleton = converter.dump('models/test.vnmskel', None)
     skeleton['m_boneIDs'] = ['root', 'tip', 'child']
     converter.overrides['models/test.vnmskel'] = skeleton
-    with pytest.raises(AnimationError, match='bone or mask order'):
+    with pytest.raises(AnimationError, match='bone or mask order') as caught:
         prepare_animation_assets(inputs/'segment.json', root/'installed', Provider(), converter)
     assert not converter.decoded
     assert not (root/'installed/animation_catalog.json').exists()
+    report = json.loads((root/'installed/animation_asset_report.json').read_text())
+    assert report['status'] == 'failed'
+    assert report['demo_sha256'] == 'a'*64
+    assert report['catalog'] == {} and report['entities'] == []
+    assert report['sampled_clip_count'] == 0 and not report['pose_evaluation_complete']
+    assert report['resources'] == [
+        {'resource':'graphs/test.vnmgraph', 'sha256':'c'*64},
+        {'resource':'models/test.vnmskel', 'sha256':'c'*64},
+    ]
+    diagnostic = report['diagnostics'][0]
+    assert diagnostic['id'] == '7' and diagnostic['hero_id'] == 99
+    assert diagnostic['message'] == str(caught.value)
+    assert diagnostic['details'] == caught.value.details == {
+        'code':'animation_skeleton_mismatch', 'component':'bones', 'reason':'order',
+        'recorded_count':3, 'asset_count':3, 'first_index':1,
+        'recorded_name':'child', 'asset_name':'tip',
+        'skeleton':'models/test.vnmskel', 'graph':'graphs/test.vnmgraph',
+        'demo_tick':10, 'server_tick':100,
+    }
+
+
+def test_mask_mismatch_is_preserved_in_partial_diagnostics(workspace):
+    root, source, inputs = workspace; converter = Converter(source)
+    table = json.loads((inputs/'animation_tables.json').read_text())
+    table['initial_tables']['AnimAssetData'][1]['data_hex'] = (
+        struct.pack('<I',1)+strings(['root','child','tip'])+strings(['upper','lower'])).hex()
+    write(inputs/'animation_tables.json', table)
+    skeleton = converter.dump('models/test.vnmskel', None)
+    skeleton['m_maskDefinitions'] = [{'m_ID':'lower'}, {'m_ID':'upper'}]
+    converter.overrides['models/test.vnmskel'] = skeleton
+    report = prepare_animation_assets(inputs/'segment.json', root/'installed', Provider(), converter, strict=False)
+    assert not converter.decoded
+    assert report['status'] == 'partial' and report['catalog'] == {} and report['entities'] == []
+    details = report['diagnostics'][0]['details']
+    assert details['component'] == 'masks' and details['reason'] == 'order'
+    assert details['recorded_name'] == 'upper' and details['asset_name'] == 'lower'
+    assert details['skeleton'] == 'models/test.vnmskel' and details['demo_tick'] == 10
+    assert json.loads((root/'installed/animation_asset_report.json').read_text()) == report
+
+
+def test_installed_preparation_keeps_same_index_bone_and_mask_case_aliases(workspace):
+    root, source, inputs = workspace; converter = Converter(source)
+    table = json.loads((inputs/'animation_tables.json').read_text())
+    table['initial_tables']['AnimAssetData'][1]['data_hex'] = (
+        struct.pack('<I',1)+strings(['root','child','tip'])+strings(['upper'])).hex()
+    write(inputs/'animation_tables.json', table)
+    skeleton = converter.dump('models/test.vnmskel', None)
+    skeleton['m_boneIDs'][1] = 'Child'
+    skeleton['m_maskDefinitions'] = [{'m_ID':'Upper'}]
+    converter.overrides['models/test.vnmskel'] = skeleton
+    report = prepare_animation_assets(inputs/'segment.json', root/'installed', Provider(), converter)
+    assert report['status'] == 'prepared' and not report['diagnostics']
+    assert converter.decoded == ['clips/test.vnmclip']
+    assert report['entities'][0]['bone_name_aliases'] == [{'index':1,'recorded':'child','asset':'Child'}]
+    assert report['entities'][0]['mask_name_aliases'] == [{'index':0,'recorded':'upper','asset':'Upper'}]
 
 def test_unknown_recorded_task_excluded_without_forged_catalog(workspace):
     root, source, inputs = workspace
