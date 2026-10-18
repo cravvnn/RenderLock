@@ -1,5 +1,4 @@
 """Windows CRLF patch transport must not break LF upstream dependency source."""
-from pathlib import Path
 import subprocess
 
 import pytest
@@ -11,6 +10,7 @@ def test_crlf_patch_applies_to_lf_source_without_relaxing_context(tmp_path):
     repo = tmp_path / "upstream"
     repo.mkdir()
     subprocess.run(["git", "init", str(repo)], check=True, capture_output=True)
+    (repo / ".gitattributes").write_bytes(b"*.cs text eol=lf\n")
     (repo / "source.cs").write_bytes(b"old\n")
     patch = tmp_path / "change.patch"
     patch.write_bytes(b"--- a/source.cs\r\n+++ b/source.cs\r\n@@ -1 +1 @@\r\n-old\r\n+new\r\n")
