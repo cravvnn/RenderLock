@@ -47,13 +47,22 @@ def properties(work):
             "-p:ProbeReferences=" + str(work / "lighting/ValveResourceFormat/bin/Debug")]
 
 
+def apply_patch(checkout_root, source, workspace):
+    # Windows checkouts may convert .patch files to CRLF while upstream's C#
+    # attributes require LF. Normalize the patch transport, never its context.
+    destination = workspace / source.name
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_bytes(source.read_bytes().replace(b"\r\n", b"\n"))
+    run("git", "apply", "--check", destination, cwd=checkout_root)
+    run("git", "apply", destination, cwd=checkout_root)
+
+
 def prepare(work, dotnet):
     work.mkdir(parents=True, exist_ok=True)
     lighting = checkout(work / "lighting", LIGHTING_REVISION)
     particle = checkout(work / "particle", PARTICLE_REVISION)
     for name in PATCHES:
-        run("git", "apply", "--check", ROOT / "tools/patches" / name, cwd=work / "particle")
-        run("git", "apply", ROOT / "tools/patches" / name, cwd=work / "particle")
+        apply_patch(work / "particle", ROOT / "tools/patches" / name, work / "patches")
     for project in (lighting, particle):
         run(dotnet, "build", project, "--configuration", "Debug",
             "-p:CopyLocalLockFileAssemblies=true", "-p:UseSharedCompilation=false")
