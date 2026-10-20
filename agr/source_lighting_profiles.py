@@ -21,6 +21,10 @@ HELPERS_20_1 = {
     'libSkiaSharp.dll': '0d98e29c028b3315d0e0344d02cd7aa4080abdf17fa67086847da13435320f2a',
     'ValveResourceFormat.dll': VRF_20_1,
 }
+# 6801 cubemap arrays are171 cubes; the helper now accepts any verified
+# array depth instead of the old168/191/232 list. Only its own identity changed.
+HELPERS_6801 = dict(HELPERS_20_1)
+HELPERS_6801['CubemapDecode.dll'] = '31dbaa54dd41abd268224ab0ee6ea5d93a61d26264a90e06df30d561154f1180'
 
 
 def probe_layout(world_sha256):
@@ -44,6 +48,10 @@ def qualified_probe_helpers(probe, legacy):
     if current == HELPERS_6779.get(probe.name):
         required[probe.name] = HELPERS_6779[probe.name]
         required['ValveResourceFormat.dll'] = VRF_6779
+    elif current == HELPERS_6801.get(probe.name):
+        for name, digest in HELPERS_6801.items():
+            if name in required or name == probe.name:
+                required[name] = digest
     elif current == HELPERS_20_1.get(probe.name):
         for name, digest in HELPERS_20_1.items():
             if name in required or name == probe.name:

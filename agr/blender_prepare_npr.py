@@ -143,7 +143,8 @@ def prepare(package, textures, primary, *, materials, objects, world_sha256,
     for prop in probes:
      identity=str(prop['hammeruniqueid']);prefix=identity.replace(':','_')+'-'
      regions={r['name'][len(prefix):]:(bpy.data.images['AGR probe '+r['name']],r) for r in package['atlas'] if r['name'].startswith(prefix)}
-     raw[identity]=create_probe_group(prop,regions,world_sha256=package['world_sha256'])
+     raw[identity]=create_probe_group(prop,regions,layout=package['plan'].get('probe_layout'),
+                                      world_sha256=package['world_sha256'])
     probe_tree=create_blend_group(probes,raw)
     probe_tree['agr_hero_probe_ids']=json.dumps(probe_ids)
     npr_trees={flag:create_indirect_group(sharpness=.9,influence_range=[.4,1],exposure_enabled=True,exposure_targets=[1,.5,.1],exposure_pbr_blend=0,diffuse_pbr_blend=.25,no_specular_at_full_roughness=flag,reflection_ceiling_parameters=[2,1]) for flag in set(no_specular.values())}

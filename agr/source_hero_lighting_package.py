@@ -11,9 +11,9 @@ import numpy as np
 from .asset_converter import ConversionError,compiled,sha
 from .source_probe_assets import (WORLD_SHA256,bounds_array,probe_regions,intersects_bounds,
                                  selection_regions,atlas_decode_batches,MAX_ATLAS_BYTES)
-from .source_lightmap import SHADER_SHA256
+from .source_lightmap import SHADER_SHA256,SHADER_RESOURCE
 from .source_brdf_assets import validate_brdf_asset
-from .source_lighting_profiles import probe_layout
+from .source_probe_layout import dimensions_for_plan
 
 
 REFERENCE_ASSUMPTIONS=dict(probe_intensity='unit_reference',cube_tint='unit_reference',
@@ -50,29 +50,39 @@ def validate_hero_lighting_package(package,world_sha256,manifest_dir):
     p=package
     if not isinstance(p,dict) or type(p.get('schema_version')) is not int or p['schema_version']!=1 or p.get('mode')!='partial_hero_indirect_reference' or p.get('allow_partial') is not True:
         raise ConversionError('Unsupported or implicit hero lighting package')
-    probe_layout(world_sha256)
-    if p.get('world_sha256')!=world_sha256 or p.get('shader_sha256')!=SHADER_SHA256:
-        raise ConversionError('Hero lighting world/shader mismatch')
+    if p.get('world_sha256')!=world_sha256:
+        raise ConversionError('Hero lighting world mismatch')
     if p.get('assumptions')!=REFERENCE_ASSUMPTIONS or p.get('coverage_status')!='requires_evaluated_surface_validation':
         raise ConversionError('Unqualified hero lighting assumptions/coverage')
     if canonical_sha(dict(atlas=p['atlas'],cubes=p['cubes'],brdf=p['brdf']))!=p.get('assets_sha256'):
         raise ConversionError('Hero asset metadata identity changed')
     plan=p['plan']
-    if canonical_sha(plan)!=p.get('plan_sha256') or plan.get('world_sha256')!=world_sha256 or plan.get('shader_sha256')!=SHADER_SHA256:
+    layout=plan.get('probe_layout')
+    if layout is None:
+        # Legacy packages keep the old pinned probe-shader contract.
+        if p.get('shader_sha256')!=SHADER_SHA256:
+            raise ConversionError('Hero lighting shader mismatch')
+    else:
+        shader=plan.get('inputs',{}).get(SHADER_RESOURCE,{}).get('sha256')
+        if (not isinstance(shader,str) or p.get('shader_sha256')!=shader
+                or plan.get('shader_sha256')!=shader):
+            raise ConversionError('Hero lighting shader identity changed')
+    if canonical_sha(plan)!=p.get('plan_sha256') or plan.get('world_sha256')!=world_sha256:
         raise ConversionError('Hero probe plan identity changed')
     bounds=bounds_array(plan['source_bounds']);probes=plan['probes']
     sparse=selection_regions(bounds,plan.get('source_regions'))
     batched='atlas_decode_batches' in plan
     if batched != (sparse is not None):raise ConversionError('Incomplete sparse hero decode contract')
-    _,cube_depth=probe_layout(world_sha256)
+    _,cube_depth=dimensions_for_plan(plan)
     if not 1<=len(probes)<=(cube_depth if batched else 32) or len({str(q['hammeruniqueid']) for q in probes})!=len(probes) or len({q['array_index'] for q in probes})!=len(probes):
         raise ConversionError('Invalid hero probe inventory')
     regions_to_check=[row['bounds'] for row in sparse] if sparse else [bounds]
     if any(not any(intersects_bounds(q,region) for region in regions_to_check) for q in probes):raise ConversionError('Probe outside bound selection')
-    if batched and plan['atlas_decode_batches']!=atlas_decode_batches(probes,world_sha256,
+    layout_or_world=layout if layout is not None else world_sha256
+    if batched and plan['atlas_decode_batches']!=atlas_decode_batches(probes,layout_or_world,
             max_decoded_bytes=plan.get('atlas_batch_limit_bytes',0)):
         raise ConversionError('Hero atlas batch inventory or allocation bound changed')
-    regions=[r for q in probes for r in probe_regions(q,world_sha256)]
+    regions=[r for q in probes for r in probe_regions(q,layout_or_world)]
     if regions!=plan['regions']:raise ConversionError('Hero atlas plan layout changed')
     expected={r['name']:r for r in regions};rows=p['atlas']
     if len(rows)!=len(expected) or {r['name'] for r in rows}!=set(expected):raise ConversionError('Hero atlas inventory changed')

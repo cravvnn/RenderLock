@@ -101,10 +101,20 @@ def test_small_probe_inventory_still_checks_storage_budget_before_decode():
         validate_probe_budget(0, 0)
 
 
-def test_sparse_actor_selection_excludes_empty_space_between_distant_heroes(monkeypatch):
+def write_vtex(path, *, width, height, depth, format=19, mips=1):
+    import struct
+    payload = struct.pack('<HH4fHHHBB', 1, 0, 0, 0, 0, 0, width, height, depth, format, mips) + b'\0' * 8
+    entry = struct.pack('<4sII', b'DATA', 8, len(payload))
+    size = 16 + 8 + 12 + len(payload)
+    path.write_bytes(struct.pack('<IHHII', size, 12, 1, 16, 1) + b'\0' * 8 + entry + payload)
+
+
+def test_sparse_actor_selection_excludes_empty_space_between_distant_heroes(monkeypatch, tmp_path):
     from types import SimpleNamespace
     from agr import source_probe_assets as assets
     from agr.source_lightmap import SHADER_SHA256
+    write_vtex(tmp_path / 'ir.vtex_c', width=244, height=236, depth=1416)
+    write_vtex(tmp_path / 'cube.vtex_c', width=256, height=256, depth=171, mips=7)
     probes=[]
     for index,x in enumerate((-100,0,100)):
         row=dict(probe(),hammeruniqueid=str(index),array_index=index,origin=[x,0,0],cubemaptexture='cube.vtex')
@@ -113,8 +123,16 @@ def test_sparse_actor_selection_excludes_empty_space_between_distant_heroes(monk
     monkeypatch.setattr(assets,'_entity_properties',lambda value:value)
     monkeypatch.setattr(assets,'dump_map_data',lambda decoder,name,provider:
         {'m_entityLumps':['lump']} if name=='world' else {'m_entityKeyValues':probes})
-    provider=SimpleNamespace(resource_identity=lambda name:dict(sha256=SHADER_SHA256 if name==assets.SHADER_RESOURCE
-        else assets.WORLD_SHA256 if name=='world' else 'a'*64))
+
+    def identity(name):
+        return dict(sha256=SHADER_SHA256 if name == assets.SHADER_RESOURCE
+                    else assets.WORLD_SHA256 if name == 'world' else 'a' * 64)
+
+    def resolve(name):
+        return SimpleNamespace(local_path=tmp_path / __import__('pathlib').Path(name).name,
+                               sha256=identity(name)['sha256'])
+
+    provider=SimpleNamespace(resource_identity=identity, resolve=resolve)
     outer=[[-120,120],[-20,20],[-20,20]]
     sparse=[dict(entity_id='left',bounds=[[-110,-90],[-5,5],[-5,5]]),
             dict(entity_id='right',bounds=[[90,110],[-5,5],[-5,5]])]

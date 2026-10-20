@@ -134,7 +134,8 @@ def apply_hero_lighting(scene,roots,package,world_sha256,manifest_dir,coordinate
     images=prepare_images(package,world_sha256,manifest_dir);probes=package['plan']['probes'];raw={};cubes={};coeff={};tints={}
     for p in probes:
         identity=str(p['hammeruniqueid']);prefix=identity.replace(':','_')+'-'
-        raw[identity]=create_probe_group(p,{k[len(prefix):]:v for k,v in images['atlas'].items() if k.startswith(prefix)},world_sha256=world_sha256)
+        raw[identity]=create_probe_group(p,{k[len(prefix):]:v for k,v in images['atlas'].items() if k.startswith(prefix)},
+                                         layout=package['plan'].get('probe_layout'),world_sha256=world_sha256)
         key=(compiled(p['cubemaptexture']),p['array_index']);cubes[identity]=create_cube_group(images['cubes'][key],pack_mips=True);coeff[identity]=normalization_sh(images['coefficients'][key]);tints[identity]=[1,1,1]
     groups={}
     for identity,subset in actor_probes.items():

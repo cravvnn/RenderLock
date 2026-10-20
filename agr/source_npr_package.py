@@ -7,7 +7,12 @@ from .source_npr_assets import PARAMETERS,png_dimensions
 from .source_material_routes import source_material_contract,NPR_ROUTE,material_route
 
 SHADER_RESOURCE='shaders/vfx/pbr_vulkan_50_ps.vcs'
-SHADER_SHA256='13cc4576f69be8411f1b1400ea5c0bcedcb947c9406e24102cc6ccd7a33e41ef'
+# 6801 recompiled pbr_vulkan_50_ps without changing the material interface:
+# all 261 material variable names/types match the prior 6774/6793 shader,
+# including g_tNprTransmissiveColor and g_tTintMaskRimLightMask.
+SHADER_SHA256='3bd811c5eb66b691f3f8c787cf47eefcf2b0f7a0e5716d743a9f450081f8fb52'
+LEGACY_SHADER_SHA256='13cc4576f69be8411f1b1400ea5c0bcedcb947c9406e24102cc6ccd7a33e41ef'
+QUALIFIED_SHADER_SHA256={SHADER_SHA256,LEGACY_SHADER_SHA256}
 LEGACY_BINDINGS={'g_tNprTransmissiveColor':dict(colorspace='sRGB',alpha_mode='CHANNEL_PACKED',channel='RGB'),
           'g_tTintMaskRimLightMask':dict(colorspace='Non-Color',alpha_mode='CHANNEL_PACKED',channel='G',constant_only=True)}
 BINDINGS=copy.deepcopy(LEGACY_BINDINGS)
@@ -77,7 +82,7 @@ def validate_npr_material_package(package):
     if not isinstance(package,dict) or type(package.get('schema_version')) is not int or package.get('schema_version') not in (1,2,3) or package.get('mode')!=('partial_source_material_inputs' if package.get('schema_version')==3 else 'partial_npr_material_inputs') or package.get('allow_partial') is not True:
         raise ConversionError('Unsupported or implicit NPR material package')
     expected=LEGACY_BINDINGS if package['schema_version']==1 else BINDINGS
-    if package.get('shader_sha256')!=SHADER_SHA256 or package.get('bindings')!=expected:
+    if package.get('shader_sha256') not in QUALIFIED_SHADER_SHA256 or package.get('bindings')!=expected:
         raise ConversionError('Unqualified NPR shader/channel semantics')
     content={k:v for k,v in package.items() if k!='content_sha256'}
     if canonical_sha(content)!=package.get('content_sha256'):raise ConversionError('NPR package metadata changed')

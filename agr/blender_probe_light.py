@@ -4,11 +4,11 @@ from agr.blender_probe_volume import create_volume_group
 from agr.source_lighting_profiles import WORLD_6774,probe_layout
 
 
-def create_probe_group(properties, regions,*,world_sha256=WORLD_6774):
+def create_probe_group(properties, regions,*,layout=None,world_sha256=WORLD_6774):
     """regions maps irradiance-0..5/shadow to (image, decoded metadata)."""
     import bpy
     p=properties
-    dimensions,_=probe_layout(world_sha256)
+    dimensions=layout['dimensions'] if layout is not None else probe_layout(world_sha256)[0]
     if p.get('parentname') or p.get('uselocaloffset'):raise ValueError('Parented probe unqualified')
     group=bpy.data.node_groups.new('AGR raw probe '+str(p['hammeruniqueid']),'ShaderNodeTree')
     for name in ('Position','Normal'):group.interface.new_socket(name=name,in_out='INPUT',socket_type='NodeSocketVector')

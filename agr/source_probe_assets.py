@@ -13,8 +13,9 @@ import numpy as np
 from .asset_converter import ConversionError,compiled,sha
 from .installed_map import selected_world,_entity_properties
 from .map_data import dump_map_data
-from .source_lightmap import SHADER_RESOURCE,SHADER_SHA256
+from .source_lightmap import SHADER_RESOURCE
 from .source_lighting_profiles import probe_layout,qualified_probe_helpers
+from .source_probe_layout import derive_probe_layout,read_texture_layout
 
 WORLD_SHA256='4459031ca1fe3900c7c4516a4db552eb330369895b5b3aa228157695e5a0485b'
 MAX_SELECTED_PROBES = 32
@@ -88,8 +89,18 @@ def intersects_bounds(p,bounds):
     return bool(np.all(local.max(axis=0)>=low) and np.all(local.min(axis=0)<=high))
 
 
-def probe_regions(p,world_sha256=WORLD_SHA256):
-    dimensions,cube_depth=probe_layout(world_sha256)
+def probe_regions(p,layout_or_world=None):
+    """Exact atlas/shadow regions for one probe.
+
+    Current plans pass a verified layout read from the installed textures.
+    Legacy saved packages pass their recorded world hash and retain the old
+    qualified layout table.
+    """
+    if layout_or_world is None:layout_or_world=WORLD_SHA256
+    if isinstance(layout_or_world,dict):
+        dimensions,cube_depth=layout_or_world['dimensions'],layout_or_world['cube_depth']
+    else:
+        dimensions,cube_depth=probe_layout(layout_or_world)
     if p.get('classname')!='env_combined_light_probe_volume' or p.get('startdisabled') or p.get('light_probe_volume_from_cubemap'):
         raise ConversionError('Unsupported probe type/state')
     identity=str(p['hammeruniqueid'])
@@ -131,14 +142,14 @@ def selection_regions(source_bounds, regions):
     return result
 
 
-def atlas_decode_batches(probes, world_sha256, *, max_decoded_bytes=MAX_ATLAS_BYTES):
+def atlas_decode_batches(probes, layout_or_world, *, max_decoded_bytes=MAX_ATLAS_BYTES):
     """Partition exact regions, retaining the existing native allocation bounds."""
     if type(max_decoded_bytes) is not int or not 0<max_decoded_bytes<=MAX_ATLAS_BYTES:
         raise ConversionError('Invalid atlas batch byte budget')
     batches=[];names=[];identities=[];size=0
     for probe in probes:
         identity=str(probe['hammeruniqueid'])
-        for region in probe_regions(probe,world_sha256):
+        for region in probe_regions(probe,layout_or_world):
             count=int(np.prod(region['size']))*16
             if count>min(128*1024*1024,max_decoded_bytes):
                 raise LightingRegionError('One probe atlas region exceeds the bounded native decoder allocation.',
@@ -153,13 +164,20 @@ def atlas_decode_batches(probes, world_sha256, *, max_decoded_bytes=MAX_ATLAS_BY
     return batches
 
 
+def probe_resources(probes):
+    """One installed probe atlas and one cubemap array for the whole selection."""
+    atlases={compiled(p['lightprobetexture']) for p in probes}
+    cubemaps={compiled(p['cubemaptexture']) for p in probes}
+    if len(atlases)!=1 or len(cubemaps)!=1:
+        raise ConversionError('Selected probes require one installed atlas and cubemap array')
+    return atlases.pop(),cubemaps.pop()
+
+
 def plan_probe_assets(provider,decoder,source_bounds,*,max_decoded_bytes=MAX_ATLAS_BYTES,source_regions=None):
     bounds=bounds_array(source_bounds)
     sparse=selection_regions(bounds,source_regions)
     name=selected_world(provider);identity=provider.resource_identity(name)
-    probe_layout(identity['sha256'])
     shader=provider.resource_identity(SHADER_RESOURCE)
-    if shader['sha256']!=SHADER_SHA256:raise ConversionError('Probe shader requires requalification')
     world=dump_map_data(decoder,name,provider);inputs={name:identity,SHADER_RESOURCE:shader}
     queue=list(world['m_entityLumps']);seen=set();selected=[];inventory=0
     while queue:
@@ -176,7 +194,22 @@ def plan_probe_assets(provider,decoder,source_bounds,*,max_decoded_bytes=MAX_ATL
     if len({str(p['hammeruniqueid']) for p in selected})!=len(selected) or len({p['array_index'] for p in selected})!=len(selected):
         raise ConversionError('Duplicate selected probe identity/index')
     selected.sort(key=lambda p:(-p['indoor_outdoor_level'],p['array_index']))
-    regions=[r for p in selected for r in probe_regions(p,identity['sha256'])]
+    if not selected:raise ConversionError('No light probes intersect the selected region')
+    atlas_resource,cubemap_resource=probe_resources(selected)
+    atlas_identity=provider.resource_identity(atlas_resource)
+    cubemap_identity=provider.resource_identity(cubemap_resource)
+    atlas_resolved=provider.resolve(atlas_resource)
+    cubemap_resolved=provider.resolve(cubemap_resource)
+    if atlas_resolved.sha256!=atlas_identity['sha256'] or cubemap_resolved.sha256!=cubemap_identity['sha256']:
+        raise ConversionError('Probe texture identity changed during layout inspection')
+    layout=derive_probe_layout(
+        read_texture_layout(atlas_resolved.local_path),
+        read_texture_layout(cubemap_resolved.local_path),
+        atlas_resource=atlas_resource,atlas_sha256=atlas_identity['sha256'],
+        cubemap_resource=cubemap_resource,cubemap_sha256=cubemap_identity['sha256'])
+    inputs.setdefault(atlas_resource,atlas_identity)
+    inputs.setdefault(cubemap_resource,cubemap_identity)
+    regions=[r for p in selected for r in probe_regions(p,layout)]
     total=sum(int(np.prod(r['size']))*16 for r in regions)
     if type(max_decoded_bytes) is not int or max_decoded_bytes<=0:
         raise ConversionError('Invalid explicit probe storage budget')
@@ -184,12 +217,14 @@ def plan_probe_assets(provider,decoder,source_bounds,*,max_decoded_bytes=MAX_ATL
         validate_probe_budget(len(selected), total, max_decoded_bytes=max_decoded_bytes)
         batches=None
     else:
-        batches=atlas_decode_batches(selected,identity['sha256'],max_decoded_bytes=max_decoded_bytes)
+        batches=atlas_decode_batches(selected,layout,max_decoded_bytes=max_decoded_bytes)
     resources={r['resource'] for r in regions}|{compiled(p['cubemaptexture']) for p in selected}
     for resource in sorted(resources):inputs[resource]=provider.resource_identity(resource)
-    plan=dict(schema_version=1,status='planned_not_applied',world_sha256=identity['sha256'],shader_sha256=SHADER_SHA256,
+    plan=dict(schema_version=1,status='planned_not_applied',world_sha256=identity['sha256'],
+        shader_sha256=shader['sha256'],probe_layout=layout,
         source_bounds=bounds.tolist(),inputs=inputs,inventory_count=inventory,probes=selected,regions=regions,
         decoded_atlas_bytes=total,limits=['Conservative volume selection only; evaluated surface coverage must be verified before shading.',
+        'Probe atlas/cubemap dimensions are read from the installed VTEX headers; the installed probe shader identity is recorded in inputs.',
         'Rigid authored transforms/priority are viewer mappings; runtime state and engine intensity constants unverified.'])
     if sparse is not None:
         plan.update(source_regions=sparse,atlas_batch_limit_bytes=max_decoded_bytes,atlas_decode_batches=batches)

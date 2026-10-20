@@ -5,7 +5,9 @@ from .npr_color_matrices import saturation_brightness,color_tint,color_correctio
 # Read from the qualified compiled pbr pixel shader's variable descriptions.
 # These are static metadata defaults (no dynamic expression/layer override),
 # not inferred values for arbitrary materials or shader revisions.
-DEFAULT_SHADER_SHA256 = '13cc4576f69be8411f1b1400ea5c0bcedcb947c9406e24102cc6ccd7a33e41ef'
+DEFAULT_SHADER_SHA256 = '3bd811c5eb66b691f3f8c787cf47eefcf2b0f7a0e5716d743a9f450081f8fb52'
+LEGACY_SHADER_SHA256 = '13cc4576f69be8411f1b1400ea5c0bcedcb947c9406e24102cc6ccd7a33e41ef'
+QUALIFIED_SHADER_SHA256 = {DEFAULT_SHADER_SHA256, LEGACY_SHADER_SHA256}
 STATIC_DEFAULTS = {
     'VectorParams': {'g_vAlbedoContrastSaturationBrightness1': [1, 1, 1, 0],
                      'g_vColorTint1': [1, 1, 1, 0]},
@@ -19,7 +21,7 @@ def neutral_tint_controls(vmat, *, assume_white_instance_color, shader_sha256=No
     if assume_white_instance_color is not True:
         raise ValueError('Explicit white instance-color assumption required')
     if shader_sha256 is not None:
-        if shader_sha256 != DEFAULT_SHADER_SHA256:
+        if shader_sha256 not in QUALIFIED_SHADER_SHA256:
             raise ValueError('NPR albedo shader defaults require requalification')
         # Preserve explicit authored values, including invalid/null values which
         # the normal checks below must reject. Never mutate retained metadata.

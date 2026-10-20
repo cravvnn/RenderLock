@@ -15,7 +15,7 @@ if(hash!=c.GetProperty("sha256").GetString())throw new InvalidDataException("Tex
 var indices=c.GetProperty("indices").EnumerateArray().Select(v=>v.GetInt32()).ToArray();
 if(indices.Length is <1 or >4||indices.Distinct().Count()!=indices.Length||indices.Any(i=>i<0))throw new InvalidDataException("Invalid bounded array selection");
 using var resource=new Resource();resource.Read(path);var texture=(Texture)resource.DataBlock!;
-if(texture.Width!=256||texture.Height!=256||texture.Depth is not (168 or 191 or 232)||texture.NumMipLevels!=7||(int)texture.Format!=19||(int)texture.Flags!=80)
+if(texture.Width!=256||texture.Height!=256||texture.Depth is < 1 or > 4096||texture.NumMipLevels!=7||(int)texture.Format!=19||(int)texture.Flags!=80)
     throw new InvalidDataException("Unqualified cube array layout");
 if(indices.Any(i=>i>=texture.Depth))throw new InvalidDataException("Invalid bounded array selection");
 if(texture.RadianceCoefficients?.Length!=texture.Depth*27)throw new InvalidDataException("Missing radiance coefficients");

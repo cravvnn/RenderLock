@@ -1,3 +1,11 @@
+# 0.3.0b10 - October game update: light probes and NPR
+
+- Read the installed light-probe atlas and cubemap layout from their VTEX headers instead of pinning the map/world hash, so a map-content update no longer stops hero Source lighting with "World probe layout requires requalification". Six-face atlas depth, cubemap depth, format, region bounds and resource identities are still checked. Legacy packages keep their recorded layouts.
+
+- Accept the 6801 cubemap array depth in the bundled cubemap decoder (verified against VRF on the installed 256x256x171 array) and record the installed probe shader identity in the plan.
+
+- Requalify the 6801 pbr shader for NPR material inputs and authored albedo defaults after confirming the complete 261-name material variable interface and the seven static defaults are identical to the previous shader. Older saved NPR packages remain readable.
+
 # 0.3.0b9 - Transformation lighting fix and export diagnostics
 
 - Fix a failed Blender scene build after a recorded character transformation when Source hero lighting or NPR materials were enabled; each form now keeps its own visible surface and probe selection instead of aborting the export. Strict and explicit partial rules are unchanged.

@@ -61,7 +61,7 @@ def test_missing_cube_face_rejected_even_with_updated_metadata_digest(prepared,t
 
 
 def test_old_package_cannot_be_bound_to_new_world(prepared,tmp_path):
-    with pytest.raises(ValueError,match='world/shader mismatch'):
+    with pytest.raises(ValueError,match='world mismatch'):
         package.validate_hero_lighting_package(prepared,WORLD_6779,tmp_path)
 
 

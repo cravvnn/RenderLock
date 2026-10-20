@@ -40,10 +40,15 @@ def test_changed_cube_output_fails_closed(tmp_path,change):
     with pytest.raises(ValueError):validate_cube_report(tmp_path,'a'*64,[4])
 
 
-@pytest.mark.parametrize('depth',[True,0,190,192,233])
+@pytest.mark.parametrize('depth',[True,0,-1,4097])
 def test_unqualified_depth_is_rejected_before_payload_read(tmp_path,depth):
     with pytest.raises(ValueError,match='depth'):
         validate_cube_report(tmp_path,'a'*64,[4],cube_depth=depth)
+
+
+def test_6801_cube_depth_is_accepted_from_the_verified_layout(tmp_path):
+    r=fixture(tmp_path);save(tmp_path,r)
+    assert len(validate_cube_report(tmp_path,'a'*64,[4],cube_depth=171)['faces'])==42
 
 
 def test_6779_out_of_range_cube_rejected_before_payload_read(tmp_path):

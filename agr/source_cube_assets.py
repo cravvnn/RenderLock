@@ -6,14 +6,15 @@ import time
 import numpy as np
 from .asset_converter import ConversionError,compiled,sha
 from .source_probe_assets import ATLAS_HELPER_HASHES,plan_probe_assets,MAX_ATLAS_BYTES,MAX_CUBE_BYTES
-from .source_lighting_profiles import probe_layout,qualified_probe_helpers
+from .source_lighting_profiles import qualified_probe_helpers
+from .source_probe_layout import dimensions_for_plan
 
-HELPER_SHA256='a418b83895b07633d889e86c055f4d782340d954a932f5e3352df0d870d891e6'
+HELPER_SHA256='31dbaa54dd41abd268224ab0ee6ea5d93a61d26264a90e06df30d561154f1180'
 
 
 def validate_cube_report(directory,source_sha256,indices,*,cube_depth=232):
     directory=Path(directory)
-    if type(cube_depth) is not int or cube_depth not in (168,191,232):
+    if type(cube_depth) is not int or not 1<=cube_depth<=4096:
         raise ConversionError('Unqualified cube array depth')
     if not indices or len(indices)>4 or any(type(i) is not int or not 0<=i<cube_depth for i in indices) or len(set(indices))!=len(indices):
         raise ConversionError('Invalid bounded cube indices')
@@ -55,7 +56,7 @@ def prepare_cube_assets(provider,decoder,plan,*,probe,dotnet,max_decoded_bytes=2
     required={k:v for k,v in ATLAS_HELPER_HASHES.items() if k!='ProbeAtlasDecode.dll'}|{'CubemapDecode.dll':HELPER_SHA256}
     if probe.name!='CubemapDecode.dll' or not dotnet.is_file():raise ConversionError('Explicit cube helper and .NET required')
     qualified_probe_helpers(probe,required)
-    _,cube_depth=probe_layout(plan['world_sha256'])
+    _,cube_depth=dimensions_for_plan(plan)
     helpers={p.relative_to(probe.parent).as_posix():sha(p) for p in sorted(probe.parent.rglob('*')) if p.is_file() and p.suffix in ('.dll','.json','.exe')}
     selections={}
     for p in plan['probes']:selections.setdefault(compiled(p['cubemaptexture']),[]).append(p['array_index'])
