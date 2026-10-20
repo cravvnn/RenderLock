@@ -190,7 +190,7 @@ def prepare_worker(root, work):
     package = work / "agr"
     package.mkdir(exist_ok=True)
     for name in ("__init__.py", "updater.py", "update_worker.py", "update_window.py",
-                 "gui_theme.py", "gui_assets.py", "gui_widgets.py"):
+                 "gui_theme.py", "gui_assets.py", "gui_widgets.py", "gui_chrome.py"):
         shutil.copyfile(root / "agr" / name, package / name)
     script = work / "worker.py"
     script.write_text("from agr.update_worker import main\nraise SystemExit(main())\n", encoding="utf-8")
@@ -200,7 +200,7 @@ def prepare_worker(root, work):
 
 def launch_worker(root, work):
     runtime, script = prepare_worker(root, work)
-    return subprocess.Popen([str(runtime / "python.exe"), "-I", "-B", str(script),
+    return subprocess.Popen([str(runtime / "python.exe"), "-I", "-X", "utf8", "-B", str(script),
                              "--parent", str(os.getpid())], cwd=work, env=clean_environment(),
                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))

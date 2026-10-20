@@ -1,13 +1,40 @@
-"""Textured rope study materials following the pinned VRF spritecard shader.
+"""Textured rope materials following the pinned VRF spritecard shader.
 
-Explicit supplied lighting is a study input, not recovered Source scene lighting.
-This stage remains separate from normal replay export until simulation and the
-remaining depth/per-particle shader inputs are supported.
+Explicit supplied lighting is not recovered Source scene lighting. Simulation,
+camera sampling and the remaining depth/per-particle shader inputs are separate.
 """
 import math
+import numpy as np
 
 from .installed_effects import scalar, UnsupportedEffect
 from .blender_simulated_effects import build_texture_uv_nodes
+
+
+def rope_color_scale(renderer):
+    """Literal vector or byte-color input with native float32 color normalization."""
+    value = renderer.get('m_vecColorScale')
+    if value is None:
+        return (1., 1., 1.)
+    if not isinstance(value, dict):
+        raise UnsupportedEffect('Rope color scale requires an explicit vector provider')
+    kind = value.get('m_nType', 'PVEC_TYPE_LITERAL')
+    if kind == 'PVEC_TYPE_LITERAL_COLOR':
+        rgb = value.get('m_LiteralColor')
+        if (not isinstance(rgb, (list, tuple)) or len(rgb) not in (3, 4)
+                or any(type(v) is not int or not 0 <= v <= 255 for v in rgb)):
+            raise UnsupportedEffect('Invalid rope literal byte color')
+        return tuple(float(np.float32(v)*np.float32(1/255)) for v in rgb[:3])
+    if kind != 'PVEC_TYPE_LITERAL':
+        raise UnsupportedEffect('Rope color-scale provider '+str(kind))
+    rgb = value.get('m_vLiteralValue')
+    if (not isinstance(rgb, (list, tuple)) or len(rgb) != 3
+            or any(type(v) not in (int, float) or not math.isfinite(v) for v in rgb)):
+        raise UnsupportedEffect('Invalid rope literal vector')
+    with np.errstate(over='ignore'):
+        values = np.asarray(rgb, dtype=np.float32)
+    if not np.isfinite(values).all():
+        raise UnsupportedEffect('Rope color scale exceeds float32 range')
+    return tuple(float(v) for v in values)
 
 
 def prepare_rope_shader_colors(mesh, renderer):
@@ -15,8 +42,7 @@ def prepare_rope_shader_colors(mesh, renderer):
     source = mesh.color_attributes.get('AGR Rope Color')
     if source is None or source.domain != 'CORNER':
         raise UnsupportedEffect('Rope vertex colors are missing')
-    if renderer.get('m_vecColorScale'):
-        raise UnsupportedEffect('Rope color-scale provider is not implemented')
+    tint = rope_color_scale(renderer)
     target = mesh.color_attributes.get('AGR Rope Shader Color')
     if target is None:
         target = mesh.color_attributes.new(name='AGR Rope Shader Color', type='FLOAT_COLOR', domain='CORNER')
@@ -27,7 +53,7 @@ def prepare_rope_shader_colors(mesh, renderer):
         rgb = list(src.color[:3])
         if gamma:
             rgb = [c/12.92 if c <= .04045 else (c/1.055+.0521327)**2.4 for c in rgb]
-        dst.color = (*rgb, src.color[3])
+        dst.color = (*(c*t for c, t in zip(rgb, tint)), src.color[3])
 
 
 def build_rope_material(renderer, images, *, scene_light, age=0., name='AGR textured rope study'):
@@ -37,6 +63,8 @@ def build_rope_material(renderer, images, *, scene_light, age=0., name='AGR text
     retain limitations in its report; this function does not claim engine parity.
     """
     import bpy
+    if renderer.get('m_bDrawAsOpaque') or renderer.get('m_bOnlyRenderInEffectsWaterPass'):
+        raise UnsupportedEffect('Opaque/water-pass rope output is not implemented')
     if len(scene_light) != 3 or any(not math.isfinite(x) or x < 0 for x in scene_light):
         raise UnsupportedEffect('Rope study lighting must be finite nonnegative RGB')
     blend = renderer.get('m_nOutputBlendMode', 'PARTICLE_OUTPUT_BLEND_MODE_ALPHA')
@@ -45,8 +73,11 @@ def build_rope_material(renderer, images, *, scene_light, age=0., name='AGR text
     for field in ('m_flDesaturation', 'm_flFeatheringMinDist', 'm_flFeatheringMaxDist'):
         if scalar(renderer.get(field), default=0) != 0:
             raise UnsupportedEffect('Unsupported rope shader control: '+field)
-    if renderer.get('m_bOutline') or renderer.get('m_nHsvShiftControlPoint', -1) != -1:
+    if (renderer.get('m_bOutline') or renderer.get('m_nHSVShiftControlPoint', -1) != -1
+            or renderer.get('m_nHsvShiftControlPoint', -1) != -1):
         raise UnsupportedEffect('Rope outline/HSV shader input is not implemented')
+    if scalar(renderer.get('m_flDepthBias'), default=0) != 0:
+        raise UnsupportedEffect('Rope depth-bias shader input is not implemented')
     layers = [layer for layer in renderer.get('m_vecTexturesInput', []) if layer.get('m_hTexture')]
     if not layers:
         raise UnsupportedEffect('Rope material requires explicit texture layers')
@@ -57,6 +88,8 @@ def build_rope_material(renderer, images, *, scene_light, age=0., name='AGR text
             raise UnsupportedEffect('Rope material currently requires multiplied color layers')
         if layer.get('m_bReplaceTextureWithGradient') or layer.get('m_TextureControls', {}).get('m_bRandomizeOffsets'):
             raise UnsupportedEffect('Rope gradient/random texture mapping is not implemented')
+        if layer.get('m_TextureControls', {}).get('m_bClampUVs'):
+            raise UnsupportedEffect('Rope clamped UVs require per-vertex texture placement')
         if layer['m_hTexture'] not in images:
             raise UnsupportedEffect('Missing rope texture image: '+layer['m_hTexture'])
     values = {key: scalar(renderer.get(key), default=default) for key, default in (

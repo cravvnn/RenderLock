@@ -2,7 +2,8 @@
 
 Input must include backend identity and diagnostics. This adapter currently renders
 additive/alpha static-sheet sprites/trails and point lights, with a bounded
-two-layer UV-distortion shader. It does not claim Source
+two-layer UV-distortion shader, and camera-sampled whole-system rope meshes.
+It does not claim Source
 shader or radiometric equivalence. Unsupported renderer settings fail explicitly.
 
 Trail behavior follows ValveResourceFormat's RenderTrails implementation:
@@ -239,6 +240,19 @@ def validate_render_samples(tracks):
                 raise ValueError('Invalid particle age or sprite sequence')
 
 
+def collect_system_samples(simulation):
+    """Retain live array order and empty samples for whole-system renderers."""
+    systems = {}
+    for instance in simulation['instances']:
+        for frame in instance['frames']:
+            for system in frame['systems']:
+                resource = system['name'].removesuffix('_c')
+                path = system.get('system_path', 'resource:'+resource)
+                key = (instance['id'], path, resource)
+                systems.setdefault(key, []).append((frame['tick'], system['particles']))
+    return systems
+
+
 def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254):
     import bpy
     from mathutils import Vector, Quaternion
@@ -263,7 +277,8 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
         path=Path(descriptor['directory'])/seq['frames'][0]['image']
         key=str(path.resolve())
         if key not in images:
-            image=bpy.data.images.load(key,check_existing=False);image.pack();images[key]=image
+            from .blender_images import load_packed_image
+            images[key]=load_packed_image(key,check_existing=False)
         return images[key]
     births={i['id']:i['birth'] for i in simulation['instances']}
     def material(instance,system_path,particle_id,resource,index,renderer,sequence,samples):
@@ -335,12 +350,73 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
             add=nodes.new('ShaderNodeMixShader');links.new(alpha,add.inputs[0]);links.new(transparent.outputs[0],add.inputs[1]);links.new(emit.outputs[0],add.inputs[2])
         output=nodes.new('ShaderNodeOutputMaterial');links.new(add.outputs[0],output.inputs['Surface'])
         materials[key]=mat;return mat
-    objects=[];billboard_helpers=[]
+    objects=[];billboard_helpers=[];rope_objects=[];rope_systems=[]
+    original_frame = scene.frame_current
+    original_subframe = scene.frame_subframe
+    try:
+        for (instance,system_path,resource),samples in collect_system_samples(simulation).items():
+            definition=assets['definitions'][resource]
+            renderers=[(index,r) for index,r in enumerate(definition.get('m_Renderers',[]))
+                       if r['_class']=='C_OP_RenderRopes']
+            if not renderers or not any(particles for _,particles in samples):
+                continue
+            if camera is None or camera.type!='CAMERA':
+                raise UnsupportedEffect('Rope geometry requires a sampled scene camera')
+            from .blender_particle_rope import bake_rope_geometry
+            from .blender_rope_material import prepare_rope_shader_colors, build_rope_material
+            camera_samples=[]
+            for tick,particles in samples:
+                frame=1+(tick-simulation['start_tick'])*frame_step
+                scene.frame_set(math.floor(frame),subframe=frame-math.floor(frame))
+                graph=bpy.context.evaluated_depsgraph_get()
+                evaluated=camera.evaluated_get(graph)
+                projection=evaluated.calc_matrix_camera(graph,x=scene.render.resolution_x,
+                    y=scene.render.resolution_y,scale_x=scene.render.pixel_aspect_x,
+                    scale_y=scene.render.pixel_aspect_y)
+                projection_y=float(projection[1][1])
+                if evaluated.data.type=='PERSP':
+                    parameters=dict(type='PERSP',projection_y=projection_y)
+                elif evaluated.data.type=='ORTHO' and projection_y>0:
+                    parameters=dict(type='ORTHO',height=2/(projection_y*unit_scale))
+                else:
+                    raise UnsupportedEffect('Unsupported rope camera projection '+evaluated.data.type)
+                camera_samples.append(dict(tick=tick,age=(tick-births[instance])/simulation['tick_rate'],
+                    particles=particles,camera_position=[float(v/unit_scale) for v in evaluated.matrix_world.translation],
+                    camera_projection=parameters))
+            for index,renderer in renderers:
+                if renderer.get('m_bOnlyRenderInEffectsBloomPass'):
+                    omissions.append(resource+': source bloom-only pass omitted; use scene compositor glare')
+                    continue
+                baked=bake_rope_geometry(camera_samples,renderer,scene,collection,
+                    start_tick=simulation['start_tick'],tick_rate=simulation['tick_rate'],
+                    unit_scale=unit_scale,definition=definition,triangle_pairs=True)
+                by_tick={sample['tick']:sample for sample in camera_samples}
+                for obj in baked:
+                    tick=obj['agr_rope_geometry_tick'];sample=by_tick[tick]
+                    sequence=sample['particles'][0]['sequence']
+                    layer_images={layer['m_hTexture']:texture(layer['m_hTexture'],sequence)
+                        for layer in renderer.get('m_vecTexturesInput',[]) if layer.get('m_hTexture')}
+                    prepare_rope_shader_colors(obj.data,renderer)
+                    mat,limitations=build_rope_material(renderer,layer_images,scene_light=(1,1,1),age=sample['age'])
+                    obj.data.materials.append(mat);omissions.extend(resource+': '+item for item in limitations)
+                    obj.name=f'AGR FX rope | {instance} | {system_path} | {index} | {tick}'
+                    obj['agr_particle_resource']=resource;obj['agr_particle_instance']=instance
+                    obj['agr_particle_system_path']=system_path;obj['agr_simulation_backend']=simulation['backend']
+                    obj['agr_particle_rope_sampled_camera']=camera.name
+                    obj['agr_rope_geometry_only']=False
+                    obj['agr_rope_renderer_index']=index
+                objects.extend(baked);rope_objects.extend(baked)
+                rope_systems.append(dict(instance=instance,path=system_path,resource=resource,renderer=index,
+                    meshes=len(baked),subdivisions=sorted({o['agr_rope_subdivisions'] for o in baked})))
+    finally:
+        scene.frame_set(original_frame,subframe=original_subframe)
     for (instance,system_path,resource,particle_id),samples in tracks.items():
         if len({p['sequence'] for _,_,p in samples}) != 1:
             raise UnsupportedEffect('Changing sprite sequences are not implemented: '+resource)
         definition=assets['definitions'][resource]
         for index,renderer in enumerate(definition.get('m_Renderers',[])):
+            if renderer['_class']=='C_OP_RenderRopes':
+                continue # Whole live-array geometry was baked once per system above.
             if renderer.get('m_bOnlyRenderInEffectsBloomPass'):
                 omissions.append(resource+': source bloom-only pass omitted; use scene compositor glare')
                 continue
@@ -427,6 +503,12 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
     report={'status':'experimental','instances':len(simulation['instances']),'particle_tracks':len(tracks),'objects':len(objects),'point_lights':sum(o.type=='LIGHT' for o in objects),'textures':len(images),'backend':simulation['backend'],'omissions':sorted(set(omissions)),
             'limitations':['Blender shader approximation; no Source bloom/depth intersection pass','Light intensity calibrated to Blender units; not measured engine radiometry','Random engine seed is not available in the demo','Only the supplied recorded instances/control-point history are simulated']}
     report.update(camera_binding='live_constraints',camera_object=camera.name,billboard_helpers=len(billboard_helpers))
+    if rope_objects:
+        live_constraints=bool(billboard_helpers or any(c.type=='LOCKED_TRACK' for o in objects for c in o.constraints))
+        report['camera_binding']='sampled_rope_meshes_with_live_sprite_trail_constraints' if live_constraints else 'sampled_rope_meshes'
+        report['rope_systems']=rope_systems
+        report['rope_lighting']={'policy':'explicit neutral RGB; Source lighting is not reconstructed','rgb':[1,1,1]}
+        report['limitations'].append('Rope geometry samples camera position and projection per replay tick. Moving, animating or replacing the camera afterward requires rebuilding rope geometry.')
     if any(obj.type == 'MESH' for obj in objects):
         from .blender_effects import ensure_particle_transparency
         report['cycles_transparent_bounces'] = ensure_particle_transparency(scene)

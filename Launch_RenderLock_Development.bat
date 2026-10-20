@@ -7,6 +7,10 @@ set "PYTHONHOME="
 set "PYTHONPATH="
 set "PYTHONNOUSERSITE=1"
 set "PYTHONUTF8=1"
+if not exist "%~dp0local-data\Temp" mkdir "%~dp0local-data\Temp"
+if not exist "%~dp0local-data\Temp" exit /b 1
+set "TEMP=%~dp0local-data\Temp"
+set "TMP=%TEMP%"
 echo RenderLock - development checkout
 echo Running local source with the existing project environment.
 ".venv\Scripts\python.exe" -u -X faulthandler -m agr gui

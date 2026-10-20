@@ -19,15 +19,17 @@ Map export is unavailable in the beta; scenes stay character-only and maps are a
 
 Everything the look pipeline needs is included in the portable package, except the shader library itself:
 
-1. In **Advanced**, tick **Allow partial export / movement placeholders** (the look pipeline requires it).
-2. In **Export**, choose the replay and set a **Follow hero ID** (the look needs a follow camera).
-3. In **Map**, tick **Prepare installed map region** and choose the installed map name (the default is `dl_midtown`; check it yourself). This lets the look pipeline read lighting data from the installed map. The character beta always omits map geometry from the Blender scene; development builds also offer a **Characters only** option. Then in **Lighting lab** tick **Partial static diffuse lighting**, **Partial hero probe lighting / reflections** and **Partial NPR indirect**.
+1. The **Partial** lighting controls accept artistic lighting limits while keeping character models and skeletal animation strict. Leave **Advanced → Allow partial export / movement placeholders** off unless you also accept missing character data.
+2. In **Export**, choose the replay, inspect it, then choose a hero by name under **Follow camera** (the look needs a follow camera). The list comes from that recording; **Overview (no follow)** clears the target. Include the chosen hero in **Characters**.
+3. In **Map**, tick **Prepare installed map region** and choose the installed map name (the default is `dl_midtown`; check it yourself). In the character beta this reads lighting data without exporting map geometry. In **Lighting lab**, **Partial Source character diffuse lighting** applies indirect diffuse lighting to character materials. Add **Partial hero probe lighting / reflections** and **Partial NPR indirect** for the full look pipeline. Development map scenes retain the **Partial static diffuse lighting** route; **Characters only** uses character diffuse lighting.
 4. Download **BLENDER-Deadlock-Shader.blend** from [Elagrimm's shader](https://github.com/Elagrimm/BLENDER-Deadlock-Shader/blob/e18af8b1c9c1d34b4af72002fb1f4136aa159515/BLENDER-Deadlock-Shader.blend) and select it in **Elagrimm shader .blend**. Supported revision: `e18af8b1c9c1d34b4af72002fb1f4136aa159515`, SHA-256 `018bb08347dcd9cf48da317f5b4c2bcee9e0dcc4fecd4f32c3be3a3225ec1891`. The GPL-3.0 library stays a separate download. Earlier Toilet Horse Shoe selections must be replaced; that library is no longer supported.
 5. Export. The result uses Eevee with an artistic Source-lighting bridge and Fresnel rim; hero lighting, probe reflections and NPR indirect are partial. The coverage report and the in-scene notes list exactly what was and was not applied.
 
-The Elagrimm look keeps the editable `AGR | Key` and `AGR | Fill` preview lights enabled. They provide artistic Blender direct lighting alongside the partial Source indirect inputs. Adjust their power or the material's **Additional Light Influence** for your shot; these preview lights do not reproduce the game's direct lights or shadows.
+The Elagrimm look keeps the editable `AGR | Key` and `AGR | Fill` preview lights enabled. Follow-camera exports place and animate these lights relative to the selected character and viewing side, so the character stays readable as it moves. They provide artistic Blender direct lighting alongside the partial Source indirect inputs. Adjust their power or the material's **Additional Light Influence** for your shot; these preview lights do not reproduce the game's direct lights or shadows. Rebuild the light animation after editing the camera or replay root.
 
-Start with one selected character and a short tick range. A follow camera does not limit character selection: exporting players across the map can exceed the lighting preview's 32-probe or 256 MiB-per-decoder limits. RenderLock checks this before preparing map geometry and reports the selected probe count and data size. Select fewer characters, shorten the range or reduce the map margin if needed. An external map `.blend` does not replace the installed lighting data. The limits and evaluated-surface checks remain enforced; unsupported lighting is not silently substituted.
+Probe selection follows each selected character's movement region, and distant characters can use different probes. Data is decoded in bounded batches of at most 32 probes and 256 MiB of atlas output; reflection decodes contain at most four cubemaps per batch. Each evaluated character surface must still have verified coverage. Larger selections require more cache space and processing time. An external map `.blend` does not replace the installed lighting data. Missing or unqualified lighting fails explicitly.
+
+CLI users can select `--partial-lighting` to accept artistic lighting limits while retaining strict character data. The existing `--partial` option also permits missing models or animation and remains a separate, broader choice.
 
 ## Windows portable
 
@@ -53,13 +55,15 @@ The first export after an affected game asset or conversion tool changes may nee
 
 ### Model bone rules
 
-**Model bone rules (experimental)** applies supported rules authored in the character model, such as making one bone aim at, follow or twist with another. These supplement the recorded skeletal animation. They are separate from cloth simulation, and unsupported rules remain explicitly reported.
+**Model bone rules (experimental)** applies supported rules authored in the character model, such as making one bone aim at, follow or twist with another. These supplement the recorded skeletal animation. They are separate from cloth simulation, and unsupported rules remain explicitly reported. The report lists applied rules and any rules the game disables because their driven bone is missing.
 
 ### Skeleton compatibility errors
 
 A replay's bone and animation-mask indices must match the installed animation skeleton. RenderLock stops when they differ, because applying those indices to another rig can animate the wrong bones. A different replay/game asset version is one possible cause; the diagnostic report identifies whether the failure concerns bones, masks or invalid names.
 
 If this happens, keep the diagnostic folder printed in the log. It contains `failure.json`, `segment.json`, `animation_tables.json`, `installed_asset_report.json` and the decoded skeleton below `installed-assets/clip_cache`; rig mismatches also include `installed-assets/animation_asset_report.json`. Include the RenderLock version, replay match ID, selected ticks and installed game build when reporting the issue. These diagnostic files can contain replay details, so share them privately when needed. A replay recorded with your currently installed game build is a useful compatibility check.
+
+A character can also change models and animation graphs during a transformation. Installed-game exports retain separate models, rigs and recorded poses under one player root and follow camera. The character stays selectable. A reset tick may have no recorded pose: strict export explains the missing tick, while explicitly selected partial export hides that sample and reports it without substituting a pose. For example, the verified Silver switch in replay 120527093 has no pose at tick 80656; both forms and the other 800 selected poses are retained in partial export. Particle model/attachment providers spanning a model switch remain unsupported and are reported separately. Custom asset packs still require a compatible model/rig for each selected track; changing graphs within a single unchanged model remains unsupported.
 
 ## Source checkout
 

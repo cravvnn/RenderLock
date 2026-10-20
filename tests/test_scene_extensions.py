@@ -236,8 +236,8 @@ def test_gui_partial_source_lighting_round_trip(gui_fields,monkeypatch):
     enabled=dict(gui_fields,source_lighting='1',world_region_probe='WorldRegionProbe.dll',lighting_dotnet='dotnet.exe')
     args=cli.parser().parse_args(build_convert_command(enabled)[3:])
     assert args.source_lighting and not args.partial
-    assert args.world_region_probe==Path('WorldRegionProbe.dll')
-    assert args.lighting_dotnet==Path('dotnet.exe')
+    assert args.world_region_probe==Path('WorldRegionProbe.dll').resolve()
+    assert args.lighting_dotnet==Path('dotnet.exe').resolve()
     with pytest.raises(ValueError,match='requires installed assets'):
         build_convert_command(dict(enabled,map_enabled='0'))
 
@@ -249,8 +249,8 @@ def test_gui_hero_lighting_round_trip_and_required_map_option(gui_fields,monkeyp
     calls=[];monkeypatch.setattr(source_hero_lighting,'validate_hero_decoder_paths',lambda *a:calls.append(a))
     values=dict(gui_fields,source_lighting='1',source_hero_lighting='1',world_region_probe='WorldRegionProbe.dll',lighting_dotnet='dotnet.exe',probe_atlas_decoder='ProbeAtlasDecode.dll',cubemap_decoder='CubemapDecode.dll')
     args=cli.parser().parse_args(build_convert_command(values)[3:])
-    assert args.source_hero_lighting and args.probe_atlas_decoder==Path('ProbeAtlasDecode.dll')
-    assert args.cubemap_decoder==Path('CubemapDecode.dll') and calls
+    assert args.source_hero_lighting and args.probe_atlas_decoder==Path('ProbeAtlasDecode.dll').resolve()
+    assert args.cubemap_decoder==Path('CubemapDecode.dll').resolve() and calls
     with pytest.raises(ValueError,match='requires Partial'):build_convert_command(dict(values,source_lighting='0'))
 
 
@@ -357,6 +357,8 @@ def test_published_package_retains_events_options_and_poses_without_derived_impo
     manifest = save_scene(original, work / "segment.json")
     original['hero_lighting']={'derived_cache_path':str(work/'hero-lighting')}
     original['npr_materials']={'derived_cache_path':str(work/'npr-materials')}
+    original['npr_runtime']=dict(mode='partial_indirect_reference', assume_camera_forward=True,
+                                 assume_white_instance_color=True)
     manifest = save_scene(original, work / 'segment.json')
     destination = tmp_path / "shot.agrscene"
     cli.publish_package(manifest, destination)
@@ -364,6 +366,7 @@ def test_published_package_retains_events_options_and_poses_without_derived_impo
     assert "effects" not in package and "map" not in package
     assert 'hero_lighting' not in package
     assert 'npr_materials' not in package
+    assert 'npr_runtime' not in package
     assert "model_file" not in package["entities"][0] and "secondary_motion_file" not in package["entities"][0]
     for key in ("particle_instances", "particle_extraction", "scene_options", "markers"):
         assert package[key] == original[key]
@@ -373,10 +376,13 @@ def test_published_package_retains_events_options_and_poses_without_derived_impo
     pose.unlink()
     skeleton.unlink()
     restored = read_scene(destination)
+    from agr.blender_scene_npr import validate_npr_runtime
+    assert validate_npr_runtime(restored, allow_partial=False) is None
     assert Path(restored["entities"][0]["pose_file"]).read_bytes() == b"portable pose fixture"
     assert Path(restored["entities"][0]["skeleton_file"]).read_text() == "{}"
     unchanged = json.loads(manifest.read_text())
     assert unchanged["effects"] == original["effects"]
+    assert unchanged['npr_runtime'] == original['npr_runtime']
     assert unchanged["entities"][0]["secondary_motion_file"] == original["entities"][0]["secondary_motion_file"]
 
 
@@ -433,16 +439,58 @@ def test_npr_scene_stage_records_preparation_and_propagates_failure(tmp_path,mon
     assert saved['coverage']['scene_extras']['npr_materials']['status']=='failed'
 
 
-def test_npr_gui_option_requires_partial_and_propagates(gui_fields,monkeypatch):
+def test_npr_gui_option_accepts_lighting_limits_without_placeholder_consent(gui_fields,monkeypatch):
     from agr import source_region,source_hero_lighting
     from agr.gui import build_convert_command
     monkeypatch.setattr(source_region,'regional_command',lambda *a:[])
     monkeypatch.setattr(source_hero_lighting,'validate_hero_decoder_paths',lambda *a:None)
     values=dict(gui_fields,source_lighting='1',source_hero_lighting='1',source_npr_lighting='1',world_region_probe='world',lighting_dotnet='dotnet',probe_atlas_decoder='atlas',cubemap_decoder='cube')
-    with pytest.raises(ValueError,match='NPR indirect'):build_convert_command(values)
-    with pytest.raises(ValueError,match='Follow camera'):build_convert_command(values,partial=True)
+    with pytest.raises(ValueError,match='Follow camera'):build_convert_command(values)
+    strict=cli.parser().parse_args(build_convert_command(dict(values,shot_hero='65'))[3:])
+    assert strict.partial_lighting and not strict.partial
     args=cli.parser().parse_args(build_convert_command(dict(values,shot_hero='65'),partial=True)[3:])
-    assert args.partial and args.source_npr_lighting and args.source_hero_lighting
+    assert args.partial and args.partial_lighting and args.source_npr_lighting and args.source_hero_lighting
+
+
+def test_character_only_source_diffuse_prepares_real_character_inputs_without_map_export(tmp_path,monkeypatch):
+    from agr import source_hero_lighting,source_region,installed_map,game_assets
+    manifest=save_scene(scene(),tmp_path/'segment.json')
+    provider=SimpleNamespace(install_path=tmp_path/'game',cache_dir=tmp_path/'cache',map_name='test')
+    monkeypatch.setattr(game_assets,'GameAssetProvider',lambda *a,**k:provider)
+    monkeypatch.setattr(source_hero_lighting,'preflight_hero_lighting',lambda *a,**k:{'probes':[]})
+    monkeypatch.setattr(source_region,'prepare_source_map',lambda *a,**k:pytest.fail('Discarded map geometry must not be exported'))
+    monkeypatch.setattr(installed_map,'prepare_installed_map',lambda *a,**k:pytest.fail('Map geometry must not be exported'))
+    calls=[]
+    def descriptor(selected,*args,**kwargs):
+        calls.append('descriptor')
+        return dict(status='ready',geometry='not_requested',source_world_sha256='a'*64,lighting={'brdf':{}})
+    monkeypatch.setattr(source_hero_lighting,'prepare_character_lighting_descriptor',descriptor)
+    def hero(descriptor,*args,**kwargs):
+        assert descriptor['geometry']=='not_requested' and kwargs['source_regions']
+        calls.append('character inputs')
+        return dict(mode='partial',assumptions=[],limits=[],plan={'probes':[]})
+    monkeypatch.setattr(source_hero_lighting,'prepare_hero_lighting',hero)
+    report=prepare_scene_extensions(manifest,tmp_path,provider,None,[],include_effects=False,
+        include_map=True,source_lighting=True,character_only=True,log=lambda _:None)
+    data=json.loads(manifest.read_text())
+    assert calls==['descriptor','character inputs']
+    assert data['hero_lighting_components']==['diffuse']
+    assert data['map']['geometry']=='not_requested' and 'model_file' not in data['map']
+    assert report['hero_lighting']['requested_components']==['diffuse']
+    assert report['hero_lighting']['applied_components']==[]
+
+
+def test_beta_source_diffuse_gui_routes_helpers_and_keeps_animation_strict(gui_fields,monkeypatch):
+    from agr import release_profile,source_hero_lighting
+    from agr.gui import build_convert_command
+    monkeypatch.setattr(release_profile,'character_beta',lambda:True)
+    calls=[]
+    monkeypatch.setattr(source_hero_lighting,'validate_hero_decoder_paths',lambda *a:calls.append(a))
+    values=dict(gui_fields,source_lighting='1',lighting_dotnet='dotnet',
+                probe_atlas_decoder='atlas',cubemap_decoder='cube',world_region_probe='')
+    args=cli.parser().parse_args(build_convert_command(values)[3:])
+    assert args.source_lighting and args.partial_lighting and not args.partial and not args.source_hero_lighting
+    assert args.probe_atlas_decoder and args.cubemap_decoder and calls
 
 
 def test_npr_cli_rejects_implicit_partial_before_input_work(tmp_path):
@@ -471,7 +519,7 @@ def test_character_shader_gui_requires_npr_and_roundtrips_separate_map(gui_field
                   world_region_probe='world',lighting_dotnet='dotnet',probe_atlas_decoder='atlas',
                   cubemap_decoder='cube',shot_hero='65')
     args=cli.parser().parse_args(build_convert_command(values,partial=True)[3:])
-    assert args.character_shader==Path('shader.blend') and args.character_only
+    assert args.character_shader==Path('shader.blend').resolve() and args.character_only
 
 
 def test_character_shader_cli_rejects_implicit_lighting_before_allocating(tmp_path):

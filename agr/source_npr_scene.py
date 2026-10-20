@@ -7,6 +7,11 @@ from pathlib import Path
 from .asset_converter import ConversionError, read_glb, sha
 from .source_npr_assets import plan_npr_material_assets, decode_npr_material_assets
 from .source_npr_package import build_npr_material_package, validate_npr_material_package
+from .source_hero_lighting_package import canonical_sha
+
+
+def material_set_key(row):
+    return row.get('material_set_sha256',row['model_sha256'])
 
 
 def validate_scene_npr_selection(package, entities, *, manifest_dir):
@@ -29,7 +34,7 @@ def validate_scene_npr_selection(package, entities, *, manifest_dir):
     if not selected or set(current)!=set(selected):
         raise ConversionError('Prepared/current NPR entity coverage differs')
     models=package['models']
-    if set(models)!={r['model_sha256'] for r in selected.values()}:
+    if set(models)!={material_set_key(r) for r in selected.values()}:
         raise ConversionError('NPR model package coverage differs')
     for identity,row in selected.items():
         value=current[identity].get('model_file')
@@ -38,8 +43,16 @@ def validate_scene_npr_selection(package, entities, *, manifest_dir):
         if not path.is_absolute():path=Path(manifest_dir)/path
         if sha(path)!=row['model_sha256']:
             raise ConversionError('Selected model changed after NPR preparation')
+        contract=current[identity].get('model_material_groups')
+        if row.get('material_group_sha256')!=(contract or {}).get('content_sha256'):
+            raise ConversionError('Selected material-group coverage changed after NPR preparation')
+        if contract is not None:
+            from .model_material_groups import validate_material_group_contract
+            validate_material_group_contract(contract,current[identity].get('samples',[]),model=path)
+        expected=canonical_sha(dict(model_sha256=row['model_sha256'],bundle_sha256=contract['bundle']['sha256'])) if contract and contract.get('bundle') else row['model_sha256']
+        if material_set_key(row)!=expected:raise ConversionError('NPR material-set identity differs')
     for material_package in models.values():validate_npr_material_package(material_package)
-    return {identity:models[row['model_sha256']] for identity,row in selected.items()}
+    return {identity:models[material_set_key(row)] for identity,row in selected.items()}
 
 
 def prepare_scene_npr_materials(segment, provider, decoder, *, manifest_dir,
@@ -61,8 +74,21 @@ def prepare_scene_npr_materials(segment, provider, decoder, *, manifest_dir,
         if not path.is_absolute():path=Path(manifest_dir)/path
         path=path.resolve(strict=True)
         digest=sha(path)
-        if digest not in models:models[digest]=(path,read_glb(path))
-        selections.append(dict(entity_id=identity,model_sha256=digest,model_file=str(path)))
+        contract=entity.get('model_material_groups');key=digest
+        if contract is not None:
+            from .model_material_groups import validate_material_group_contract
+            validate_material_group_contract(contract,entity.get('samples',[]),model=path)
+            if contract.get('bundle'):key=canonical_sha(dict(model_sha256=digest,bundle_sha256=contract['bundle']['sha256']))
+        if key not in models:
+            document=read_glb(path)
+            if contract is not None:
+                from .model_material_groups import material_union_document
+                document=material_union_document(document,contract)
+            models[key]=(path,document)
+        row=dict(entity_id=identity,model_sha256=digest,model_file=str(path))
+        if key!=digest:row['material_set_sha256']=key
+        if contract is not None:row['material_group_sha256']=contract['content_sha256']
+        selections.append(row)
     # Resolve every selected model before decoding any texture. A later
     # unsupported material cannot leave a partially successful scene package.
     plans={digest:plan_npr_material_assets(document,provider,decoder)

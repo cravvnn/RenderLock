@@ -48,6 +48,11 @@ def validate_scene(data: dict) -> None:
         if not isinstance(ident, str) or not ident or ident in identities:
             raise SceneError("Each entity lifetime requires a unique string id.")
         identities.add(ident)
+        from .model_states import model_states
+        try:
+            model_states(entity)
+        except ValueError as error:
+            raise SceneError(f'{ident}: {error}') from error
         previous = -1
         if not entity.get("samples"):
             raise SceneError(f"{ident}: empty sample track")
@@ -56,12 +61,24 @@ def validate_scene(data: dict) -> None:
             if type(tick) is not int or tick <= previous:
                 raise SceneError(f"{ident}: samples must have unique increasing integer ticks")
             previous = tick
+            if 'pose_available' in sample and type(sample['pose_available']) is not bool:
+                raise SceneError(f'{ident}: invalid pose availability')
             for key in ("position", "body_angles"):
                 value = sample.get(key)
                 if not isinstance(value, (list, tuple)) or len(value) != 3 or any(
                     isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) for v in value
                 ):
                     raise SceneError(f"{ident} tick {tick}: invalid {key}")
+        missing = entity.get('pose_unavailable_ticks', [])
+        if (not isinstance(missing, list) or any(type(t) is not int for t in missing)
+                or missing != sorted(set(missing))
+                or set(missing) != {s['tick'] for s in entity['samples'] if s.get('pose_available') is False}):
+            raise SceneError(f'{ident}: unavailable pose ticks differ from sample availability')
+    from .model_tracks import logical_entities
+    try:
+        logical_entities(entities)
+    except ValueError as error:
+        raise SceneError(str(error)) from error
 
 
 def slice_scene(data: dict, start: int | None, end: int | None, heroes: list[int] | None = None) -> dict:
@@ -96,6 +113,22 @@ def slice_scene(data: dict, start: int | None, end: int | None, heroes: list[int
             continue
         clone = copy.deepcopy(entity)
         clone["samples"] = selected
+        if 'pose_unavailable_ticks' in clone:
+            clone['pose_unavailable_ticks'] = [t for t in clone['pose_unavailable_ticks'] if start <= t <= end]
+            if not clone['pose_unavailable_ticks']:
+                clone.pop('pose_unavailable_ticks')
+                if clone.get('animation_status') == 'evaluated_partial':
+                    clone['animation_status'] = 'evaluated'
+        from .model_states import model_states
+        states = model_states(clone)
+        if states and states[0]['model_handle'] != clone.get('model_handle'):
+            clone['model_handle'] = states[0]['model_handle']
+            # A range starting in another form cannot reuse the previous form's
+            # geometry, rig, pose tracks or derived material/constraint bindings.
+            for key in ('model_file', 'pose_file', 'skeleton_file', 'secondary_motion_file',
+                        'asset_objects', 'asset_collection', 'rig_object', 'model_constraints',
+                        'model_mesh_groups', 'model_material_groups', 'animation_status'):
+                clone.pop(key, None)
         # Preserve data-support intervals without asserting a biological spawn/death.
         if "observed_intervals" not in clone:
             intervals = []
@@ -120,9 +153,24 @@ def slice_scene(data: dict, start: int | None, end: int | None, heroes: list[int
         result["animation"]["entities"] = [
             {"id": e["id"], "requested_samples": len(e["samples"]), "source": "saved_pose_tracks"}
             for e in result["entities"] if e.get("pose_file") and e.get("skeleton_file")]
-        result["animation"]["diagnostics"] = [d for d in result["animation"].get("diagnostics", []) if d.get("id") in chosen_ids]
+        diagnostics = []
+        for diagnostic in result['animation'].get('diagnostics', []):
+            if diagnostic.get('id') not in chosen_ids:
+                continue
+            # These diagnostics describe individual unavailable samples, not
+            # a whole rig/track failure. Keep the original under source_animation.
+            ticks = diagnostic.get('ticks')
+            if (diagnostic.get('code') == 'animation_reset_pose_unavailable'
+                    and isinstance(ticks, list) and all(type(t) is int for t in ticks)):
+                ticks = [t for t in ticks if start <= t <= end]
+                if not ticks:
+                    continue
+                diagnostic = dict(diagnostic, ticks=ticks)
+            diagnostics.append(diagnostic)
+        result['animation']['diagnostics'] = diagnostics
     if any(e.get("pose_file") for e in result["entities"]):
-        ready = sum(bool(e.get("pose_file") and e.get("skeleton_file")) for e in result["entities"])
+        ready = sum(bool(e.get("pose_file") and e.get("skeleton_file") and not any(
+            start <= t <= end for t in e.get('pose_unavailable_ticks', []))) for e in result["entities"])
         result.setdefault("coverage", {})["skeletal_animation"] = {
             "evaluated_entities": ready, "unsupported_entities": len(result["entities"])-ready,
             "scope": "selected entities; cached source evaluation"}

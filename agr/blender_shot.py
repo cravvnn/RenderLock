@@ -31,7 +31,7 @@ def frame_actor(scene, root):
     if camera is None or camera.constraints or camera.parent:
         raise ValueError('Hero shot requires an unparented camera without constraints')
     actor = {root, *root.children_recursive}
-    meshes = [o for o in actor if o.type == 'MESH' and not o.hide_render]
+    meshes = [o for o in actor if o.type == 'MESH']
     if not meshes:
         raise ValueError('Hero shot has no visible character meshes')
     original_frame, original_subframe = scene.frame_current, scene.frame_subframe
@@ -45,9 +45,10 @@ def frame_actor(scene, root):
             deps = bpy.context.evaluated_depsgraph_get()
             positions[frame] = root.matrix_world.translation.copy()
             points[frame] = [obj.matrix_world @ Vector(corner)
-                             for mesh in meshes for obj in [mesh.evaluated_get(deps)]
+                             for mesh in meshes if not mesh.hide_render for obj in [mesh.evaluated_get(deps)]
                              for corner in obj.bound_box]
         relative = [point - positions[f] for f in frames for point in points[f]]
+        if not relative:raise ValueError('Hero shot has no render-visible mesh frames')
         low = Vector([min(p[a] for p in relative) for a in range(3)])
         high = Vector([max(p[a] for p in relative) for a in range(3)])
         center = (low + high) / 2
@@ -100,8 +101,9 @@ def frame_actor(scene, root):
         return {'mode': 'hero follow', 'hero_id': root.get('hero_id'),
                 'entity_id': root.get('agr_entity_id'), 'frames': len(frames),
                 'offset_m': list(offset), 'target_offset_m': list(center),
+                'bounds_min_m': list(low), 'bounds_max_m': list(high),
                 'render_aspect': aspect,
                 'sample_frames': sample_frames, 'minimum_sampled_visibility': chosen[0],
-                'scope': 'Animated mesh bounds fitted at integer frames; three visibility rays on seven frames. No whole-image occlusion or subframe guarantee.'}
+                'scope': 'Animated render-visible mesh bounds fitted at integer frames; three visibility rays on seven frames. No whole-image occlusion or subframe guarantee.'}
     finally:
         scene.frame_set(original_frame, subframe=original_subframe)

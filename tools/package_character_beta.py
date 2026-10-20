@@ -8,8 +8,10 @@ from __future__ import annotations
 import argparse
 import importlib.metadata as metadata
 import json
+import os
 from pathlib import Path
 import shutil
+import subprocess
 import sys
 from zipfile import ZipFile, ZIP_DEFLATED
 
@@ -27,6 +29,43 @@ SOURCE_ROOT_FILES = {
 RUNTIME_REQUIREMENTS = ("numpy", "boon-deadlock", "polars", "python-snappy")
 SKIP_PARTS = {"__pycache__", ".pytest_cache", ".git", ".venv", "target", "bin", "obj"}
 STALE_TOOLS = {"package_release.py", "package_startup_update.py"}
+PARTICLE_COMMANDS = {
+    "physics-json-v1", "material-bundle-v1", "decompile-cloth",
+    "inventory-cloth-physics", "inventory-animation-clip-events", "inventory-model-hitboxes",
+}
+
+
+def verify_particle_helper(directory, dotnet_runtime):
+    """Reject stale helper binaries before staging a candidate."""
+    from agr.model_material_groups import PARSER_SHA256
+    if dotnet_runtime is None:
+        raise ValueError("The particle helper requires its bundled .NET runtime")
+    probe = directory.resolve() / "ParticleProbe.dll"
+    runtime = dotnet_runtime.resolve()
+    dotnet = runtime / "dotnet.exe"
+    if not probe.is_file() or not dotnet.is_file():
+        raise ValueError("Particle helper DLL or bundled .NET executable missing")
+    parser = probe.with_name("ValveResourceFormat.dll")
+    native_image = probe.with_name("libSkiaSharp.dll")
+    if not parser.is_file() or digest(parser) != PARSER_SHA256:
+        raise ValueError("Particle helper requires the qualified material parser assembly")
+    if not native_image.is_file():
+        raise ValueError("Particle helper native image decoder missing")
+    environment = dict(os.environ, DOTNET_ROOT=str(runtime))
+    try:
+        result = subprocess.run([str(dotnet), str(probe), "--capabilities-v1"],
+                                env=environment, capture_output=True, text=True,
+                                encoding="utf-8", timeout=30, check=True)
+        capabilities = json.loads(result.stdout)
+        commands = capabilities.get("commands")
+        if (capabilities.get("schema_version") != 1 or not isinstance(commands, list)
+                or not all(isinstance(command, str) for command in commands)
+                or not PARTICLE_COMMANDS.issubset(commands)):
+            raise ValueError("Required particle/typed-physics commands are absent")
+    except (OSError, subprocess.SubprocessError, ValueError, AttributeError) as exc:
+        raise ValueError("Particle helper capability check failed; rebuild it before packaging") from exc
+    return dict(sha256=digest(probe), parser_sha256=digest(parser),
+                native_image_sha256=digest(native_image), capabilities=capabilities)
 
 
 def copy_file(source, destination):
@@ -194,6 +233,8 @@ def package(root, output, native_helper, source2viewer_dir=None, lighting_kit=No
         raise ValueError("Choose a new candidate directory; existing candidates are preserved")
     if not native_helper.is_file():
         raise ValueError("A verified Windows native replay helper is required")
+    particle_helper = (verify_particle_helper(particles_dir, dotnet_runtime)
+                       if particles_dir is not None else None)
     from agr import __version__
     output.mkdir(parents=True)
     source = output / f"RenderLock-{__version__}-source"
@@ -222,6 +263,7 @@ def package(root, output, native_helper, source2viewer_dir=None, lighting_kit=No
     receipts = dict(version=__version__, source=archive(source, output / (source.name + ".zip")),
                     portable=archive(portable, output / (portable.name + ".zip")),
                     native_helper_sha256=digest(native_helper), runtime_dependencies=dependencies,
+                    particle_helper=particle_helper,
                     excluded_developer_tests=excluded_tests)
     (output / "packaging-receipt.json").write_text(json.dumps(receipts, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(receipts, indent=2))

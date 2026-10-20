@@ -1,5 +1,6 @@
-"""Bounded authored brightness case qualified by C107 installed emulation."""
+"""Authored static color expressions, checked against installed built-ins."""
 import numpy as np
+from .npr_color_matrices import saturation_brightness,color_tint,color_correction
 
 # Read from the qualified compiled pbr pixel shader's variable descriptions.
 # These are static metadata defaults (no dynamic expression/layer override),
@@ -14,7 +15,7 @@ STATIC_DEFAULTS = {
 }
 
 
-def neutral_tint_controls(vmat, *, assume_white_instance_color, shader_sha256=None):
+def neutral_tint_controls(vmat, *, assume_white_instance_color, shader_sha256=None,texture_average=None):
     if assume_white_instance_color is not True:
         raise ValueError('Explicit white instance-color assumption required')
     if shader_sha256 is not None:
@@ -27,10 +28,16 @@ def neutral_tint_controls(vmat, *, assume_white_instance_color, shader_sha256=No
     vectors=vmat.get('VectorParams',{});ints=vmat.get('IntParams',{})
     csb=np.asarray(vectors.get('g_vAlbedoContrastSaturationBrightness1'),dtype=float)
     tint=np.asarray(vectors.get('g_vColorTint1'),dtype=float)
-    if csb.shape!=(4,) or not np.isfinite(csb).all() or not np.array_equal(csb[:2],[1,1]) or not 0<=csb[2]<=2:
-        raise ValueError('Only qualified unit contrast/saturation brightness supported')
-    if tint.shape!=(4,) or not np.array_equal(tint[:3],[1,1,1]) or ints.get('g_nTextureColorTintMode1')!=0:
-        raise ValueError('Only qualified white multiply tint supported')
+    if (csb.shape!=(4,) or not np.isfinite(csb).all()
+            or np.any(csb[:3]<0) or np.any(csb[:3]>4)):
+        raise ValueError('Qualified authored contrast/saturation/brightness in0..4 required')
+    if csb[0]!=1 and texture_average is None:
+        raise ValueError('Authored contrast requires authenticated original texture average')
+    mode=ints.get('g_nTextureColorTintMode1')
+    if (tint.shape!=(4,) or not np.isfinite(tint).all()
+            or np.any(tint[:3]<0) or np.any(tint[:3]>1)
+            or type(mode) is not int or mode not in (0,1,2)):
+        raise ValueError('Only qualified finite tint modes0/1/2 supported')
     strength=vmat.get('FloatParams',{}).get('g_fVertexColorStrength1')
     if not isinstance(strength,(float,int)) or not np.isfinite(strength) or not 0<=strength<=1:
         raise ValueError('Explicit vertex strength required')
@@ -43,8 +50,10 @@ def neutral_tint_controls(vmat, *, assume_white_instance_color, shader_sha256=No
         if key=='g_bApplyTintToVertexColors' and key not in ints:value=0
         if type(value) is not int or value not in (0,1):raise ValueError('Explicit authored tint flags required')
         flags.append(bool(value))
-    correction=np.diag([csb[2],csb[2],csb[2],1])
-    return dict(correction_matrix=correction,tint_matrix=np.eye(4),
+    correction=(saturation_brightness(float(csb[1]),float(csb[2])) if csb[0]==1 else
+                color_correction(csb[:3],texture_average))
+    tint_matrix=color_tint(tint[:3],mode)
+    return dict(correction_matrix=correction,tint_matrix=tint_matrix,
         instance_color=[1,1,1],tint_mask=1,vertex_strength=float(strength),
         apply_tint_to_vertex_colors=flags[0],mask_vertex_tint=flags[1],mask_color_tint=flags[2])
 

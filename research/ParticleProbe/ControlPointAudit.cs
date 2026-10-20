@@ -9,6 +9,19 @@ using ValveResourceFormat.ResourceTypes;
 
 static class ControlPointAudit
 {
+    public static void BeginInputs(ParticleSystemSimulation simulation, IEnumerable<int> indices)
+    {
+        // Reflection keeps the helper usable with the previous qualified VRF.
+        // Legacy output retains the exact supplied/materialized equality rule.
+        typeof(ParticleSystemState).GetMethod("BeginControlPointInputAudit")
+            ?.Invoke(simulation.RenderState, new object[] { indices.ToArray() });
+    }
+
+    public static object? InputProvenance(ParticleSystemSimulation simulation, string name)
+    {
+        return typeof(ParticleSystemState).GetProperty(name)?.GetValue(simulation.RenderState);
+    }
+
     // The pinned simulator silently creates a zero-valued CP when an operator
     // requests one. Report materialized indices so the caller can withhold an
     // instance whose required inputs were never supplied. This includes writes;

@@ -45,7 +45,7 @@ def asset_spec(entity, root, manifest_dir):
                 entry = entries[key]
                 spec.update({"model_file": entry} if isinstance(entry, str) else entry)
                 break
-    for key in ("model_file", "skeleton_file", "pose_file", "asset_objects", "asset_collection", "model_yaw_degrees", "pose_basis_yaw_degrees", "model_scale", "rig_object", "model_local_transform", "require_weighted_bone_mapping", "static_generated_cloth"):
+    for key in ("model_file", "skeleton_file", "pose_file", "asset_objects", "asset_collection", "model_yaw_degrees", "pose_basis_yaw_degrees", "model_scale", "rig_object", "model_local_transform", "require_weighted_bone_mapping", "static_generated_cloth","model_mesh_groups","model_material_groups"):
         if entity.get(key) is not None:
             spec[key] = entity[key]
     if entity.get('model_constraints') is not None:
@@ -75,6 +75,8 @@ def _init_blender():
     program_root = str(Path(__file__).resolve().parents[1])
     if program_root not in sys.path:
         sys.path.insert(0, program_root)
+    from agr.console import configure_stdio
+    configure_stdio()
 
 
 def _action_channels(obj, name):
@@ -197,9 +199,14 @@ def _append_blend(spec, collection):
 
 
 def _import_asset(spec, collection, root, name):
-    model = Path(spec["model_file"])
+    from agr.path_io import native_path
+    model = Path(native_path(spec["model_file"]))
     if not model.is_file():
         raise FileNotFoundError("Model is missing: " + str(model))
+    if spec.get('model_mesh_groups') is not None:
+        from agr.asset_converter import sha
+        if sha(model)!=spec['model_mesh_groups'].get('model_sha256'):
+            raise ValueError('Prepared mesh-group model identity changed')
     if model.suffix.lower() in (".glb", ".gltf"):
         from agr.blender_helpers import gltf_import_options, exclude_gltf_bone_helpers
         before = set(bpy.data.objects)
@@ -233,6 +240,9 @@ def _import_asset(spec, collection, root, name):
     selected_rig = spec.get("rig_object")
     if selected_rig:
         rigs = [obj for obj in rigs if obj.name == selected_rig or obj.name.startswith(selected_rig + ".")]
+    if spec.get('model_mesh_groups') is not None:
+        from agr.blender_mesh_groups import validate_imported_mesh_groups
+        validate_imported_mesh_groups(objects,spec['model_mesh_groups'])
     return objects, rigs, model_root
 
 
@@ -313,11 +323,12 @@ def visibility_changes(entity, samples, data, fps):
     for sample in samples:
         if "present" in sample:
             event(sample["tick"])["present"] = bool(sample["present"])
+        event(sample['tick'])['pose_available'] = sample.get('pose_available', True)
     spawn, despawn = entity.get("spawn_tick"), entity.get("despawn_tick")
     for boundary in (spawn, despawn, data["start_tick"]):
         if boundary is not None:
             event(boundary)
-    observed, present = 0, True
+    observed, present, pose_available = 0, True, True
     changes = []
     for tick, change in sorted(events.items()):
         # The output's final integer frame can extend beyond the exact last tick.
@@ -326,9 +337,12 @@ def visibility_changes(entity, samples, data, fps):
             break
         observed += change["delta"]
         present = change.get("present", present)
+        pose_available = change.get('pose_available', pose_available)
         if tick < data["start_tick"]:
             continue
         visible = observed > 0 and present and (spawn is None or tick >= spawn) and (despawn is None or tick < despawn)
+        if data.get('coverage', {}).get('animation') != 'not_requested':
+            visible = visible and pose_available
         hidden = not visible
         if not changes or changes[-1][1] != hidden:
             changes.append((tick_frame(tick, data["start_tick"], data["tick_rate"], fps), hidden))
@@ -347,8 +361,12 @@ def _visibility(objects, entity, samples, data, fps):
         if obj.animation_data and obj.animation_data.action:
             raise ValueError("Imported mesh unexpectedly retains animation: " + obj.name)
         _, channels = _action_channels(obj, obj.name + " | lifetime")
+        object_changes=changes
+        if obj.get('agr_mesh_group_contract') is not None:
+            from agr.blender_mesh_groups import selected_visibility
+            object_changes=selected_visibility(obj,entity,samples,data,fps,changes)
         for prop in ("hide_render", "hide_viewport"):
-            _curve(channels, obj, prop, 0, [x[0] for x in changes], [float(x[1]) for x in changes], constant=True)
+            _curve(channels, obj, prop, 0, [x[0] for x in object_changes], [float(x[1]) for x in object_changes], constant=True)
     return changes
 
 
@@ -424,7 +442,53 @@ def _check_weighted_mapping(rig, source_names, *, static_generated_cloth=False):
     return report
 
 
-def _bake_pose(rig, spec, data, coordinates, fps):
+def pose_sample_coverage(ticks, requested_ticks, start_tick, end_tick):
+    """Require recorded poses at the actor's requested output samples."""
+    available = {int(tick) for tick in ticks if start_tick <= tick <= end_tick
+                 and float(tick).is_integer()}
+    requested = {tick for tick in requested_ticks if start_tick <= tick <= end_tick}
+    missing = sorted(requested - available)
+    if not available or missing:
+        return {"status": "unsupported", "sample_count": 0,
+                "reason_code": "missing_selected_pose_samples",
+                "reason": ("No recorded bone poses cover the selected range." if not available else
+                           f"Recorded bone poses are missing {len(missing)} requested samples; "
+                           f"first missing tick: {missing[0]}."),
+                "requested_sample_count": len(requested),
+                "available_sample_count": len(available),
+                "missing_sample_count": len(missing),
+                "first_missing_tick": missing[0] if missing else None}
+    return None
+
+
+def source_rig_mapping(names, parents, rig_bones):
+    """Bind exact names, or one ASCII-case alias with the same named parent.
+
+    Model rigs contain extra helpers and use a different order from Nm bones;
+    only an unambiguous name and matching parent authorize a casing alias.
+    """
+    mapping = {name:name for name in names if name in rig_bones}
+    aliases = []
+    for index,name in enumerate(names):
+        if name in mapping or not name.isascii():
+            continue
+        matches = [n for n in rig_bones.keys() if n.isascii() and n.lower()==name.lower()]
+        if not matches:
+            continue
+        if len(matches)!=1 or sum(n.isascii() and n.lower()==name.lower() for n in names)!=1:
+            raise ValueError('Ambiguous source/model bone casing: '+name)
+        mapping[name] = matches[0]
+        aliases.append({'index':index,'source':name,'model':matches[0]})
+    for alias in aliases:
+        parent = parents[alias['index']]
+        expected = mapping.get(names[parent]) if parent >= 0 else None
+        actual = rig_bones[alias['model']].parent
+        if (parent >= 0 and expected is None) or (actual.name if actual else None)!=expected:
+            raise ValueError('Source/model case alias has a different parent: '+alias['source'])
+    return mapping,aliases
+
+
+def _bake_pose(rig, spec, data, coordinates, fps, *, requested_ticks=None):
     skeleton = json.loads(Path(spec["skeleton_file"]).read_text(encoding="utf-8"))
     names, parents = _skeleton_fields(skeleton)
     with np.load(spec["pose_file"], allow_pickle=False) as arrays:
@@ -434,10 +498,12 @@ def _bake_pose(rig, spec, data, coordinates, fps):
         raise ValueError("Pose array dimensions do not match the skeleton")
     if not len(ticks) or not all(np.isfinite(x).all() for x in (q, t, s, ticks)) or np.any(np.diff(ticks) <= 0):
         raise ValueError("Pose arrays require finite values and strictly increasing ticks")
+    coverage = pose_sample_coverage(ticks, ticks if requested_ticks is None else requested_ticks,
+                                    data['start_tick'], data['end_tick'])
+    if coverage is not None:
+        return coverage
     from agr.particle_history import history_start
     indices = np.flatnonzero((ticks >= history_start(data)) & (ticks <= data["end_tick"]))
-    if not len(indices):
-        return {"status": "no poses in selected range", "sample_count": 0}
     bones = list(rig.data.bones)
     constraint_solver = None
     constraint_spec = spec.get('model_constraints')
@@ -449,7 +515,9 @@ def _bake_pose(rig, spec, data, coordinates, fps):
         model_parents = constraint_spec['parents']
         if set(model_names) != set(rig.data.bones.keys()):
             raise ValueError('Authored constraint model identity differs from imported rig')
-        constraint_solver = ModelConstraints(model_names, model_parents, constraint_spec['definitions'])
+        constraint_solver = ModelConstraints(model_names, model_parents, constraint_spec['definitions'],
+                                             attachments=constraint_spec.get('attachments'),
+                                             binding_policy=constraint_spec.get('binding_policy','strict'))
         for i, name in enumerate(model_names):
             actual_parent = rig.data.bones[name].parent
             expected_parent = model_names[model_parents[i]] if model_parents[i] >= 0 else None
@@ -457,10 +525,11 @@ def _bake_pose(rig, spec, data, coordinates, fps):
                 raise ValueError('Authored constraint parent hierarchy differs from imported rig')
         # Preserve all available earlier poses for stateful twist warmup.
         indices = np.flatnonzero(ticks <= data['end_tick'])
-    mapped = set(names) & set(rig.data.bones.keys())
+    bone_mapping,bone_aliases = source_rig_mapping(names,parents,rig.data.bones)
+    mapped = set(bone_mapping.values())
     if not mapped:
         raise ValueError("Model rig has no bones matching the source skeleton")
-    weight_coverage = (_check_weighted_mapping(rig, names,
+    weight_coverage = (_check_weighted_mapping(rig, mapped,
                        static_generated_cloth=spec.get("static_generated_cloth") is True)
                        if spec.get("require_weighted_bone_mapping") else None)
     if constraint_solver is not None and weight_coverage is not None:
@@ -483,7 +552,8 @@ def _bake_pose(rig, spec, data, coordinates, fps):
             rotation.normalize()
             local = Matrix.LocRotScale(Vector(t[source_index, index]) * coordinates["unit_scale"], rotation, scale_vector)
             globals_.append(globals_[parent] @ local if parent >= 0 else local)
-        source = {name: correction @ globals_[index] for index, name in enumerate(names)}
+        source = {bone_mapping[name]: correction @ globals_[index] for index, name in enumerate(names)
+                  if name in bone_mapping}
         targets = {}
         # Blender bone iteration is not guaranteed to be parent first.
         def target(bone):
@@ -546,10 +616,13 @@ def _bake_pose(rig, spec, data, coordinates, fps):
                     keys += _curve(channels, rig, pb.path_from_id(prop), component, frames, channel, steps=steps)
     action["agr_source"] = "Offline evaluated source parent-space poses; recorded ragdolls unavailable"
     action["tick_rate"] = float(data["tick_rate"])
-    return {"status": "baked", "sample_count": len(indices), "first_tick": int(ticks[indices[0]]), "last_tick": int(ticks[indices[-1]]), "mapped_bones": len(mapped), "source_bones": len(names), "rig_bones": len(bones), "source_bones_absent_from_rig": sorted(set(names) - mapped), "rig_bones_following_parent_rest": sorted(set(rig.data.bones.keys()) - mapped - (constraint_solver.affected_names if constraint_solver else set())), "keyframe_count": keys, "held_recipe_samples": int((~fresh[indices]).sum()) if fresh is not None else None,
+    return {"status": "baked", "sample_count": len(indices), "first_tick": int(ticks[indices[0]]), "last_tick": int(ticks[indices[-1]]), "mapped_bones": len(mapped), "source_bones": len(names), "rig_bones": len(bones), "source_bone_aliases":bone_aliases, "source_bones_absent_from_rig": sorted(set(names) - set(bone_mapping)), "rig_bones_following_parent_rest": sorted(set(rig.data.bones.keys()) - mapped - (constraint_solver.affected_names if constraint_solver else set())), "keyframe_count": keys, "held_recipe_samples": int((~fresh[indices]).sum()) if fresh is not None else None,
             "weighted_bone_coverage": weight_coverage,
             "model_constraints": {"status": "baked", "count": len(constraint_spec['definitions']),
-                                  "scope": "Authored bone-only constraints; full engine parity unverified",
+                                  "evaluated_count": constraint_solver.active_constraint_count,
+                                  "native_disabled_count": len(constraint_solver.disabled_constraints),
+                                  "native_disabled": list(constraint_solver.disabled_constraints),
+                                  "scope": "Qualified authored bone/attachment constraints; full engine parity unverified",
                                   "history_first_tick": int(ticks[indices[0]])} if constraint_solver else {"status": "not_requested"},
             "cloth": weight_coverage["cloth"] if weight_coverage else "not_evaluated",
             "static_generated_cloth_bone_count": weight_coverage["static_generated_cloth_bone_count"] if weight_coverage else 0}
@@ -623,16 +696,19 @@ def _review_setup(scene, positions):
 
 
 def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime=None, shot_hero=None,
-                character_shader=None, character_only=False):
+                character_shader=None, character_only=False, allow_partial_lighting=False):
     _init_blender()
     segment, output = Path(segment).resolve(), Path(output).resolve()
     data = json.loads(segment.read_text(encoding="utf-8"))
     from agr.blender_scene_npr import validate_npr_runtime
-    validate_npr_runtime(data,allow_partial=partial)
+    partial_lighting=bool(partial or allow_partial_lighting)
+    validate_npr_runtime(data,allow_partial=partial_lighting)
+    if data.get('hero_lighting') is not None and not partial_lighting:
+        raise ValueError('Hero Source lighting requires explicit partial lighting acceptance')
     if data.get('npr_runtime') is not None and shot_hero is None:
         raise ValueError('NPR scene build requires a perspective hero shot (--shot-hero)')
     if character_shader is not None:
-        if not partial or data.get('npr_runtime') is None:
+        if not partial_lighting or data.get('npr_runtime') is None:
             raise ValueError('Character shader requires partial NPR Source lighting')
         from agr.blender_character_shader import validate_character_shader_library
         character_shader=validate_character_shader_library(character_shader)
@@ -664,7 +740,10 @@ def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime
     scene.unit_settings.system, scene.unit_settings.scale_length = "METRIC", 1
     report = {"schema_version": 1, "blender_version": bpy.app.version_string, "segment": str(segment), "output": str(output), "start_tick": data["start_tick"], "end_tick": data["end_tick"], "tick_rate": data["tick_rate"], "fps": fps, "frame_end": scene.frame_end, "end_frame_exact": scene["agr_end_frame_exact"], "coordinates": coordinates, "entities": [], "warnings": [], "coverage": data.get("coverage", {}), "partial_allowed": partial}
     poses_requested = data.get("coverage", {}).get("animation") != "not_requested"
-    roots, all_positions, entity_objects = [], [], {}
+    roots, lighting_roots, all_positions, entity_objects = [], [], [], {}
+    from agr.model_tracks import actor_id, logical_entities
+    logical = logical_entities(data['entities'])
+    shared_roots = {}
     for entity in data["entities"]:
         if not entity.get("samples"):
             report["warnings"].append("Entity " + str(entity["id"]) + " has no movement samples and was skipped")
@@ -672,18 +751,34 @@ def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime
         name = str(entity.get("hero_name") or entity.get("hero_id") or "Entity") + " [" + str(entity["id"]) + "]"
         collection = bpy.data.collections.new(name)
         scene.collection.children.link(collection)
-        root = _empty(name + " | replay root", collection)
-        root["agr_entity_id"], root["hero_id"] = str(entity["id"]), str(entity.get("hero_id", ""))
-        roots.append(root)
-        samples, positions, steps = _animate_root(root, entity, data, coordinates, fps)
-        all_positions.extend(positions)
+        identity = actor_id(entity)
+        if identity not in shared_roots:
+            root = _empty(name + " | replay root", collection)
+            root["agr_entity_id"], root["hero_id"] = str(identity), str(entity.get("hero_id", ""))
+            shared_roots[identity] = root
+            roots.append(root)
+            _, positions, steps = _animate_root(root, logical[identity], data, coordinates, fps)
+            all_positions.extend(positions)
+        else:
+            root = shared_roots[identity]
+            steps = 0
+        samples = sorted(entity['samples'], key=lambda sample:sample['tick'])
         spec = asset_spec(entity, assets, segment.parent)
         spec.setdefault("model_yaw_degrees", coordinates["model_yaw_degrees"])
         entry = {"id": entity["id"], "hero_name": entity.get("hero_name"), "root": root.name, "movement_samples": len(samples), "stepped_discontinuities": steps, "model_yaw_degrees": spec["model_yaw_degrees"], "pose_basis_yaw_degrees": spec.get("pose_basis_yaw_degrees", 0)}
+        if entity.get('model_track') is not None:
+            entry['model_track'] = dict(entity['model_track'])
         from agr.network_render_state import attach_render_state
-        entry['network_render_state'] = attach_render_state(root, entity)
+        entry['network_render_state'] = attach_render_state(root, logical[identity])
         if spec.get("model_file") and Path(spec["model_file"]).is_file():
             objects, rigs, model_root = _import_asset(spec, collection, root, name)
+            if entity.get('model_track') is not None:
+                model_root['agr_entity_id'] = entity['id']
+                model_root['agr_model_track'] = json.dumps(entity['model_track'])
+                entry['network_render_state'] = attach_render_state(model_root, entity)
+                lighting_roots.append(model_root)
+            else:
+                lighting_roots.append(root)
             entry.update({"model_status": "imported", "model_file": spec["model_file"], "model_basis_object": model_root.name, "mesh_count": sum(obj.type == "MESH" for obj in objects)})
         else:
             if not partial:
@@ -695,9 +790,24 @@ def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime
         if poses_requested and pose_inputs_available and rigs:
             if len(rigs) != 1:
                 raise ValueError(name + ": select rig_object because asset has multiple armatures")
-            entry["pose"] = _bake_pose(rigs[0], spec, data, coordinates, fps)
-            if entry["pose"]["status"] != "baked" and not partial:
-                raise ValueError(name + ": " + entry["pose"]["status"])
+            entry["pose"] = _bake_pose(rigs[0], spec, data, coordinates, fps,
+                                       requested_ticks=[sample['tick'] for sample in samples
+                                                        if sample.get('pose_available', True)])
+            if entry['pose']['status'] == 'baked' and entity.get('pose_unavailable_ticks'):
+                missing = [t for t in entity['pose_unavailable_ticks'] if data['start_tick'] <= t <= data['end_tick']]
+                if missing:
+                    entry['pose'].update(status='baked_partial', unavailable_pose_ticks=missing,
+                        reason='Recorded model reset has no pose; unavailable samples are hidden, not reconstructed.')
+            disabled_count = entry['pose'].get('model_constraints',{}).get('native_disabled_count',0)
+            if disabled_count:
+                report['warnings'].append(name + ': ' + str(disabled_count) +
+                    ' authored constraints are disabled by native missing-slave binding; see the pose report.')
+            if entry["pose"]["status"] != "baked":
+                detail = entry["pose"].get("reason", entry["pose"]["status"])
+                if not partial:
+                    raise ValueError(name + ": " + detail)
+                report["warnings"].append(name + (": partial skeletal animation. " if entry['pose']['status']=='baked_partial'
+                                                   else ": skeletal animation unavailable; imported rest pose. ") + detail)
             entry["rig"] = rigs[0].name
         else:
             if poses_requested and not partial:
@@ -705,7 +815,18 @@ def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime
             entry["pose"] = {"status": "unavailable; imported rest pose" if poses_requested else "not requested; imported rest pose"}
             if poses_requested:
                 report["warnings"].append(name + ": skeletal bake requires a rig, pose_file and skeleton_file")
+        from agr.blender_mesh_groups import mesh_group_summary,validate_mesh_group_consent
+        entry['mesh_groups']=mesh_group_summary(objects,samples)
+        validate_mesh_group_consent(entry['mesh_groups'],poses_requested=poses_requested,partial=partial)
+        if spec.get('model_material_groups') is not None:
+            from agr.blender_material_groups import apply_material_groups
+            from agr.model_material_groups import validate_material_group_contract
+            validate_material_group_contract(spec['model_material_groups'],samples,model=spec['model_file'])
+            entry['material_groups']=apply_material_groups(objects,spec['model_material_groups'],samples,data,fps,
+                poses_requested=poses_requested,partial=partial)
         entry["visibility"] = {"basis": "observed availability and PVS presence; alive state does not hide the body", "keys": [{"frame": frame, "hidden": hidden} for frame, hidden in _visibility(objects, entity, samples, data, fps)]}
+        if entry['mesh_groups'].get('basis')=='model_default_reference':
+            report['warnings'].append(name+': mesh-group state was not recorded; using the authenticated model default reference.')
         entity_objects[str(entity["id"])] = {"root": root, "rig": rigs[0] if len(rigs) == 1 else None,
                                             "model_root": model_root if objects and entry["model_status"] != "missing asset placeholder" else None}
         if entity.get("secondary_motion_file") and len(rigs) == 1:
@@ -724,6 +845,16 @@ def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime
                 report["warnings"].append(name + ": secondary motion was withheld: " + str(exc))
         report["entities"].append(entry)
         print("AGR scene:", name, entry["model_status"], entry["pose"]["status"], flush=True)
+    for identity, actor in logical.items():
+        if actor.get('model_tracks'):
+            # A single rig is not a valid attachment provider for the whole
+            # transformation. Preserve its one root; affected effects report
+            # their unqualified per-form binding rather than using form one.
+            entity_objects[identity] = {'root':shared_roots[identity], 'rig':None,
+                                        'model_root':None, 'model_tracks':actor['model_tracks']}
+        elif identity not in entity_objects:
+            track = next(e for e in data['entities'] if actor_id(e) == identity)
+            entity_objects[identity] = entity_objects[track['id']]
     # Keep the preview clean: visible armature bones otherwise draw over the
     # meshes and stray bones poke through clothing. The rigs keep driving the
     # animation; unhide them in the Outliner (or Alt+H) to inspect or pose.
@@ -756,22 +887,26 @@ def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime
             raise ValueError('Hero shot requires exactly one exported entity with the requested hero ID')
         from agr.blender_shot import frame_actor
         report['camera'] = frame_actor(scene, selected[0])
+        from agr.blender_preview_lighting import light_actor_preview
+        report['preview_lighting'] = light_actor_preview(scene, selected[0], report['camera'])
+        scene['agr_preview_lighting'] = json.dumps(report['preview_lighting'])
         if report['camera']['minimum_sampled_visibility'] < 1:
             report['warnings'].append('Hero shot has sampled obstructions; inspect framing in Blender.')
     if data.get('hero_lighting') is not None:
         from agr.blender_hero_lighting import apply_hero_lighting
-        report['hero_lighting'] = apply_hero_lighting(scene, roots, data['hero_lighting'],
-            data.get('map', {}).get('source_world_sha256'), segment.parent, coordinates)
+        report['hero_lighting'] = apply_hero_lighting(scene, lighting_roots, data['hero_lighting'],
+            data.get('map', {}).get('source_world_sha256'), segment.parent, coordinates,
+            components=data.get('hero_lighting_components',['diffuse','reflections']))
         report['warnings'].append('Hero Source lighting is explicitly partial with reference assumptions; see hero lighting coverage and limits.')
     if data.get('npr_runtime') is not None:
         from agr.blender_scene_npr import apply_scene_npr
-        report['npr_lighting']=apply_scene_npr(scene,roots,data,manifest_dir=segment.parent,
-            coordinates=coordinates,allow_partial=partial)
+        report['npr_lighting']=apply_scene_npr(scene,lighting_roots,data,manifest_dir=segment.parent,
+            coordinates=coordinates,allow_partial=partial_lighting)
         report['warnings'].append('NPR indirect is partial; direct lighting and frame-dependent rim remain incomplete. See npr_lighting coverage.')
     if character_shader is not None:
         from agr.blender_character_shader import apply_character_shader
-        report['character_shader']=apply_character_shader(scene,roots,data,character_shader,
-            manifest_dir=segment.parent,allow_partial=partial)
+        report['character_shader']=apply_character_shader(scene,lighting_roots,data,character_shader,
+            manifest_dir=segment.parent,allow_partial=partial_lighting)
         report['warnings'].append('Character shader uses an artistic Source-lighting bridge and Fresnel rim; Source emissive/status/outline and depth-aware rim remain incomplete.')
     if data.get("effects") or particle_runtime:
         try:
@@ -796,6 +931,12 @@ def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime
             scene.frame_set(math.floor(frame), subframe=frame % 1)
             evaluated = root.evaluated_get(bpy.context.evaluated_depsgraph_get())
             entry["transform_checks"].append({"frame": frame, "location": list(evaluated.location), "rotation_euler_radians": list(evaluated.rotation_euler), "world_matrix": [list(row) for row in evaluated.matrix_world]})
+    if poses_requested:
+        baked = sum(entry.get('pose', {}).get('status') == 'baked' for entry in report['entities'])
+        report['coverage']['skeletal_animation'] = {
+            'evaluated_entities': baked, 'unsupported_entities': len(data['entities']) - baked,
+            'all_requested_entities': baked == len(data['entities']),
+            'scope': 'Actual Blender skeletal bakes for the selected output range'}
     readme = bpy.data.texts.new("AGR_README")
     readme.write("RENDERLOCK REPLAY SEGMENT\n\nSpace: play. Timeline event markers refer to recorded ticks.\n"
                    + "Armature bones are hidden for a clean preview; unhide the rig in the Outliner to inspect or pose.\n"
@@ -825,6 +966,8 @@ def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime
     report["unpacked_images"] = [image.name for image in bpy.data.images if image.source == "FILE" and not image.packed_file]
     if report["unpacked_images"]:
         report["warnings"].append("Some image textures could not be packed: " + ", ".join(report["unpacked_images"]))
+    from agr.blender_images import finalize_packed_image_paths
+    finalize_packed_image_paths()
     output.parent.mkdir(parents=True, exist_ok=True)
     bpy.ops.wm.save_as_mainfile(filepath=str(output), compress=True)
     output.with_suffix(".scene.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
@@ -839,13 +982,14 @@ def main(argv=None):
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--fps", type=float, default=64)
     parser.add_argument("--partial", action="store_true", help="Allow missing assets or poses, with explicit placeholders and coverage warnings")
+    parser.add_argument('--partial-lighting',action='store_true',help='Accept reference lighting limits; character animation/models remain strict')
     parser.add_argument("--particle-runtime",type=Path,help=argparse.SUPPRESS)
     parser.add_argument('--shot-hero', type=int)
     parser.add_argument('--character-shader',type=Path)
     parser.add_argument('--character-only',action='store_true')
     args = parser.parse_args(argv)
     return build_scene(args.segment, args.assets, args.output, args.fps, args.partial,args.particle_runtime,
-                       args.shot_hero,args.character_shader,args.character_only)
+                       args.shot_hero,args.character_shader,args.character_only,args.partial_lighting)
 
 
 if __name__ == "__main__":

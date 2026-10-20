@@ -1,0 +1,296 @@
+diff --git a/ValveResourceFormat/Particles/ITransformProvider.cs b/ValveResourceFormat/Particles/ITransformProvider.cs
+--- a/ValveResourceFormat/Particles/ITransformProvider.cs
++++ b/ValveResourceFormat/Particles/ITransformProvider.cs
+@@ -94,9 +94,9 @@
+ 
+             // A full rotation (e.g. from a map entity's angles) can express frames a bare forward
+             // vector cannot; prefer it when the control point carries one.
+-            var rotation = cp.Rotation is { } fullRotation
++            var rotation = cp.Basis ?? (cp.Rotation is { } fullRotation
+                 ? Matrix4x4.CreateFromQuaternion(fullRotation)
+-                : EntityTransformHelper.ForwardDirectionToRotationMatrix(cp.Orientation);
++                : EntityTransformHelper.ForwardDirectionToRotationMatrix(cp.Orientation));
+ 
+             return rotation * Matrix4x4.CreateTranslation(position);
+         }
+@@ -117,6 +117,11 @@
+             if (!HasOrientation(cp))
+             {
+                 return Matrix4x4.CreateTranslation(position);
++            }
++
++            if (cp.Basis is { } unchangedBasis && cp.BasisPrevious == cp.Basis)
++            {
++                return unchangedBasis * Matrix4x4.CreateTranslation(position);
+             }
+ 
+             var rotation = cp.HasPreviousOrientation
+diff --git a/ValveResourceFormat/Particles/ParticleControllerFactory.cs b/ValveResourceFormat/Particles/ParticleControllerFactory.cs
+--- a/ValveResourceFormat/Particles/ParticleControllerFactory.cs
++++ b/ValveResourceFormat/Particles/ParticleControllerFactory.cs
+@@ -173,6 +173,7 @@
+                 ["C_OP_RemapTransformVisibilityToVector"] = operatorInfo => new RemapTransformVisibilityToVector(operatorInfo),
+                 ["C_OP_RotateVector"] = operatorInfo => new RotateVector(operatorInfo),
+                 ["C_OP_SetChildControlPoints"] = parse => new SetChildControlPoints(parse),
++                ["C_OP_SetPerChildControlPoint"] = parse => new SetPerChildControlPoint(parse),
+                 ["C_OP_SetAttributeToScalarExpression"] = operatorInfo => new SetAttributeToScalarExpression(operatorInfo),
+                 ["C_OP_SetFloat"] = operatorInfo => new SetFloat(operatorInfo),
+                 ["C_OP_SetFloatCollection"] = operatorInfo => new SetFloatCollection(operatorInfo),
+diff --git a/ValveResourceFormat/Particles/ParticleSystemState.cs b/ValveResourceFormat/Particles/ParticleSystemState.cs
+--- a/ValveResourceFormat/Particles/ParticleSystemState.cs
++++ b/ValveResourceFormat/Particles/ParticleSystemState.cs
+@@ -196,7 +196,7 @@
+ 
+         /// <summary>The policy used to distinguish supplied and position-authored control points.</summary>
+         public string? ControlPointInputPolicy => RootState.DeclaredInputSet == null
+-            ? null : "agr_set_child_position_inputs_v1";
++            ? null : "agr_authored_child_controls_v2";
+ 
+         /// <summary>External control points explicitly supplied before simulation began.</summary>
+         public int[] DeclaredControlPointInputs => RootState.DeclaredInputSet?.Order().ToArray() ?? [];
+@@ -236,6 +236,9 @@
+         }
+ 
+         internal void WriteAuthoredChildPosition(int cp, Vector3 position)
++            => WriteAuthoredChildTransform(cp, position, null);
++
++        internal void WriteAuthoredChildTransform(int cp, Vector3 position, Matrix4x4? basis)
+         {
+             var root = RootState;
+             if (root.DeclaredInputSet?.Contains(cp) == true)
+@@ -243,7 +246,14 @@
+                 throw new InvalidOperationException("Position-only child control points cannot replace an external transform");
+             }
+ 
+-            OverrideControlPoint(cp).Position = position;
++            var point = OverrideControlPoint(cp);
++            point.Position = position;
++            if (basis is { } frame)
++            {
++                point.Rotation = null;
++                point.Orientation = new Vector3(frame.M11, frame.M12, frame.M13);
++                point.Basis = frame;
++            }
+             HighestControlPoint = Math.Max(HighestControlPoint, cp);
+             AuthoredPoints.Add(cp);
+             root.AuthoredPointSummary.Add(cp);
+@@ -252,7 +262,7 @@
+             {
+                 foreach (var child in Data.Children)
+                 {
+-                    child.RenderState.WriteAuthoredChildPosition(cp, position);
++                    child.RenderState.WriteAuthoredChildTransform(cp, position, basis);
+                 }
+             }
+         }
+@@ -380,6 +390,7 @@
+             point.PositionPrevious = point.Position;
+             point.OrientationPrevious = point.Orientation;
+             point.RotationPrevious = point.Rotation;
++            point.BasisPrevious = point.Basis;
+             point.PreviousStepTime = elapsed;
+         }
+ 
+@@ -541,7 +552,23 @@
+         /// <summary>
+         /// The orientation/direction of this control point.
+         /// </summary>
+-        public Vector3 Orientation { get; set; }
++        public Vector3 Orientation
++        {
++            get => OrientationValue;
++            set
++            {
++                OrientationValue = value;
++                Basis = null;
++            }
++        }
++
++        private Vector3 OrientationValue;
++
++        /// <summary>An explicit particle frame whose components must be retained.</summary>
++        public Matrix4x4? Basis { get; internal set; }
++
++        /// <summary>The explicit frame recorded at the previous step.</summary>
++        public Matrix4x4? BasisPrevious { get; internal set; }
+ 
+         /// <summary>
+         /// The orientation this control point had on the previous simulation step.
+@@ -553,7 +580,17 @@
+         /// angles). Consumers fall back to synthesizing a frame from <see cref="Orientation"/> when unset,
+         /// since most operators only drive the forward direction.
+         /// </summary>
+-        public Quaternion? Rotation { get; set; }
++        public Quaternion? Rotation
++        {
++            get => RotationValue;
++            set
++            {
++                RotationValue = value;
++                Basis = null;
++            }
++        }
++
++        private Quaternion? RotationValue;
+ 
+         /// <summary>
+         /// The full rotation this control point had on the previous simulation step, when one was recorded.
+@@ -567,13 +604,31 @@
+         /// The control point's full rotation, using <see cref="Rotation"/> when present and otherwise
+         /// synthesizing a frame from the forward <see cref="Orientation"/> direction.
+         /// </summary>
+-        public Quaternion GetRotation() => SynthesizeRotation(Rotation, Orientation);
++        public Quaternion GetRotation() => Basis is { } basis ? RotationFromBasis(basis) : SynthesizeRotation(Rotation, Orientation);
+ 
+         /// <summary>
+         /// The control point's full rotation on the previous simulation step, derived the same way as
+         /// <see cref="GetRotation"/>.
+         /// </summary>
+-        public Quaternion GetPreviousRotation() => SynthesizeRotation(RotationPrevious, OrientationPrevious);
++        public Quaternion GetPreviousRotation() => BasisPrevious is { } basis ? RotationFromBasis(basis) : SynthesizeRotation(RotationPrevious, OrientationPrevious);
++
++        private static Quaternion RotationFromBasis(Matrix4x4 basis)
++        {
++            var forward = new Vector3(basis.M11, basis.M12, basis.M13);
++            var left = new Vector3(basis.M21, basis.M22, basis.M23);
++            var up = new Vector3(basis.M31, basis.M32, basis.M33);
++            if (MathF.Abs(forward.LengthSquared() - 1f) > 0.00001f
++                || MathF.Abs(left.LengthSquared() - 1f) > 0.00001f
++                || MathF.Abs(up.LengthSquared() - 1f) > 0.00001f
++                || MathF.Abs(Vector3.Dot(forward, left)) > 0.00001f
++                || MathF.Abs(Vector3.Dot(forward, up)) > 0.00001f
++                || MathF.Abs(Vector3.Dot(left, up)) > 0.00001f)
++            {
++                throw new InvalidOperationException("A nonorthogonal particle frame requires explicit basis interpolation; quaternion conversion is unavailable");
++            }
++
++            return Quaternion.Normalize(Quaternion.CreateFromRotationMatrix(basis));
++        }
+ 
+         private static Quaternion SynthesizeRotation(Quaternion? rotation, Vector3 orientation)
+         {
+diff --git a/ValveResourceFormat/Resource/ResourceTypes/EntityTransformHelper.cs b/ValveResourceFormat/Resource/ResourceTypes/EntityTransformHelper.cs
+--- a/ValveResourceFormat/Resource/ResourceTypes/EntityTransformHelper.cs
++++ b/ValveResourceFormat/Resource/ResourceTypes/EntityTransformHelper.cs
+@@ -197,6 +197,42 @@
+         public static Quaternion ForwardDirectionToQuaternion(Vector3 direction)
+             => Quaternion.CreateFromRotationMatrix(ForwardDirectionToRotationMatrix(direction));
+ 
++        /// <summary>Builds a particle direction frame while retaining its component-wise vertical branch.</summary>
++        /// <param name="direction">A finite nonzero direction.</param>
++        /// <returns>The forward, left and up rows, without translation.</returns>
++        public static Matrix4x4 ParticleDirectionToRotationMatrix(Vector3 direction)
++        {
++            var length = direction.Length();
++            if (!float.IsFinite(length) || length == 0f)
++            {
++                throw new ArgumentException("A particle direction must be finite and nonzero", nameof(direction));
++            }
++
++            if (length > 0.00001f)
++            {
++                direction /= length;
++            }
++
++            Vector3 left;
++            Vector3 up;
++            if (MathF.Abs(direction.X) < 0.001f && MathF.Abs(direction.Y) < 0.001f)
++            {
++                left = Vector3.UnitY;
++                up = new Vector3(-direction.Z, 0f, 0f);
++            }
++            else
++            {
++                left = Vector3.Normalize(new Vector3(-direction.Y, direction.X, 0f));
++                up = Vector3.Normalize(Vector3.Cross(direction, left));
++            }
++
++            return new Matrix4x4(
++                direction.X, direction.Y, direction.Z, 0f,
++                left.X, left.Y, left.Z, 0f,
++                up.X, up.Y, up.Z, 0f,
++                0f, 0f, 0f, 1f);
++        }
++
+         private static (Vector3 Forward, Vector3 Left, Vector3 Up) ForwardDirectionToFrame(Vector3 direction)
+         {
+             var xyDist = MathF.Sqrt(direction.X * direction.X + direction.Y * direction.Y);
+diff --git a/ValveResourceFormat/Particles/Operators/SetPerChildControlPoint.cs b/ValveResourceFormat/Particles/Operators/SetPerChildControlPoint.cs
+new file mode 100644
+--- /dev/null
++++ b/ValveResourceFormat/Particles/Operators/SetPerChildControlPoint.cs
+@@ -0,0 +1,74 @@
++using Microsoft.Extensions.Logging;
++using ValveResourceFormat.Particles.Utils;
++using ValveResourceFormat.ResourceTypes;
++
++namespace ValveResourceFormat.Particles.Operators
++{
++    /// <summary>Assigns one particle position and optional velocity frame to each matching child subtree.</summary>
++    class SetPerChildControlPoint : ParticleFunctionOperator
++    {
++        private readonly int ChildGroupId;
++        private readonly int ControlPoint;
++        private readonly int Count;
++        private readonly int Increment;
++        private readonly bool SetOrientation;
++        private readonly bool Supported;
++        private readonly List<ParticleSystemState> MatchingChildren = [];
++
++        public SetPerChildControlPoint(ParticleDefinitionParser parse) : base(parse)
++        {
++            ChildGroupId = parse.Int32("m_nChildGroupID", 0);
++            ControlPoint = parse.Int32("m_nFirstControlPoint", 0);
++            Count = parse.Int32("m_nNumControlPoints", 1);
++            SetOrientation = parse.Boolean("m_bSetOrientation", false);
++            var first = parse.NumberProvider("m_nFirstSourcePoint", new LiteralNumberProvider(0f));
++            var increment = parse.NumberProvider("m_nParticleIncrement", new LiteralNumberProvider(1f));
++            Supported = ControlPoint is >= 0 and <= 63 && Count >= 0
++                && first is LiteralNumberProvider literalFirst && literalFirst.Value == 0f
++                && increment is LiteralNumberProvider literalIncrement && literalIncrement.Value is 1f or -1f
++                && !parse.Boolean("m_bNumAsCount", false)
++                && (SetOrientation || parse.Int32("m_nOrientation", 19) == 19);
++            Increment = increment is LiteralNumberProvider value ? (int)value.Value : 0;
++            if (!Supported)
++            {
++                parse.Logger.LogWarning("C_OP_SetPerChildControlPoint requires literal first source 0, increment +/-1, fixed child count, and velocity orientation or no orientation attribute");
++            }
++        }
++
++        public override void Operate(ParticleCollection particles, float frameTime, ParticleSystemState particleSystemState, float strength)
++        {
++            if (!Supported || particleSystemState.Data == null || particles.Count == 0)
++            {
++                return;
++            }
++
++            MatchingChildren.Clear();
++            particleSystemState.Data.CollectChildStatesInGroup(ChildGroupId, MatchingChildren);
++            var count = Math.Min(Count, Math.Min(particles.Count, MatchingChildren.Count));
++            var source = 0;
++            for (var index = 0; index < count; index++)
++            {
++                ref var particle = ref particles.Current[source];
++                var direction = particle.Position - particle.PositionPrevious;
++                Matrix4x4? basis = null;
++                if (SetOrientation && direction != Vector3.Zero)
++                {
++                    var length = direction.Length();
++                    if (!float.IsFinite(length) || length == 0f)
++                    {
++                        throw new InvalidOperationException("Per-child velocity direction must have a finite nonzero length");
++                    }
++
++                    basis = EntityTransformHelper.ParticleDirectionToRotationMatrix(direction / length);
++                }
++
++                MatchingChildren[index].WriteAuthoredChildTransform(ControlPoint, particle.Position, basis);
++                source += Increment;
++                if (source < 0)
++                {
++                    source += particles.Count;
++                }
++            }
++        }
++    }
++}

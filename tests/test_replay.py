@@ -27,15 +27,32 @@ def row(tick, serial=2, hero=13):
 def test_network_render_state_preserves_changes_and_absence():
     values=[row(1),row(2),row(3)]
     values[0]['fields'].update(m_clrRender=0xffffffff,m_nRenderMode=0)
+    values[0]['fields'][PREFIX+'m_materialGroup']=0xffffffff
     values[1]['fields'].update(m_clrRender=0x80402010,m_nRenderMode=1)
+    values[1]['fields'][PREFIX+'m_materialGroup']=0
     entities,_=_entities_from_raw(values,1,3,None)
     samples=entities[0]['samples']
-    assert samples[0]['network_render_state']=={'rgba8_packed':0xffffffff,'mode':0}
-    assert samples[1]['network_render_state']=={'rgba8_packed':0x80402010,'mode':1}
+    assert samples[0]['network_render_state']=={'rgba8_packed':0xffffffff,'mode':0,'material_group':0xffffffff}
+    assert samples[1]['network_render_state']=={'rgba8_packed':0x80402010,'mode':1,'material_group':0}
     assert 'network_render_state' not in samples[2]
 
 
-@pytest.mark.parametrize('field',['m_clrRender','m_nRenderMode'])
+def test_recorded_mesh_masks_keep_all_uint64_bits_and_absence():
+    values=[row(1),row(2),row(3)]
+    values[0]['fields'][PREFIX+'m_modelState.m_MeshGroupMask']=(1<<64)-1
+    values[1]['fields'][PREFIX+'m_modelState.m_MeshGroupMask']=0
+    entities,_=_entities_from_raw(values,1,3,None)
+    assert [s.get('mesh_group_mask') for s in entities[0]['samples']]==[str((1<<64)-1),'0',None]
+
+
+@pytest.mark.parametrize('value',[-1,1<<64,True,1.5,None,'1'])
+def test_invalid_recorded_mesh_mask_is_not_missing_or_truncated(value):
+    sample=row(1);sample['fields'][PREFIX+'m_modelState.m_MeshGroupMask']=value
+    with pytest.raises(ReplayError,match='Invalid recorded mesh-group mask'):
+        _entities_from_raw([sample],1,1,None)
+
+
+@pytest.mark.parametrize('field',['m_clrRender','m_nRenderMode',PREFIX+'m_materialGroup'])
 @pytest.mark.parametrize('value',[-1,0x100000000,True,1.5,None])
 def test_invalid_network_render_state_rejected(field,value):
     sample=row(1);sample['fields'][field]=value
@@ -291,3 +308,11 @@ def test_extraction_kill_markers_do_not_request_downloadable_name_catalog(tmp_pa
     assert result['markers'][0]['label']=='Hero 13 death'
     assert result['coverage']['markers']['kills']==1
     assert not result['coverage']['warnings']
+
+
+@pytest.mark.parametrize("teams,expected", [([2, 2], 2), ([2, 3], None), ([2, None], None), ([2, True], None)])
+def test_inspect_team_requires_every_recorded_player_to_agree(tmp_path, monkeypatch, teams, expected):
+    demo, _ = _inspect_fixture(tmp_path, monkeypatch, [{"hero_id": 2, "team_num": team} for team in teams])
+    hero = inspect_replay(demo)["heroes"][0]
+    assert hero.get("team") == expected
+    assert hero["player_count"] == 2

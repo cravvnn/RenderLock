@@ -23,6 +23,25 @@ def test_source_plan_accounts_for_used_material_once(monkeypatch):
     assert result['materials'][0]['textures']['g_tNprTransmissiveColor']['resource']=='textures/0.vtex_c'
 
 
+def test_generic_pbr_does_not_fabricate_npr_inputs_and_records_dynamic_gap(monkeypatch):
+    doc,source,provider=setup(monkeypatch)
+    source['m_intParams']=[dict(m_name='F_SELF_ILLUM',m_nValue=1)]
+    source['m_textureParams']=[]
+    source['m_dynamicParams']=[dict(m_name='g_flSelfIllumScale1',m_value=[25,1,0])]
+    doc['materials'][0]['extras']['vmat'].update(IntParams={'F_SELF_ILLUM':1},TextureParams={})
+    row=assets.plan_npr_material_assets(doc,provider,None)['materials'][0]
+    assert row['route']=='generic_pbr_indirect' and row['textures']=={}
+    assert row['runtime']==dict(status='unbound_static_reference',dynamic_fields=['m_dynamicParams'])
+    assert {gap['feature'] for gap in row['fidelity_gaps']}=={'F_SELF_ILLUM','authored_dynamic_inputs'}
+
+
+def test_converted_feature_switch_cannot_differ_from_source(monkeypatch):
+    doc,source,provider=setup(monkeypatch)
+    source['m_intParams'].append(dict(m_name='F_NO_SPECULAR_AT_FULL_ROUGHNESS',m_nValue=1))
+    with pytest.raises(ConversionError,match='feature metadata differs'):
+        assets.plan_npr_material_assets(doc,provider,None)
+
+
 @pytest.mark.parametrize('failure',['index','duplicate','shader','texture'])
 def test_unqualified_material_rejected(monkeypatch,failure):
     doc,source,provider=setup(monkeypatch)

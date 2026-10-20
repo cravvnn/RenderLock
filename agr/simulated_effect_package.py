@@ -4,6 +4,7 @@ import copy
 import hashlib
 import json
 from pathlib import Path
+from .particle_control_provenance import confirmed_materialized_points
 
 
 def model_constraints_identity(model):
@@ -22,6 +23,11 @@ def scene_identity(scene, entity_ids):
         e = entities[identity]
         row = {key: e.get(key) for key in ('id', 'hero_id', 'model_handle', 'samples',
                'model_yaw_degrees', 'pose_basis_yaw_degrees', 'model_scale', 'model_local_transform')}
+        if 'render_root_yaw_degrees' in e:
+            # Preserve the identity of older authored scenes that have no
+            # explicit render-root basis, while invalidating stale simulations
+            # whenever a newly declared particle-root transform changes.
+            row['render_root_yaw_degrees'] = e['render_root_yaw_degrees']
         for field in ('model_file', 'skeleton_file', 'pose_file'):
             path = Path(e.get(field, ''))
             if not path.is_file():
@@ -86,13 +92,15 @@ def validate_package(package, scene):
         instance_ids.add(instance['id'])
         if instance.get('entity_id') not in ids:
             raise ValueError('Simulated instance has no selected entity binding')
-        if 'simulation_request_sha256' in package and 'materialized_control_point_indices' not in instance:
+        if (('simulation_request_sha256' in package or instance.get('control_point_input_policy') is not None)
+                and 'materialized_control_point_indices' not in instance):
             raise ValueError('Prepared particles lack control-point dependency provenance; regenerate them')
         if 'materialized_control_point_indices' in instance:
             supplied, observed = (instance.get('control_point_indices'), instance['materialized_control_point_indices'])
             if (not isinstance(supplied, list) or not isinstance(observed, list)
                     or not supplied or any(type(i) is not int or not 0 <= i <= 63 for i in supplied + observed)
-                    or supplied != sorted(set(supplied)) or supplied != observed):
+                    or supplied != sorted(set(supplied))
+                    or not confirmed_materialized_points(instance, supplied)):
                 raise ValueError('Prepared particles have unqualified control-point dependencies')
         birth = instance.get('birth', scene['start_tick'])
         if type(birth) is not int or not 0 <= birth <= scene['end_tick']:

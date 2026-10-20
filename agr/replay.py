@@ -115,6 +115,7 @@ def inspect_replay(demo: Path) -> dict[str, Any]:
     metadata.update(heroes=[], roster_source="recorded_players")
     try:
         counts: dict[int, int] = {}
+        teams: dict[int, list[int]] = {}
         invalid_rows = 0
         for player in parsed.players.to_dicts():
             hero_id = player.get("hero_id") if isinstance(player, dict) else None
@@ -122,9 +123,15 @@ def inspect_replay(demo: Path) -> dict[str, Any]:
                 invalid_rows += 1
                 continue
             counts[hero_id] = counts.get(hero_id, 0) + 1
+            team = player.get("team_num")  # the raw team number; only used to group heroes in the UI
+            if isinstance(team, int) and not isinstance(team, bool):
+                teams.setdefault(hero_id, []).append(team)
         metadata["heroes"] = [
             {"hero_id": hero_id, "hero_name": hero_display_name(hero_id),
-             "player_count": counts[hero_id]}
+             "player_count": counts[hero_id],
+             # A team only when every player of that hero was on the same one.
+             **({"team": teams[hero_id][0]} if len(teams.get(hero_id, ())) == counts[hero_id]
+                and len(set(teams[hero_id])) == 1 else {})}
             for hero_id in sorted(counts)
         ]
         if invalid_rows:
@@ -192,6 +199,10 @@ def _entities_from_raw(rows: list[dict[str, Any]], start: int, end: int,
         if not identity or "entity_serial" not in row:
             raise ReplayError("Native output lacks entity serials; cannot preserve pawn lifetimes.")
         fields = row["fields"]
+        model_key = _SKEL + "m_modelState.m_hModel"
+        model = fields.get(model_key)
+        if model_key in fields and (type(model) is not int or not 0 <= model < 1 << 64):
+            raise ReplayError(f"Invalid recorded model resource ID for pawn {identity} at tick {tick}")
         position = _position(fields)
         body_angles = _vector(fields.get(_SKEL + "m_angRotation"))
         if position is None or body_angles is None:
@@ -207,7 +218,6 @@ def _entities_from_raw(rows: list[dict[str, Any]], start: int, end: int,
                 "hero_name": row.get("hero_name", f"Hero {hero}"),
                 "samples": [],
             }
-            model = fields.get(_SKEL + "m_modelState.m_hModel")
             if model is not None:
                 # Resource handles are not file paths. Keep the full uint64 as text.
                 entities[identity]["model_handle"] = str(model)
@@ -225,10 +235,13 @@ def _entities_from_raw(rows: list[dict[str, Any]], start: int, end: int,
             "active": bool(row.get("active", True)),
             "present": bool(row.get("active", True)),
         }
+        if model_key in fields:
+            sample['model_handle'] = str(model)
         # Preserve network render state without asserting a GPU instance-buffer
         # binding. Missing fields stay missing, including in older raw exports.
         render_state = {}
-        for field, key in (("m_clrRender", "rgba8_packed"), ("m_nRenderMode", "mode")):
+        for field, key in (("m_clrRender", "rgba8_packed"), ("m_nRenderMode", "mode"),
+                           (_SKEL+"m_materialGroup", "material_group")):
             if field not in fields:
                 continue
             value = fields[field]
@@ -237,6 +250,12 @@ def _entities_from_raw(rows: list[dict[str, Any]], start: int, end: int,
             render_state[key] = value
         if render_state:
             sample["network_render_state"] = render_state
+        mesh_key=_SKEL+'m_modelState.m_MeshGroupMask'
+        if mesh_key in fields:
+            mesh_mask=fields[mesh_key]
+            if type(mesh_mask) is not int or not 0<=mesh_mask<1<<64:
+                raise ReplayError(f'Invalid recorded mesh-group mask for pawn {identity} at tick {tick}')
+            sample['mesh_group_mask']=str(mesh_mask)
         eye = _vector(fields.get("m_angEyeAngles"))
         if eye is not None:
             sample["eye_angles"] = eye

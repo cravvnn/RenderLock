@@ -30,6 +30,10 @@ def fixture(tmp_path, monkeypatch, warning=''):
     calls = []
     def export(command, **kwargs):
         target = Path(command[command.index('-o') + 1])
+        from agr.game_assets import _keyvalues, _pairs_named
+        gameinfo = Path(command[command.index('--game') + 1])
+        search_path = next(_pairs_named(_keyvalues(gameinfo.read_text(encoding='utf-8')), 'Game'))
+        assert search_path == (target.parent / 'input').resolve().as_posix()
         shader = target.parent / 'input' / names[1]
         assert shader.read_bytes() == files[names[1]].read_bytes()
         calls.append(shader.read_bytes())
@@ -62,3 +66,11 @@ def test_missing_shader_warning_rejects_otherwise_valid_hero(tmp_path, monkeypat
     with pytest.raises(ConversionError, match='material shaders: pbr.vfx'):
         decoder.model('models/hero.vmdl', provider)
     assert not list(decoder.root.glob('*/conversion.json'))
+
+
+def test_unicode_private_search_path_roundtrips_as_valve_keyvalues(tmp_path, monkeypatch):
+    folder = tmp_path / 'profile café Ω & spaces'
+    folder.mkdir()
+    decoder, provider, _, _ = fixture(folder, monkeypatch)
+    model, report = decoder.model('models/hero.vmdl', provider)
+    assert model.is_file() and report['meshes'] == 1

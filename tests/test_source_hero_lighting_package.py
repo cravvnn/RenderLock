@@ -63,3 +63,18 @@ def test_missing_cube_face_rejected_even_with_updated_metadata_digest(prepared,t
 def test_old_package_cannot_be_bound_to_new_world(prepared,tmp_path):
     with pytest.raises(ValueError,match='world/shader mismatch'):
         package.validate_hero_lighting_package(prepared,WORLD_6779,tmp_path)
+
+
+def test_sparse_package_requires_exact_bounded_batch_manifest(prepared,tmp_path):
+    from agr.source_probe_assets import atlas_decode_batches,MAX_ATLAS_BYTES
+    plan=prepared['plan']
+    plan.update(source_regions=[dict(entity_id='actor',bounds=plan['source_bounds'])],
+        atlas_batch_limit_bytes=MAX_ATLAS_BYTES,
+        atlas_decode_batches=atlas_decode_batches(plan['probes'],WORLD_SHA256),
+        decoded_atlas_bytes=sum(row['bytes'] for row in prepared['atlas']))
+    prepared['plan_sha256']=package.canonical_sha(plan)
+    assert len(package.validate_hero_lighting_package(prepared,WORLD_SHA256,tmp_path)['atlas'])==7
+    plan['atlas_decode_batches'][0]['region_names'].pop()
+    prepared['plan_sha256']=package.canonical_sha(plan)
+    with pytest.raises(ValueError,match='batch inventory'):
+        package.validate_hero_lighting_package(prepared,WORLD_SHA256,tmp_path)

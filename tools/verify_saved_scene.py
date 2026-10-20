@@ -35,14 +35,20 @@ def verify(blend, *, all_frames=False):
         rig = bpy.data.objects[item["rig"]]
         sk = json.loads(Path(entity["skeleton_file"]).read_text())
         definition = entity.get('model_constraints')
-        solver = ModelConstraints(definition['names'], definition['parents'], definition['definitions']) if definition else None
+        solver = ModelConstraints(definition['names'], definition['parents'], definition['definitions'],
+                                  attachments=definition.get('attachments'),
+                                  binding_policy=definition.get('binding_policy','strict')) if definition else None
         with np.load(entity["pose_file"], allow_pickle=False) as src:
             indices = np.flatnonzero((src["ticks"] >= data["start_tick"]) & (src["ticks"] <= data["end_tick"]))
             if not len(indices):
                 raise ValueError('No source pose samples in the requested range')
             chosen = (indices.tolist() if all_frames else
                       sorted(set(indices[np.linspace(0, len(indices)-1, min(16, len(indices))).astype(int)].tolist())))
-            missing = sorted(set(sk['m_boneIDs']) - set(rig.pose.bones.keys()))
+            from agr.blender_scene import source_rig_mapping
+            mapping,aliases=source_rig_mapping(sk['m_boneIDs'],sk['m_parentIndices'],rig.data.bones)
+            if aliases!=item.get('pose',{}).get('source_bone_aliases',[]):
+                raise ValueError('Saved source/model bone aliases differ')
+            missing = sorted(set(sk['m_boneIDs']) - set(mapping))
             declared_missing = item.get('pose', {}).get('source_bones_absent_from_rig', [])
             if missing != sorted(declared_missing) or len(missing) == len(sk['m_boneIDs']):
                 raise ValueError('Saved rig has unexpected missing source bones: ' + str(missing))
@@ -54,6 +60,8 @@ def verify(blend, *, all_frames=False):
                 globals_ = globals_for(Pose(src["q"][i], src["t"][i], src["s"][i]), np.asarray(sk["m_parentIndices"]))
                 expected_bones = {}
                 for b, name in enumerate(sk['m_boneIDs']):
+                    if name not in mapping:continue
+                    name=mapping[name]
                     q = globals_.q[b]
                     expected_bones[name] = C @ Matrix.LocRotScale(Vector(globals_.t[b]*scale),
                         Quaternion((q[3],*q[:3])),Vector([globals_.s[b]]*3))
@@ -84,7 +92,7 @@ def verify(blend, *, all_frames=False):
                 error = (roots.matrix_world.translation-expected).length
                 result["max_root_error_metres"] = max(result["max_root_error_metres"], error)
                 result["root_checks"] += 1
-                checked_names = set(sk['m_boneIDs']) | (solver.affected_names if solver else set())
+                checked_names = set(mapping.values()) | (solver.affected_names if solver else set())
                 for name in checked_names:
                     if name not in rig.pose.bones:
                         continue

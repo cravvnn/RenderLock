@@ -23,15 +23,15 @@ import tkinter as tk
 import zlib
 from tkinter import ttk
 
-from . import __version__, gui_assets, gui_theme
+from . import __version__, gui_assets, gui_fade, gui_theme
 from .gui_backdrop import BASE_COLOR, Backdrop
 from .gui_chrome import BAR_HEIGHT, EdgeResizer, TitleBar, WindowChrome
 from .gui_theme import hairline, px
 from .gui_widgets import (Card, CanvasDot, CanvasFocus, CanvasLink, CanvasProgress, CanvasSticker, CanvasText,
-                          CheckBox, DisplayText, RoundedButton, RoundedEntry, SegmentedControl, gradient_color,
-                          rgba_image)
+                          CheckBox, CollapsibleNote, CopyButton, DisplayText, InfoIcon, RoundedButton, RoundedEntry,
+                          SegmentedControl, copy_text, gradient_color, rgba_image, wrap_to_width)
 from .release_profile import character_beta
-from .gui_characters import CharacterChecklist
+from .gui_characters import CHARACTERS_INFO, FOLLOW_INFO, TRAY_GAP, CharacterChecklist, FollowHeroPicker
 
 PAGE_EXPORT = "Export"
 PAGE_SETUP = "Setup"
@@ -62,20 +62,40 @@ ACTIONS_BOTTOM = 102           # footer links row (36 px) starts this far above 
 STATUS_BOTTOM = 66             # status row (36 px)
 STICKER_CENTER_BOTTOM = 57     # sticker labels' centre line
 LOG_GAP = 12
-CARD_GAP = 10
+# Spacing rhythm inside the pages (design px). The closer two things belong together, the
+# smaller the gap: blocks of a card are 15 apart, field rows 7, checkbox options 5.
+CARD_GAP = 10              # between cards
 SECTION_TITLE_LINE = 18    # card title line height
-SECTION_GAP = 15           # space between a card's blocks (title, rows, notes)
-ROW_GAP = 7                # vertical space between field rows inside a card
+SECTION_GAP = 15           # between a card's blocks: title -> content, fields -> their explanation,
+                           # one sub-section -> the next, status -> its buttons
+ROW_GAP = 7                # between field rows (and between two short notes that read as one)
+CHECK_GAP = 5              # after a checkbox: to the next option, or to the fields it switches on
 LABEL_GAP = 10             # space between a row label and its field
 TITLE_GAP = 4              # title -> subtitle inside cards
+TEXT_TOP = 1               # a 12 px Segoe UI line's letters start about this far below the line's top
+LONG_NOTE = 220            # characters: longer notes start collapsed to one line ending in "…"
 LABEL_COLUMN = 0           # Export rows: each label hugs its field ("File", "Save as")
 WIDE_LABEL_COLUMN = 150    # Setup/Advanced rows keep their fields aligned
-TEXT_WRAP = 700
+TEXT_WRAP = 700            # first-layout wrap width; notes then wrap at their card's width
 
 
 def _pad(value):
     """Scale a padding value or (before, after) pair from design pixels."""
     return tuple(px(v) for v in value) if isinstance(value, tuple) else px(value)
+
+
+def _copy_log(app):
+    """The log drawer's copy button: the whole log to the clipboard. True when copied."""
+    text = app.log.get("1.0", "end-1c")
+    if not text.strip():
+        return False
+    if copy_text(app.log, text):
+        return True
+    # The clipboard was unavailable: select the log and focus it, so Ctrl+C copies it.
+    app.log.tag_add("sel", "1.0", "end-1c")
+    app.log.mark_set("insert", "1.0")
+    app.log.focus_set()
+    return False
 
 
 def _display_text(parent, text, font, color):
@@ -127,6 +147,12 @@ def set_log_visible(app, visible: bool) -> None:
     was_visible = getattr(app, "log_visible", False)
     app.log_visible = visible
     app.log_button.configure(text="Hide log" if visible else "Show log")
+    if not visible:
+        # Keyboard focus must not stay inside the hidden drawer (Return/Space on its copy button).
+        drawer = str(app.log_frame)
+        focused = str(app.root.tk.call("focus", "-lastfor", app.root))  # also when another app is active
+        if focused == drawer or focused.startswith(drawer + "."):
+            app.root.focus_set()
     app.layout_stage()
     if visible != was_visible:
         _resize_for_log(app, visible)
@@ -223,21 +249,29 @@ def _entry(parent, variable, width=120):
                         width=width)
 
 
-def _card(app, page, row, title, detail="", label_column=LABEL_COLUMN):
-    """Add a section card to ``page`` and return its body and the next page row."""
+def _card(app, page, row, title, detail="", label_column=LABEL_COLUMN, info=""):
+    """Add a section card to ``page`` and return its body and the next page row.
+
+    ``detail`` is a line that stays visible under the title (e.g. the installed version);
+    ``info`` is the card's description, shown when hovering the info icon beside the title.
+    """
     # Padding counts the 1 px edge, as in the design (content starts 16 px down, 21 px in).
     card = Card(page.canvas, theme=gui_theme.palette(), background=gui_theme.BACKDROP, pad_x=21, pad_y=16)
     page.add(card, gap=0 if row == 0 else CARD_GAP)
     body = card.body
     body.columnconfigure(0, minsize=px(label_column))
     body.columnconfigure(1, weight=1)
-    heading, room = _display_text(body, title, gui_theme.FONT_SECTION, gui_theme.TEXT)
+    holder = tk.Frame(body, background=gui_theme.CARD)
+    heading, room = _display_text(holder, title, gui_theme.FONT_SECTION, gui_theme.TEXT)
+    heading.pack(side="left")
+    if info:
+        InfoIcon(holder, text=info, theme=gui_theme.palette()).pack(side="left", padx=(px(6), 0))
     # The title's 18 px line plus a 15 px gap: content starts 33 px below the title's top.
-    gap = px(4) - room if detail else px(SECTION_TITLE_LINE + SECTION_GAP) - int(heading.cget("height"))
-    heading.grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, max(0, gap)))
+    gap = px(TITLE_GAP) - room if detail else px(SECTION_TITLE_LINE + SECTION_GAP) - int(heading.cget("height"))
+    holder.grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, max(0, gap)))
     if detail:
-        _label(body, detail, justify="left", anchor="w", wraplength=px(TEXT_WRAP)).grid(
-            row=1, column=0, columnspan=3, sticky="w", pady=_pad((0, 11)))
+        wrap_to_width(_label(body, detail, justify="left", anchor="w", wraplength=px(TEXT_WRAP))).grid(
+            row=1, column=0, columnspan=3, sticky="ew", pady=_pad((0, SECTION_GAP)))
     return body, row + 1
 
 
@@ -246,8 +280,11 @@ def _next_row(body):
 
 
 def _note(parent, text, pady=(12, 0)):
-    _label(parent, text, justify="left", anchor="w", wraplength=px(TEXT_WRAP)).grid(
-        row=_next_row(parent), column=0, columnspan=3, sticky="w", pady=_pad(pady))
+    if len(text) > LONG_NOTE:
+        note = CollapsibleNote(parent, text=text, theme=gui_theme.palette())
+    else:
+        note = wrap_to_width(_label(parent, text, justify="left", anchor="w", wraplength=px(TEXT_WRAP)))
+    note.grid(row=_next_row(parent), column=0, columnspan=3, sticky="ew", pady=_pad(pady))
 
 
 def _path_row(app, parent, label, key, command, button=True):
@@ -264,11 +301,31 @@ def _path_row(app, parent, label, key, command, button=True):
         app.mutable_widgets.append(browse)
 
 
-def _check(app, parent, text, variable, onvalue="1", offvalue="0", pady=(0, 1)):
-    check = CheckBox(parent, text=text, variable=variable, theme=gui_theme.palette(),
+def _check(app, parent, text, variable, onvalue="1", offvalue="0", pady=(0, 1), *, installed_only=False, info=""):
+    """A checkbox row; ``info`` adds an info icon whose hover text describes the option."""
+    holder = parent
+    if info:
+        holder = tk.Frame(parent, background=parent.cget("background"))
+    check = CheckBox(holder, text=text, variable=variable, theme=gui_theme.palette(),
                      onvalue=onvalue, offvalue=offvalue)
-    check.grid(row=_next_row(parent), column=0, columnspan=3, sticky="w", pady=_pad(pady))
+    if info:
+        check.pack(side="left")
+        InfoIcon(holder, text=info, theme=gui_theme.palette(), size=12).pack(side="left", padx=(px(2), 0))
+    (holder if info else check).grid(row=_next_row(parent), column=0, columnspan=3, sticky="w", pady=_pad(pady))
     app.mutable_widgets.append(check)
+    if installed_only:
+        if not hasattr(app, "installed_only_widgets"):
+            app.installed_only_widgets = []
+        app.installed_only_widgets.append(check)
+    return check
+
+
+def refresh_asset_source_controls(app):
+    """Reflect preparation dependencies without changing remembered preferences."""
+    installed = app.values["asset_source"].get() == "installed"
+    state = "normal" if installed and not getattr(app, "busy", False) else "disabled"
+    for widget in getattr(app, "installed_only_widgets", ()):
+        widget.configure(state=state)
 
 
 # --------------------------------------------------------------------------
@@ -286,6 +343,7 @@ class _Page:
 
     held = False
     pages: list = []
+    on_view = None  # on_view(page) after a page scrolls or is laid out; on_view(None) while held (edge fades)
 
     def __init__(self, stage, backdrop):
         self.backdrop = backdrop
@@ -300,6 +358,8 @@ class _Page:
         self.cards = []
         self.gaps = []     # (top, bottom) canvas rows between and below the cards
         self._job = None
+        self.bar_shown = False
+        self.on_bar = None  # called when the scrollbar appears or goes (the log drawer follows the cards)
         _Page.pages.append(self)
         canvas.bind("<Configure>", lambda _e: self._schedule(), add="+")
         self._root = stage.winfo_toplevel()
@@ -329,6 +389,8 @@ class _Page:
     def hold(cls, held):
         """Hold card layout while the window is being dragged; lay every page out once afterwards."""
         cls.held = held
+        if held and cls.on_view:
+            cls.on_view(None)
         if not held:
             for page in cls.pages:
                 page._schedule()
@@ -350,12 +412,23 @@ class _Page:
             y += card.winfo_reqheight()
         self.gaps.append((y, y + 100000))
         canvas.configure(scrollregion=(0, 0, width, y))
-        if y > canvas.winfo_height() + 1:
+        shown = y > canvas.winfo_height() + 1
+        if shown:
             self.bar.grid(row=0, column=1, sticky="ns", padx=_pad((8, 0)))
         else:
             self.bar.grid_remove()
             canvas.yview_moveto(0)
         self.backdrop.sync(canvas, redraw=True)
+        if shown != self.bar_shown:
+            self.bar_shown = shown
+            if self.on_bar:
+                self.on_bar()
+        if _Page.on_view:
+            _Page.on_view(self)
+
+    def bar_room(self):
+        """Width the scrollbar takes from the cards (0 while the page fits)."""
+        return self.bar.winfo_reqwidth() + px(8) if self.bar_shown else 0
 
     def _open_areas(self):
         """Where the background shows on this page: the gaps between cards and below the last one."""
@@ -411,6 +484,8 @@ class _Page:
     def _scrolled(self, first, last):
         self.bar.set(first, last)
         self.backdrop.sync(self.canvas)  # keep the background fixed while the page scrolls
+        if _Page.on_view:
+            _Page.on_view(self)          # the faded edges follow what is cut
 
     def _wheel(self, event):
         # Scroll only the page under the pointer; logs keep their native wheel.
@@ -428,6 +503,10 @@ def show_page(app, name):
     _nav_select(app, name)
     app.page_title.configure(text=name)
     app.page_subtitle.configure(text=PAGE_DETAILS.get(name, ""))
+    if getattr(app, "log_visible", False):
+        app.layout_stage()  # the open log matches this page's card width (with or without scrollbar)
+    if _Page.on_view:
+        _Page.on_view(app.page_layouts[name])
 
 
 # --------------------------------------------------------------------------
@@ -628,7 +707,7 @@ def _build_rail(app, parent, beta):
     else:
         wordmark_x = 17
     rail.create_text(px(wordmark_x), px(43), anchor="w", text=WORDMARK, font=t.FONT_WORDMARK, fill=t.BRAND)
-    rail.create_text(px(17), px(67), anchor="w", text="Deadlock 2 Blender", font=t.FONT_SMALL, fill=t.TEXT)
+    rail.create_text(px(17), px(67), anchor="w", text="Deadlock to Blender tool", font=t.FONT_SMALL, fill=t.TEXT)
     rail.create_text(px(17), px(83), anchor="w", font=t.FONT_TINY, fill=t.DIM,
                      text=f"{__version__}  ·  " + ("Character beta" if beta else "Development"))
 
@@ -692,18 +771,28 @@ def _build_export(app, page):
     app.inspect_button.pack(side="right")
     app.mutable_widgets.append(app.inspect_button)
     app.input_summary = tk.StringVar(value="Inspect to read the replay information.")
-    tk.Label(body, textvariable=app.input_summary, background=gui_theme.CARD, foreground=gui_theme.MUTED,
-             font=gui_theme.FONT_SMALL, justify="left", anchor="w", wraplength=px(TEXT_WRAP)).grid(
-        row=_next_row(body), column=0, columnspan=3, sticky="w", pady=_pad((11, 0)))
+    wrap_to_width(tk.Label(body, textvariable=app.input_summary, background=gui_theme.CARD,
+                           foreground=gui_theme.MUTED, font=gui_theme.FONT_SMALL, justify="left", anchor="w",
+                           wraplength=px(TEXT_WRAP))).grid(
+        row=_next_row(body), column=0, columnspan=3, sticky="ew", pady=_pad((SECTION_GAP, 0)))
 
-    body, row = _card(app, page, row, "Characters")
+    body, row = _card(app, page, row, "Characters", info=CHARACTERS_INFO)
     app.character_picker = CharacterChecklist(body, heroes=app.values["heroes"], empty=app.values["heroes_empty"])
     app.character_picker.grid(row=_next_row(body), column=0, columnspan=3, sticky="ew")
+    # Follow camera sits right under the heroes it picks from, so it is in view without scrolling;
+    # TRAY_GAP from the trays to the heading's letters, as above the trays.
+    camera = tk.Frame(body, background=gui_theme.CARD)
+    camera.grid(row=_next_row(body), column=0, columnspan=3, sticky="ew", pady=_pad((TRAY_GAP - TEXT_TOP, 0)))
+    heading = tk.Frame(camera, background=gui_theme.CARD)
+    heading.pack(anchor="w", pady=_pad((0, 5)))
+    _label(heading, "Follow camera", font=gui_theme.FONT, color=gui_theme.TEXT).pack(side="left")
+    InfoIcon(heading, text=FOLLOW_INFO, theme=gui_theme.palette(), size=12).pack(side="left", padx=(px(2), 0))
+    app.follow_picker = FollowHeroPicker(camera, hero=app.values["shot_hero"])
+    app.follow_picker.pack(fill="x")
 
     body, row = _card(app, page, row, "Clip")
     fields = tk.Frame(body, background=gui_theme.CARD)
     fields.grid(row=_next_row(body), column=0, columnspan=3, sticky="ew")
-    # Character selection lives in the named checklist below the clip settings.
     for col, (key, label, weight) in enumerate((("start", "First tick", 3), ("end", "Last tick", 3),
                                                 ("fps", "FPS", 3))):
         fields.columnconfigure(col, weight=weight, uniform="clip")
@@ -713,18 +802,11 @@ def _build_export(app, page):
         entry = _entry(group, app.values[key])
         entry.pack(fill="x", pady=_pad((5, 0)))
         app.mutable_widgets.append(entry)
-    camera = tk.Frame(body, background=gui_theme.CARD)
-    camera.grid(row=_next_row(body), column=0, columnspan=3, sticky="w", pady=_pad((ROW_GAP, 0)))
-    _label(camera, "Follow hero ID", font=gui_theme.FONT, color=gui_theme.TEXT).pack(side="left", padx=_pad((0, 12)))
-    entry = _entry(camera, app.values["shot_hero"], width=70)
-    entry.pack(side="left")
-    app.mutable_widgets.append(entry)
-    _label(camera, "Empty uses the overview camera").pack(side="left", padx=_pad((12, 0)))
 
     body, row = _card(app, page, row, "Output")
     _path_row(app, body, "Save as", "output", app._browse_output)
-    _check(app, body, "Include supported particle effects", app.values["effects_enabled"], pady=(0, 0))
-    _note(body, "Missing effects are listed in the coverage report. Add maps separately in Blender.", pady=(9, 0))
+    _check(app, body, "Include supported particle effects", app.values["effects_enabled"], pady=(0, 0),
+           info="Missing effects are listed in the coverage report. Add maps separately in Blender.")
     return row
 
 
@@ -733,9 +815,8 @@ def _build_export(app, page):
 
 
 def _build_setup(app, page):
-    body, row = _card(app, page, 0, "Local tools",
-                      "Choose these once. Conversion reads installed files without launching Deadlock.",
-                      label_column=WIDE_LABEL_COLUMN)
+    body, row = _card(app, page, 0, "Local tools", label_column=WIDE_LABEL_COLUMN,
+                      info="Choose these once. Conversion reads installed files without launching Deadlock.")
     _path_row(app, body, "Blender executable", "blender", app._browse_blender)
 
     source_row = _next_row(body)
@@ -778,33 +859,35 @@ def _build_setup(app, page):
 def _build_advanced(app, page):
     body, row = _card(app, page, 0, "Character selection")
     _path_row(app, body, "Hero IDs", "heroes", None, button=False)
-    _note(body, "Use the Export checklist after inspecting a recording. Manual IDs are available here if its character list is unavailable; empty selects all.", pady=(6, 0))
+    _note(body, "Use the Export checklist after inspecting a recording. Manual IDs are available here if its character list is unavailable; empty selects all.", pady=(SECTION_GAP - ROW_GAP, 0))
 
     body, row = _card(app, page, row, "Character options",
-                      "Experimental features depend on the selected hero and recorded data. "
-                      "Check coverage after export.")
-    for text, key in (("Cloth / secondary motion (experimental)", "cloth_enabled"),
-                      ("Model bone rules (experimental)", "model_constraints"),
-                      ("Material repairs / approximate glass (experimental)", "material_repairs")):
-        _check(app, body, text, app.values[key])
-        if key == "model_constraints":
-            _note(body, "Applies supported model rules for how bones aim at, follow or twist with other bones.\n"
-                        "This can refine the recorded pose. It does not simulate cloth or physics.",
-                  pady=(0, ROW_GAP))
+                      info="Experimental features depend on the selected hero and recorded data. "
+                           "Check coverage after export.")
+    for text, key, gap, info in (
+            ("Cloth / secondary motion (experimental)", "cloth_enabled", CHECK_GAP, ""),
+            ("Model bone rules (experimental)", "model_constraints", CHECK_GAP,
+             "Applies supported model rules for how bones aim at, follow or twist with other bones. "
+             "This can refine the recorded pose. It does not simulate cloth or physics."),
+            ("Material repairs / approximate glass (experimental)", "material_repairs", 0, "")):
+        _check(app, body, text, app.values[key], pady=(0, gap), installed_only=key != "model_constraints", info=info)
 
-    body, row = _card(app, page, row, "Particle simulation",
-                      "Optional event simulation. Unsupported events are reported and omitted.",
-                      label_column=WIDE_LABEL_COLUMN)
-    _check(app, body, "Simulate recorded particle events", app.values["simulate_effects"], pady=(0, ROW_GAP))
+    body, row = _card(app, page, row, "Particle simulation", label_column=WIDE_LABEL_COLUMN,
+                      info="Optional event simulation. Unsupported events are reported and omitted.")
+    _check(app, body, "Simulate recorded particle events", app.values["simulate_effects"], pady=(0, CHECK_GAP), installed_only=True)
     _path_row(app, body, "Particle simulator", "particle_probe", app._browse_particle_probe)
     _path_row(app, body, ".NET (DLL only)", "particle_dotnet", app._browse_particle_dotnet)
     _path_row(app, body, "Earlier history (ticks)", "particle_history_ticks", None, button=False)
     _note(body, "0 keeps the selected range. Effects follow the export camera; "
-                "use AGR_Retarget_Effects.py after changing cameras.", pady=(8, 0))
+                "use AGR_Retarget_Effects.py after changing cameras.", pady=(SECTION_GAP - ROW_GAP, 0))
+    _note(body, "New cloth, material repairs and particle simulation use Installed game on Setup. "
+                "Prepared assets reuse any cloth definitions and effects already present in the input. "
+                "Effects inclusion and model bone rules remain available with either asset source.",
+          pady=(SECTION_GAP, 0))
 
     body, row = _card(app, page, row, "Output policy")
-    _check(app, body, "Allow partial export / movement placeholders", app.partial, True, False)
-    _check(app, body, "Overwrite existing scene and companion package", app.overwrite, True, False)
+    _check(app, body, "Allow partial export / movement placeholders", app.partial, True, False, pady=(0, CHECK_GAP))
+    _check(app, body, "Overwrite existing scene and companion package", app.overwrite, True, False, pady=(0, 0))
     return row
 
 
@@ -813,13 +896,12 @@ def _build_advanced(app, page):
 
 
 def _development_lighting(app, page):
-    body, row = _card(app, page, 0, "Lighting lab",
-                      "Experimental character look. Partial and artistic by design; the coverage report lists what was and was not applied.",
-                      label_column=WIDE_LABEL_COLUMN)
-    for text, key in (("Partial static diffuse lighting", "source_lighting"),
+    body, row = _card(app, page, 0, "Lighting lab", label_column=WIDE_LABEL_COLUMN,
+                      info="Experimental character look. Partial and artistic by design; the coverage report lists what was and was not applied.")
+    for text, key in ((("Partial Source character diffuse lighting" if character_beta() else "Partial static diffuse lighting"), "source_lighting"),
                       ("Partial hero probe lighting / reflections", "source_hero_lighting"),
-                      ("Partial NPR indirect (requires partial export and follow camera)", "source_npr_lighting")):
-        _check(app, body, text, app.values[key])
+                      ("Partial NPR indirect (requires follow camera)", "source_npr_lighting")):
+        _check(app, body, text, app.values[key], pady=(0, CHECK_GAP), installed_only=True)
     for label, key, command in (
         ("Probe atlas decoder", "probe_atlas_decoder",
          lambda: app._browse_hero_decoder("probe_atlas_decoder", "ProbeAtlasDecode.dll")),
@@ -828,6 +910,7 @@ def _development_lighting(app, page):
         ("Elagrimm shader .blend", "character_shader", app._browse_character_shader)):
         _path_row(app, body, label, key, command)
     _note(body, "Source/NPR lighting reads the installed map's lighting data; an external map .blend is not enough. "
+                "These options accept artistic lighting limits and keep character animation strict. "
                 "Enable Prepare installed map region on Map; this runs with the export. "
                 "Start with one selected character and a short tick range. A follow camera does not limit character selection. The optional "
                 "Elagrimm's BLENDER-Deadlock-Shader.blend uses Eevee, a partial bridge and artistic rim. "
@@ -866,6 +949,7 @@ def _build_stage(app, parent, backdrop):
         page = _Page(stage, backdrop)
         app.page_layouts[name] = page
         app.page_frames[name] = page.shell
+        page.on_bar = lambda: getattr(app, "log_visible", False) and app.layout_stage()
         builder(app, page)
         page.watch_focus()
     app.page_item = stage.create_window(0, 0, anchor="nw", window=app.page_frames[PAGE_EXPORT])
@@ -891,6 +975,9 @@ def _build_stage(app, parent, backdrop):
         log_bar.set(first, last)
 
     app.log.configure(yscrollcommand=log_scrolled)
+    # Copy button at the top right (past the scrollbar, so it never moves): copies the whole log.
+    app.log_copy = CopyButton(log_body, palette=t.palette(), command=lambda: _copy_log(app))
+    app.log_copy.grid(row=0, column=2, sticky="n", padx=_pad((8, 0)))
     app.log_visible = False
 
     # Footer: text links on the left, the job buttons as tilted paper stickers on the right
@@ -910,7 +997,20 @@ def _build_stage(app, parent, backdrop):
     app.mutable_widgets.append(app.convert_button)
     app.status_dot = CanvasDot(stage, color=t.DOT_READY, size=5)
     status = CanvasText(stage, text=app.status.get(), font=t.FONT, fill=t.MUTED)
-    app.status.trace_add("write", lambda *_a: status.configure(text=app.status.get()))
+    linespace = int(stage.tk.call("font", "metrics", t.FONT, "-linespace"))
+    status_at = [None]  # (text x, dot x, line y) from the last layout
+
+    def place_status():
+        # The message is centred on the status line; when it wraps, the dot stays beside its first line.
+        if status_at[0] is None:
+            return
+        text_x, dot_x, line = status_at[0]
+        status.place(text_x, line)
+        box = stage.bbox(status.item)
+        lines = max(1, round((box[3] - box[1]) / linespace)) if box else 1
+        app.status_dot.place(dot_x, line - (lines - 1) * linespace / 2)
+
+    app.status.trace_add("write", lambda *_a: (status.configure(text=app.status.get()), place_status()))
     app.progress = CanvasProgress(stage, theme=t.palette(), height=3)
     app.progress.grid_remove()
 
@@ -925,8 +1025,11 @@ def _build_stage(app, parent, backdrop):
         if not _Page.held:
             if app.log_visible:
                 log_height = app.log_frame.winfo_reqheight()
+                # Same right edge as the cards, which leave room for the page's scrollbar when it shows.
+                page = app.page_layouts.get(getattr(app, "page", PAGE_EXPORT))
+                log_right = right - (page.bar_room() if page else 0)
                 stage.coords(app.log_item, left, page_bottom - log_height)
-                stage.itemconfigure(app.log_item, width=right - left, state="normal")
+                stage.itemconfigure(app.log_item, width=max(1, log_right - left), state="normal")
                 page_bottom -= log_height + px(LOG_GAP)
             else:
                 stage.itemconfigure(app.log_item, state="hidden")
@@ -950,10 +1053,10 @@ def _build_stage(app, parent, backdrop):
         app.convert_button.place(right - px(41.76) * scale, stickers)
         app.cancel_button.place(right - px(135) * scale, stickers)
         line = height - px(STATUS_BOTTOM) + px(18)
-        app.status_dot.place(left + px(2.5), line)
-        status.place(left + px(10), line)
         # Wrap long status messages before they reach the stickers on the right.
         status.configure(wraplength=max(px(120), right - left - px(230) * scale))
+        status_at[0] = (left + px(10), left + px(2.5), line)
+        place_status()
         app.progress.place(left, right, height - px(24))
 
     app.layout_stage = layout_stage
@@ -1100,6 +1203,16 @@ def build(app):
             _window_edges(root, chrome)      # Windows 10: draw the 1 px window outline ourselves
         resizer.attach()
         backdrop.sync(redraw=True)
+        # Cards fade out where a scrolling page cuts them, instead of ending in a hard line.
+        app.edge_fade = gui_fade.install(root, chrome)
+        if app.edge_fade:
+            def page_view(page):
+                if page is None:
+                    app.edge_fade.hide()
+                elif page.shell is app.page_frames.get(getattr(app, "page", None)):
+                    app.edge_fade.request(page)
+            _Page.on_view = page_view
+            page_view(app.page_layouts[app.page])
         root.after(1500, lambda: _prepare_maximized_art(app))
 
     root.bind("<Map>", first_map, add="+")
@@ -1107,17 +1220,18 @@ def build(app):
     set_log_visible(app, False)
     show_page(app, PAGE_EXPORT)
     app._mode_changed()
+    refresh_asset_source_controls(app)
     app._append_log("Choose a recording, check Setup, then inspect a short range.\n" + app.discovery_note)
 
 
 def _build_map(app, page):
-    body, row = _card(app, page, 0, "Map region",
-                      "The lighting tools read one prepared region of the installed map. "
-                      "Prepared regions are cached by map content and export bounds. "
-                      + ("This character beta omits map geometry from the Blender scene." if character_beta()
-                         else "Map geometry can be omitted from the Blender scene."),
-                      label_column=WIDE_LABEL_COLUMN)
-    _check(app, body, "Prepare installed map region", app.values["map_enabled"])
+    body, row = _card(app, page, 0, "Map region", label_column=WIDE_LABEL_COLUMN,
+                      info="The lighting tools read one prepared region of the installed map. "
+                           "Prepared regions are cached by map content and export bounds. "
+                           + ("This character beta omits map geometry from the Blender scene." if character_beta()
+                              else "Map geometry can be omitted from the Blender scene."))
+    _check(app, body, "Prepare installed map region", app.values["map_enabled"], pady=(0, CHECK_GAP),
+           installed_only=True)
     _path_row(app, body, "Installed map", "map_name", None, button=False)
     _path_row(app, body, "Extra margin (metres)", "map_margin", None, button=False)
     _path_row(app, body, "Regional exporter", "world_region_probe", app._browse_world_region_probe)
@@ -1128,19 +1242,19 @@ def _build_map(app, page):
         _check(app, body, "Characters only; omit prepared map geometry", app.values["character_only"])
     _note(body, "Source/NPR lighting needs data from the installed map. Character-only exports retain "
                 "that lighting data so you can add your own map separately in Blender. Preparing lighting "
-                "does not require importing map geometry into your final scene.")
+                "does not require importing map geometry into your final scene. "
+                "New map and lighting preparation uses Installed game on Setup.", pady=(SECTION_GAP, 0))
     return row
 
 
 def _build_updates(app, page):
     body, row = _card(app, page, 0, "RenderLock updates", f"Installed version: {__version__}")
     app.update_status = tk.StringVar(value="Check for new RenderLock releases.")
-    _label(body, "Checks contact GitHub. Downloads and installation start only when you click.",
-           wraplength=px(TEXT_WRAP), justify="left").grid(row=_next_row(body), column=0, columnspan=3, sticky="w")
-    _check(app, body, "Check for updates when RenderLock opens", app.values["check_updates"], pady=(12, 8))
-    status = _label(body, "", wraplength=px(TEXT_WRAP), justify="left")
+    _check(app, body, "Check for updates when RenderLock opens", app.values["check_updates"], pady=(0, 8),
+           info="Checks contact GitHub. Downloads and installation start only when you click.")
+    status = wrap_to_width(_label(body, "", wraplength=px(TEXT_WRAP), justify="left", anchor="w"))
     status.configure(textvariable=app.update_status)
-    status.grid(row=_next_row(body), column=0, columnspan=3, sticky="w", pady=_pad((0, 10)))
+    status.grid(row=_next_row(body), column=0, columnspan=3, sticky="ew", pady=_pad((0, SECTION_GAP)))
     buttons = tk.Frame(body, background=gui_theme.CARD)
     buttons.grid(row=_next_row(body), column=0, columnspan=3, sticky="ew")
     app.update_check = RoundedButton(buttons, text="Check for updates", command=lambda: app.update_ui.check(),
@@ -1150,11 +1264,14 @@ def _build_updates(app, page):
                                      style="primary", theme=gui_theme.palette(), height=34)
     app.update_action.pack(side="left")
     body, row = _card(app, page, row, "What's new")
-    notes_frame = tk.Frame(body, background=gui_theme.FIELD)
-    notes_frame.grid(row=_next_row(body), column=0, columnspan=3, sticky="ew")
+    # Rounded (4 px) like the design; the box's own 4 px inset plus the text's 8 px keep the text 12 px in.
+    notes_box = Card(body, theme=gui_theme.palette(), fill=gui_theme.FIELD, edge=None, radius=4, pad_x=4, pad_y=4,
+                     background=gui_theme.CARD)
+    notes_box.grid(row=_next_row(body), column=0, columnspan=3, sticky="ew")
+    notes_frame = notes_box.body
     notes_frame.columnconfigure(0, weight=1)
     app.update_notes = tk.Text(notes_frame, height=12, wrap="word", state="disabled", bd=0,
-        padx=px(12), pady=px(12), background=gui_theme.FIELD, foreground=gui_theme.TEXT,
+        padx=px(8), pady=px(8), background=gui_theme.FIELD, foreground=gui_theme.TEXT,
         font=gui_theme.FONT, highlightthickness=0)
     app.update_notes.grid(row=0, column=0, sticky="ew")
     scroll = ttk.Scrollbar(notes_frame, orient="vertical", command=app.update_notes.yview)

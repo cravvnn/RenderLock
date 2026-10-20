@@ -15,11 +15,15 @@ normal Windows title bar.
 """
 from __future__ import annotations
 
+import re
 import sys
 import tkinter as tk
+import webbrowser
+from tkinter import font as tkfont
 
 from . import gui_theme
 from .gui_theme import hairline, px
+from .gui_widgets import rgba_image
 
 BAR_HEIGHT = 35           # design pixels
 BUTTON_WIDTH = 46         # caption button width, as in Windows
@@ -34,6 +38,42 @@ LINE_STOPS = ((0.0, "#252424", 0.0), (0.15, "#1e1c1c", 1.0), (0.76, "#252424", 0
 GLYPHS = {"minimize": "", "maximize": "", "restore": "", "close": ""}
 CLOSE_HOVER = "#8f2f24"
 CLOSE_PRESSED = "#7a281f"
+
+# Links at the left end of the bar, from the design: YouTube and Discord icons, a divider and the
+# credit line. They are quiet until hovered. Positions and sizes are design pixels.
+LINK_INK = "#1d1c1b"      # icons and divider
+CREDIT_INK = "#332f28"    # "Made by Cravvnn"
+LINK_ICON = 18
+LINK_REACH = 5            # extra click room on each side of an icon
+LINKS = (("youtube", 15, "https://www.youtube.com/results?search_query=cravvnn"),
+         ("discord", 43, "https://discord.gg/XTefeBUqX5"))
+DIVIDER_X, DIVIDER_HEIGHT = 71, 14.5
+CREDIT_X, CREDIT_SIZE = 81, 11
+CREDIT_PREFIX, CREDIT_NAME = "Made by ", "Cravvnn"
+CREDIT_URL = "https://github.com/cravvnn"
+# The icons' outlines (SVG path data in an 18 x 18 box, even-odd fill), drawn at the display scale.
+LINK_PATHS = {
+    "youtube": "M7.18959 11.3275V6.27687C8.98258 7.12056 10.3712 7.93558 12.0136 8.81427C10.659 9.56551 "
+               "8.98258 10.4084 7.18959 11.3275ZM17.1819 3.76496C16.8726 3.35747 16.3455 3.04028 15.7843 "
+               "2.93527C14.1347 2.62202 3.84389 2.62113 2.19524 2.93527C1.7452 3.01963 1.34445 3.22356 1.0002 "
+               "3.5404C-0.450326 4.88671 0.00419956 12.1065 0.353832 13.276C0.500856 13.7823 0.690921 14.1473 "
+               "0.930285 14.387C1.23868 14.7038 1.66092 14.922 2.14592 15.0198C3.50411 15.3007 10.5012 15.4578 "
+               "15.7556 15.062C16.2397 14.9776 16.6682 14.7524 17.0062 14.4221C18.3473 13.0812 18.2559 5.45592 "
+               "17.1819 3.76496Z",
+    "discord": "M15.2477 3.17085C14.0825 2.6257 12.8367 2.2295 11.5342 2.00391C11.3742 2.29311 11.1873 2.68211 "
+               "11.0585 2.99155C9.67387 2.78332 8.30201 2.78332 6.94287 2.99155C6.81404 2.68211 6.62292 2.29311 "
+               "6.46152 2.00391C5.15761 2.2295 3.91032 2.62716 2.74514 3.17374C0.394982 6.72514 -0.242108 "
+               "10.1883 0.0764375 13.6024C1.63519 14.7664 3.14581 15.4735 4.63093 15.9362C4.99762 15.4316 "
+               "5.32465 14.8951 5.60638 14.3297C5.06981 14.1258 4.5559 13.8742 4.07031 13.5821C4.19913 13.4867 "
+               "4.32514 13.3869 4.44689 13.2842C7.40865 14.6695 10.6267 14.6695 13.5531 13.2842C13.6762 13.3869 "
+               "13.8022 13.4867 13.9296 13.5821C13.4426 13.8756 12.9273 14.1273 12.3907 14.3312C12.6724 14.8951 "
+               "12.9981 15.433 13.3662 15.9377C14.8527 15.4749 16.3647 14.7678 17.9235 13.6024C18.2973 9.64464 "
+               "17.285 6.21325 15.2477 3.17085ZM6.00988 11.5028C5.12079 11.5028 4.39166 10.6727 4.39166 9.66198C"
+               "4.39166 8.65122 5.10522 7.81977 6.00988 7.81977C6.91457 7.81977 7.64367 8.64977 7.6281 9.66198C"
+               "7.62951 10.6727 6.91457 11.5028 6.00988 11.5028ZM11.9901 11.5028C11.101 11.5028 10.3718 10.6727 "
+               "10.3718 9.66198C10.3718 8.65122 11.0854 7.81977 11.9901 7.81977C12.8947 7.81977 13.6238 8.64977 "
+               "13.6083 9.66198C13.6083 10.6727 12.8947 11.5028 11.9901 11.5028Z",
+}
 
 _GWL_STYLE, _GWL_EXSTYLE, _GWLP_WNDPROC = -16, -20, -4
 _WS_CAPTION, _WS_THICKFRAME, _WS_SYSMENU = 0x00C00000, 0x00040000, 0x00080000
@@ -69,6 +109,74 @@ def _flat(values):
 
 def _hex(rgb):
     return "#%02x%02x%02x" % tuple(max(0, min(255, int(c + 0.5))) for c in rgb)
+
+
+def _path_polygons(path, scale, steps=12):
+    """SVG path data (M, L, H, V, C, Z; absolute or relative) -> closed polygons, scaled."""
+    tokens = re.findall(r"[A-Za-z]|[-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[eE][-+]?\d+)?", path)
+    polygons, points = [], []
+    x = y = start_x = start_y = 0.0
+    command, i = "", 0
+    while i < len(tokens):
+        if tokens[i].isalpha():
+            command, i = tokens[i], i + 1
+            if command in "Zz":
+                if len(points) > 2:
+                    polygons.append(points)
+                points, x, y = [], start_x, start_y
+            continue
+        relative = command.islower()
+        ox, oy = (x, y) if relative else (0.0, 0.0)
+        kind = command.upper()
+        count = {"M": 2, "L": 2, "H": 1, "V": 1, "C": 6}[kind]
+        v = [float(t) for t in tokens[i:i + count]]
+        i += count
+        if kind == "M":
+            if len(points) > 2:
+                polygons.append(points)
+            x, y = start_x, start_y = ox + v[0], oy + v[1]
+            points = [(x, y)]
+            command = "l" if relative else "L"  # further pairs after a move are lines
+        elif kind == "L":
+            x, y = ox + v[0], oy + v[1]
+            points.append((x, y))
+        elif kind == "H":
+            x = ox + v[0]
+            points.append((x, y))
+        elif kind == "V":
+            y = oy + v[0]
+            points.append((x, y))
+        else:
+            (x1, y1), (x2, y2), (x3, y3) = (ox + v[0], oy + v[1]), (ox + v[2], oy + v[3]), (ox + v[4], oy + v[5])
+            for k in range(1, steps + 1):
+                t = k / steps
+                a, b, c, d = (1 - t) ** 3, 3 * (1 - t) ** 2 * t, 3 * (1 - t) * t * t, t ** 3
+                points.append((a * x + b * x1 + c * x2 + d * x3, a * y + b * y1 + c * y2 + d * y3))
+            x, y = x3, y3
+    if len(points) > 2:
+        polygons.append(points)
+    return [[(px_ * scale, py_ * scale) for px_, py_ in points] for points in polygons]
+
+
+def _coverage(polygons, size, rows=5):
+    """Anti-aliased even-odd coverage (0..1) of ``polygons`` on a size x size grid.
+
+    Exact across each pixel row, ``rows`` samples down it."""
+    edges = [(a, b) for points in polygons for a, b in zip(points, points[1:] + points[:1]) if a[1] != b[1]]
+    cover = [[0.0] * size for _ in range(size)]
+    for row in range(size):
+        line = cover[row]
+        for s in range(rows):
+            yy = row + (s + 0.5) / rows
+            xs = sorted(x0 + (yy - y0) * (x1 - x0) / (y1 - y0)
+                        for (x0, y0), (x1, y1) in edges if (y0 <= yy) != (y1 <= yy))
+            for left, right in zip(xs[::2], xs[1::2]):
+                left, right = max(0.0, left), min(float(size), right)
+                column = int(left)
+                while column < right:
+                    line[column] += (min(right, column + 1) - max(left, column)) / rows
+                    column += 1
+    return cover
 
 
 class _Win32:
@@ -166,10 +274,15 @@ class _Win32:
 
 
 class WindowChrome:
-    """Frameless-but-native window handling for one Tk root. Use ``install(root)``."""
+    """Frameless-but-native window handling for one Tk root. Use ``install(root)``.
 
-    def __init__(self, root):
+    ``resizable=False`` (the update window) leaves out the resize frame and the maximize box, so
+    Windows offers no resizing, snapping or maximizing for it; its size changes only from the app.
+    """
+
+    def __init__(self, root, *, resizable=True):
         self.root = root
+        self.resizable = resizable
         self.api = None
         self.hwnd = None
         self._proc = None       # keep the callback alive for as long as the window exists
@@ -184,6 +297,9 @@ class WindowChrome:
         self.redraw_off = False
         self.redraw_off_at = 0.0
         self._brush = None
+        # Called as follow(x, y, width, height, flags) whenever the window has moved or resized, from
+        # inside the window procedure: Win32 calls only, never tkinter (see gui_fade).
+        self.followers = []
 
     # -- setup ---------------------------------------------------------------------------------
 
@@ -203,13 +319,19 @@ class WindowChrome:
         """Once mapped: restore the frame styles, hook the window procedure, show the window."""
         api, root = self.api, self.root
         user32 = api.user32
+        hidden = False
         try:
             hwnd = api.wintypes.HWND(int(root.wm_frame(), 16))
             user32.ShowWindow(hwnd, 0)  # SW_HIDE: the taskbar only notices the new style on re-show
+            hidden = True
             # Tk rewrites the extended style when alpha changes, so finish with alpha before restyling.
             root.attributes("-alpha", 1.0)
             style = user32.GetWindowLongPtrW(hwnd, _GWL_STYLE)
-            style |= _WS_CAPTION | _WS_THICKFRAME | _WS_SYSMENU | _WS_MINIMIZEBOX | _WS_MAXIMIZEBOX
+            style |= _WS_CAPTION | _WS_SYSMENU | _WS_MINIMIZEBOX
+            if self.resizable:
+                style |= _WS_THICKFRAME | _WS_MAXIMIZEBOX
+            else:
+                style &= ~(_WS_THICKFRAME | _WS_MAXIMIZEBOX)
             ex_style = user32.GetWindowLongPtrW(hwnd, _GWL_EXSTYLE)
             ex_style = (ex_style & ~_WS_EX_TOOLWINDOW) | _WS_EX_APPWINDOW
             old = user32.GetWindowLongPtrW(hwnd, _GWLP_WNDPROC)
@@ -235,7 +357,13 @@ class WindowChrome:
         except (OSError, AttributeError, ValueError, tk.TclError):
             self._undo()
             root.attributes("-alpha", 1.0)
+            if hidden:  # Tk took the hide as "withdrawn" and rebuilt the native frame that way: show it
+                try:
+                    root.deiconify()
+                except tk.TclError:
+                    pass
             return False
+        root._frameless_chrome = True  # gui_theme.brand_window leaves the outline color alone from now on
         return True
 
     def _undo(self):
@@ -277,9 +405,14 @@ class WindowChrome:
                     jump = (pos.cx, pos.cy) != (rect.right - rect.left, rect.bottom - rect.top)
                     # Not for minimizing or coming back from the taskbar: no new layout to wait for.
                     iconic = api.user32.IsIconic(hwnd) or pos.x <= -32000
-                    if jump and not self.sizing and not iconic:
+                    # (A fixed-size window only changes size from its own code, which lays out at once.)
+                    if jump and not self.sizing and not iconic and self.resizable:
                         self._hide_content()
                         pos.flags |= 0x0100  # SWP_NOCOPYBITS: no old pixels carried into the new size
+            if msg == 0x0047 and self.followers:  # WM_WINDOWPOSCHANGED: owned overlays keep up, even mid-drag
+                pos = api.WINDOWPOS.from_address(lparam)
+                for follow in self.followers:
+                    follow(pos.x, pos.y, pos.cx, pos.cy, pos.flags)
         except Exception:  # never let a Python error break the window's message handling
             pass
         return api.user32.CallWindowProcW(self._old_proc, hwnd, msg, wparam, lparam)
@@ -375,27 +508,40 @@ def _colorref(color):
 
 
 class TitleBar(tk.Canvas):
-    """The custom title bar: gradient bar, fading bottom line and minimize/maximize/close buttons."""
+    """The custom title bar: gradient bar, fading bottom line, the YouTube / Discord / credit links
+    and minimize/maximize/close buttons.
 
-    def __init__(self, parent, chrome, *, theme):
+    Other windows (the update window) choose their ``buttons`` and show ``icon`` + ``title`` at
+    the left instead of the links (``links=False``); ``height`` is in design px."""
+
+    def __init__(self, parent, chrome, *, theme, buttons=("minimize", "maximize", "close"), links=True,
+                 height=BAR_HEIGHT, title=None, icon=None):
         self._chrome = chrome
         self._theme = dict(theme)
-        self._height = px(BAR_HEIGHT)
+        self._names = tuple(buttons)
+        self._links_on = links
+        self._title, self._title_icon = title, icon
+        self._height = px(height)
         self._button_w = px(BUTTON_WIDTH)
         self._hover = self._pressed = None
+        self._link_hover = self._link_pressed = None
+        self._link_boxes = []      # (name, left, right) click areas, set by _draw_links
+        self._icons = {}           # (name, color) -> PhotoImage
         self._active = True
         self._image = None
         super().__init__(parent, height=self._height, background=gui_theme.screen(BAR_STOPS[0][1]),
                          highlightthickness=0, bd=0)
         family = gui_theme.icon_font(self)
         self._glyph_font = (family, -px(10)) if family else None
+        self._credit_font = tkfont.Font(self, family=gui_theme.FONT[0], size=-px(CREDIT_SIZE))
+        self._credit_link_font = tkfont.Font(self, family=gui_theme.FONT[0], size=-px(CREDIT_SIZE), underline=True)
         self.bind("<Configure>", lambda _e: self._draw())
         self.bind("<Motion>", self._on_motion)
-        self.bind("<Leave>", lambda _e: self._set_hover(None))
+        self.bind("<Leave>", self.drop_hover)
         self.bind("<ButtonPress-1>", self._on_press)
         self.bind("<ButtonRelease-1>", self._on_release)
         self.bind("<Double-Button-1>", self._on_double)
-        self.bind("<ButtonRelease-3>", lambda e: self._button_at(e.x) is None
+        self.bind("<ButtonRelease-3>", lambda e: self._button_at(e.x) is None and self._link_at(e.x, e.y) is None
                   and self._chrome.system_menu(e.x_root, e.y_root))
         top = self.winfo_toplevel()
         top.bind("<Activate>", lambda e: e.widget is top and self._set_active(True), add="+")
@@ -404,7 +550,7 @@ class TitleBar(tk.Canvas):
 
     def _buttons(self):
         width = self.winfo_width()
-        names = ("minimize", "maximize", "close")
+        names = self._names
         return [(name, width - (len(names) - i) * self._button_w) for i, name in enumerate(names)]
 
     def _button_at(self, x):
@@ -452,6 +598,88 @@ class TitleBar(tk.Canvas):
         self.itemconfigure("bar", image=image)
         self.tag_lower("bar")
         self._draw_buttons()
+        if self._links_on:
+            self._draw_links()
+        else:
+            self._draw_title()
+
+    def _draw_title(self):
+        """Icon and window title at the left (for windows without the links)."""
+        self.delete("caption")
+        cy = (self._height - hairline()) / 2.0
+        x = px(12)
+        if self._title_icon is not None:
+            self.create_image(x, cy, anchor="w", image=self._title_icon, tags="caption")
+            x += px(24)
+        if self._title:
+            ink = self._theme["TEXT"] if self._active else self._theme["MUTED"]
+            self.create_text(x, cy, anchor="w", text=self._title, font=gui_theme.FONT, fill=ink, tags="caption")
+
+    def set_title(self, title):
+        self._title = title
+        if not self._links_on:
+            self._draw_title()
+
+    def _link_icon(self, name, color):
+        image = self._icons.get((name, color))
+        if image is None:
+            size = px(LINK_ICON)
+            cover = _coverage(_path_polygons(LINK_PATHS[name], size / LINK_ICON), size)
+            r, g, b = _rgb(color)
+            rows = [b"".join(bytes((r, g, b, min(255, int(255 * c + 0.5)))) for c in line) for line in cover]
+            image = self._icons[(name, color)] = rgba_image(self, size, size, rows)
+        return image
+
+    def _link_ink(self, name, rest):
+        if self._link_hover == name:
+            return self._theme["TEXT"] if self._link_pressed == name else self._theme["MUTED"]
+        return gui_theme.screen(rest)
+
+    def _draw_links(self):
+        self.delete("link")
+        cy = (self._height - hairline()) / 2.0
+        size, reach = px(LINK_ICON), px(LINK_REACH)
+        boxes = []
+        for name, left, _url in LINKS:
+            left = px(left)
+            self.create_image(left, int(cy - size / 2.0 + 0.5), anchor="nw", tags="link",
+                              image=self._link_icon(name, self._link_ink(name, LINK_INK)))
+            boxes.append((name, left - reach, left + size + reach))
+        x, half = px(DIVIDER_X), px(DIVIDER_HEIGHT) / 2.0
+        self.create_rectangle(x, int(cy - half + 0.5), x + hairline(), int(cy + half + 0.5),
+                              fill=gui_theme.screen(LINK_INK), width=0, tags="link")
+        x = px(CREDIT_X)
+        self.create_text(x, cy, text=CREDIT_PREFIX, anchor="w", font=self._credit_font,
+                         fill=gui_theme.screen(CREDIT_INK), tags="link")
+        x += self._credit_font.measure(CREDIT_PREFIX)
+        hover = self._link_hover == "github"
+        self.create_text(x, cy, text=CREDIT_NAME, anchor="w", tags="link",
+                         font=self._credit_link_font if hover else self._credit_font,
+                         fill=self._link_ink("github", CREDIT_INK))
+        boxes.append(("github", x - px(3), x + self._credit_font.measure(CREDIT_NAME) + px(3)))
+        self._link_boxes = boxes
+
+    def _link_at(self, x, y):
+        if not 0 <= y < self._height:
+            return None
+        return next((name for name, left, right in self._link_boxes if left <= x < right), None)
+
+    def _set_link_hover(self, name):
+        cursor = "hand2" if name else ""
+        if self.cget("cursor") != cursor:
+            self.configure(cursor=cursor)
+        if name != self._link_hover:
+            self._link_hover = name
+            if name is None:
+                self._link_pressed = None
+            self._draw_links()
+
+    def _open_link(self, name):
+        url = CREDIT_URL if name == "github" else next(u for n, _left, u in LINKS if n == name)
+        try:
+            webbrowser.open(url)
+        except (webbrowser.Error, OSError):
+            pass
 
     def _draw_buttons(self):
         self.delete("button")
@@ -500,11 +728,25 @@ class TitleBar(tk.Canvas):
     def _set_active(self, active):
         self._active = active
         self._draw_buttons()
+        if not self._links_on:
+            self._draw_title()
 
     def _on_motion(self, event):
         self._set_hover(self._button_at(event.x))
+        self._set_link_hover(self._link_at(event.x, event.y))
+
+    def drop_hover(self, _event=None):
+        """Forget hover and press looks: on <Leave>, and from EdgeResizer when the pointer enters a
+        resize zone (the zone then owns the motion events, so _on_motion would not clear them)."""
+        self._set_hover(None)
+        self._set_link_hover(None)
 
     def _on_press(self, event):
+        link = self._link_at(event.x, event.y)
+        if link is not None:  # a link, not the bar: no window drag
+            self._link_hover = self._link_pressed = link
+            self._draw_links()
+            return
         name = self._button_at(event.x)
         if name is None:
             self._chrome.start_move()
@@ -513,6 +755,12 @@ class TitleBar(tk.Canvas):
         self._draw_buttons()
 
     def _on_release(self, event):
+        link, self._link_pressed = self._link_pressed, None
+        if link is not None:
+            self._draw_links()
+            if self._link_at(event.x, event.y) == link:
+                self._open_link(link)
+            return
         name, self._pressed = self._pressed, None
         self._draw_buttons()
         if name is None or self._button_at(event.x) != name or not (0 <= event.y < self._height):
@@ -525,7 +773,9 @@ class TitleBar(tk.Canvas):
             self._chrome.close()
 
     def _on_double(self, event):
-        if self._button_at(event.x) is None:
+        # The second click of a double-click on a link does nothing (the first one opened it).
+        if ("maximize" in self._names and self._button_at(event.x) is None
+                and self._link_at(event.x, event.y) is None):
             self._chrome.toggle_maximize()
 
 
@@ -582,6 +832,9 @@ class EdgeResizer:
         try:
             if edge:
                 if widget not in self.cursors:
+                    drop = getattr(widget, "drop_hover", None)
+                    if drop is not None:
+                        drop()  # e.g. a title bar link: no hover look under a resize cursor
                     self.cursors[widget] = widget.cget("cursor")
                 widget.configure(cursor=_CURSORS[edge])
                 return "break"  # the widget's own hover handling must not replace the resize cursor

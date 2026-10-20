@@ -87,6 +87,31 @@ def test_prepared_assets_do_not_receive_installed_cloth_or_map_flags(tmp_path):
     assert not parsed.include_map and not parsed.secondary_motion
 
 
+def test_prepared_assets_route_supported_effect_and_constraint_options(tmp_path):
+    for name in ("manifest.json", "blender.exe"):
+        (tmp_path / name).write_bytes(b"fixture")
+    values = {"input": str(tmp_path / "manifest.json"), "mode": "segment", "asset_source": "prepared",
+              "assets": str(tmp_path), "blender": str(tmp_path / "blender.exe"),
+              "output": str(tmp_path / "result.blend"), "start": "1", "end": "2", "fps": "64",
+              "effects_enabled": "0", "model_constraints": "1"}
+    parsed = cli.parser().parse_args(gui.build_convert_command(values)[3:])
+    assert parsed.no_effects and parsed.model_constraints
+
+
+@pytest.mark.parametrize("suffix", [".agrscene", ".agr-report.json"])
+def test_companion_output_collision_is_explained_before_launch(tmp_path, suffix):
+    for name in ("manifest.json", "blender.exe"):
+        (tmp_path / name).write_bytes(b"fixture")
+    output = tmp_path / "result.blend"
+    output.with_suffix(suffix).touch()
+    values = {"input": str(tmp_path / "manifest.json"), "mode": "segment", "asset_source": "prepared",
+              "assets": str(tmp_path), "blender": str(tmp_path / "blender.exe"),
+              "output": str(output), "start": "1", "end": "2", "fps": "64"}
+    with pytest.raises(ValueError, match="companion"):
+        gui.build_convert_command(values)
+    assert "--overwrite" in gui.build_convert_command(values, overwrite=True)
+
+
 def particle_values(tmp_path):
     for name in ('input.json', 'blender.exe', 'Source2Viewer-CLI.exe', 'ParticleProbe.dll', 'dotnet.exe'):
         (tmp_path / name).write_bytes(b'fixture')

@@ -1,14 +1,17 @@
 """Retarget AGR's native particle constraints to the active Blender camera.
 
 This standalone script is also stored in exported scenes as a Blender Text.
-Run it manually after switching cameras. Moving the existing camera needs no
-script or rebake. It does not rerun simulation or alter particle animation.
+Run it manually after switching cameras for sprite/trail constraints. Those
+constraints follow the existing camera as it moves. Camera-sampled rope meshes
+require geometry rebuilding and are rejected here. Simulation is not rerun.
 """
 
 
 def retarget_simulated_effects(scene, camera):
     if camera is None or camera.type != 'CAMERA' or camera.name not in scene.objects:
         raise ValueError('Choose an active camera in this scene first')
+    if any(obj.get('agr_particle_rope_sampled_camera') for obj in scene.objects):
+        raise ValueError('Rope geometry uses sampled camera position and projection. Rebuild the rope geometry for the changed camera before retargeting particle constraints.')
     targets = []
     for obj in scene.objects:
         if obj.get('agr_particle_billboard_helper'):

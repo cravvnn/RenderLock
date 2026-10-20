@@ -12,8 +12,8 @@ def render_sequence(blender,scene,segment,output,frames,*,allow_partial=False):
     output=Path(output).resolve();frames=list(frames)
     if not frames or any(type(f) is not int for f in frames) or len(set(frames))!=len(frames):
         raise ValueError('Distinct explicit integer frames required')
-    if output.drive.upper()!='C:' or output.exists() or not output.parent.is_dir():
-        raise ValueError('New C-only sequence output with existing parent required')
+    if output.exists() or not output.parent.is_dir():
+        raise ValueError('New sequence output with existing parent required')
     data=json.loads(segment.read_text(encoding='utf-8'))
     if validate_npr_runtime(data,allow_partial=allow_partial) is None:
         raise ValueError('Prepared NPR runtime segment required')

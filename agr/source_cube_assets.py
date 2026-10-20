@@ -5,7 +5,7 @@ import subprocess
 import time
 import numpy as np
 from .asset_converter import ConversionError,compiled,sha
-from .source_probe_assets import ATLAS_HELPER_HASHES,plan_probe_assets
+from .source_probe_assets import ATLAS_HELPER_HASHES,plan_probe_assets,MAX_ATLAS_BYTES,MAX_CUBE_BYTES
 from .source_lighting_profiles import probe_layout,qualified_probe_helpers
 
 HELPER_SHA256='a418b83895b07633d889e86c055f4d782340d954a932f5e3352df0d870d891e6'
@@ -49,7 +49,8 @@ def validate_cube_report(directory,source_sha256,indices,*,cube_depth=232):
 
 
 def prepare_cube_assets(provider,decoder,plan,*,probe,dotnet,max_decoded_bytes=256*1024*1024):
-    if plan!=plan_probe_assets(provider,decoder,plan['source_bounds']):raise ConversionError('Cube probe plan changed')
+    if plan!=plan_probe_assets(provider,decoder,plan['source_bounds'],source_regions=plan.get('source_regions'),
+            max_decoded_bytes=plan.get('atlas_batch_limit_bytes',MAX_ATLAS_BYTES)):raise ConversionError('Cube probe plan changed')
     probe=Path(probe).resolve();dotnet=Path(dotnet).resolve()
     required={k:v for k,v in ATLAS_HELPER_HASHES.items() if k!='ProbeAtlasDecode.dll'}|{'CubemapDecode.dll':HELPER_SHA256}
     if probe.name!='CubemapDecode.dll' or not dotnet.is_file():raise ConversionError('Explicit cube helper and .NET required')
@@ -59,14 +60,19 @@ def prepare_cube_assets(provider,decoder,plan,*,probe,dotnet,max_decoded_bytes=2
     selections={}
     for p in plan['probes']:selections.setdefault(compiled(p['cubemaptexture']),[]).append(p['array_index'])
     estimate=sum(len(v) for v in selections.values())*sum((256>>m)**2*6*16 for m in range(7))
-    if type(max_decoded_bytes) is not int or max_decoded_bytes<=0 or estimate>max_decoded_bytes:raise ConversionError('Cube decode exceeds explicit storage budget')
+    if type(max_decoded_bytes) is not int or not 0<max_decoded_bytes<=MAX_CUBE_BYTES:
+        raise ConversionError('Invalid cube decoder byte budget')
+    bytes_per_cube=sum((256>>m)**2*6*16 for m in range(7))
+    batch_count=min(4,max_decoded_bytes//bytes_per_cube)
+    if not batch_count or 'atlas_decode_batches' not in plan and estimate>max_decoded_bytes:
+        raise ConversionError('Cube decode exceeds explicit storage budget')
     prepared=[]
     for resource,indices in sorted(selections.items()):
         resolved=provider.resolve(resource)
         if resolved.sha256!=plan['inputs'][resource]['sha256']:raise ConversionError('Cube source changed')
         indices=sorted(indices)
-        for first in range(0,len(indices),4):
-            selected=indices[first:first+4]
+        for first in range(0,len(indices),batch_count):
+            selected=indices[first:first+batch_count]
             config=dict(path=str(resolved.local_path),sha256=resolved.sha256,indices=selected)
             def build(temp):
                 try:

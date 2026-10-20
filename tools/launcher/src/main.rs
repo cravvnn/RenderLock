@@ -64,7 +64,7 @@ fn main() -> ExitCode {
     if root.join(".renderlock-update-pending").exists() {
         let work = root.join(".renderlock-update");
         let recovery = Command::new(work.join("worker-runtime").join("python.exe"))
-            .args(["-I", "-B"])
+            .args(["-I", "-X", "utf8", "-B"])
             .arg(work.join("worker.py"))
             .arg("--recover")
             .arg("--parent").arg(std::process::id().to_string())
@@ -93,6 +93,7 @@ fn main() -> ExitCode {
     let mut command = Command::new(&python);
     command
         .arg("-I")
+        .args(["-X", "utf8"])
         .arg("-B")
         .arg("-u")
         .arg(root.join("portable_launcher.py"))

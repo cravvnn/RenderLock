@@ -56,6 +56,31 @@ def _field(row: dict, suffix: str, default: Any = ...) -> Any:
     return values[0]
 
 
+def _graph_change_error(previous_graph: str, graph: str, row: dict,
+                        selected_rows: list[dict]) -> AnimationError:
+    """Explain a real context boundary without inventing cross-rig animation."""
+    tick = row['demo_tick']
+    model = _field(row, 'm_hModel', None)
+    before = next((r for r in reversed(selected_rows) if r['demo_tick'] < tick), None)
+    previous_model = _field(before, 'm_hModel', None) if before is not None else None
+    details = {'code': 'animation_graph_transition', 'demo_tick': tick,
+               'previous_graph': previous_graph, 'graph': graph,
+               'graph_resource_id': str(_field(row, 'm_primaryGraphId')),
+               'model_handle': str(model) if model is not None else None,
+               'previous_model_handle': str(previous_model) if previous_model is not None else None,
+               'context': [_field(row, 'm_nServerGraphInstanceIteration', None),
+                           _field(row, 'm_nServerSerializationContextIteration', None)],
+               'transition_has_recorded_recipe': bool(row.get('serialized_pose_recipe_array'))}
+    suggestion = f'Try a clip ending at tick {tick - 1}, or select a range within one form. '
+    missing = ('The transformation tick has no recorded pose recipe; a pose will not be guessed. '
+               if not details['transition_has_recorded_recipe'] else '')
+    return AnimationError(
+        f'Primary graph changes at replay tick {tick}: {previous_graph} -> {graph}. '
+        'Exporting this graph/model transition as one actor is not yet supported. '
+        + missing + suggestion + 'Keep the diagnostic folder and share the original replay '
+        'to validate support for this transformation.', details=details)
+
+
 def _inside(root: Path, resource: str, suffix: str = '') -> Path:
     path = (root / (resource + suffix)).resolve()
     if not path.is_relative_to(root.resolve()):
@@ -170,17 +195,32 @@ def _row_entity(row: dict) -> str | None:
 
 
 def _select_rows(raw: list[dict], entity: dict, entities: list[dict]) -> list[dict]:
-    hero = entity['hero_id']; identity = str(entity['id'])
+    from .model_tracks import actor_id
+    hero = entity['hero_id']; identity = str(actor_id(entity))
     candidates = [r for r in raw if r.get('hero_id') == hero]
     exact = [r for r in candidates if _row_entity(r) == identity]
     if exact:
-        return exact
-    # Legacy recordings retain entity_index, while caller IDs may be descriptive.
-    # Permit the fallback only when both sides identify exactly one entity.
-    ids = {_row_entity(r) for r in candidates}
-    if len([e for e in entities if e['hero_id'] == hero]) == 1 and len(ids) <= 1:
-        return candidates
-    raise AnimationError(f'Cannot uniquely map recipe rows to entity {identity} (hero {hero})')
+        candidates = exact
+    else:
+        ids = {_row_entity(r) for r in candidates}
+        from .model_tracks import logical_entities
+        if len([e for e in logical_entities(entities).values() if e['hero_id'] == hero]) != 1 or len(ids) > 1:
+            raise AnimationError(f'Cannot uniquely map recipe rows to entity {identity} (hero {hero})')
+    track = entity.get('model_track')
+    if track is not None:
+        # Do not seed a rig/cache from another form, even on a return to the
+        # same model later in the pawn lifetime.
+        lower = track['start_tick']
+        if track.get('initial_model_track') is True:
+            # Preserve the supplied same-form seed/history before a cropped
+            # first run, but never cross an earlier different model.
+            previous = [r['demo_tick'] for r in candidates if r['demo_tick'] < lower
+                        and str(_field(r, 'm_hModel', None)) != track['model_handle']]
+            lower = max(previous) + 1 if previous else 0
+        candidates = [r for r in candidates if
+                      lower <= r['demo_tick'] < track['end_tick_exclusive']
+                      and str(_field(r, 'm_hModel', None)) == track['model_handle']]
+    return candidates
 
 
 def _trim_prehistory(rows: list[dict], first_tick: int, last_tick: int,
@@ -297,7 +337,7 @@ def _bone_name_aliases(recorded_bones: list[str], asset_bones: list[str], *,
 
 
 def _bind(raw: dict, tick: int, recorded: dict, registry: list[str],
-          entry: dict, skeleton: dict) -> dict:
+          entry: dict, skeleton: dict, *, model_track=None, allow_unavailable=False) -> dict:
     graph = entry['graph']
     if int(_field(raw, 'm_primaryGraphId')) != resource_id(graph):
         raise AnimationError(f'Recorded primary graph does not match {graph}')
@@ -317,6 +357,22 @@ def _bind(raw: dict, tick: int, recorded: dict, registry: list[str],
     lut = graph_asset['resources']
     if not lut or len(set(lut)) != len(lut):
         raise AnimationError('Recorded graph resource list is empty or ambiguous')
+    if (model_track is not None and raw['demo_tick'] == model_track['start_tick']
+            and str(_field(raw, 'm_hModel', None)) == model_track['model_handle']
+            and _field(raw, 'm_nSerializePoseRecipeVersionAG2', None) == 0
+            and raw.get('serialized_pose_recipe_array') == []
+            and _field(raw, 'm_nServerSerializationContextIteration', None) == 0):
+        details = dict(context, code='animation_reset_pose_unavailable',
+                       model_handle=model_track['model_handle'])
+        message = (f'No pose recipe is recorded for the new model at replay tick {raw["demo_tick"]}. '
+                   'Strict export cannot invent this reset pose. Explicit partial export can '
+                   'keep both forms and hide this unavailable sample, with a coverage warning.')
+        if not allow_unavailable:
+            raise AnimationError(message, details=details)
+        return {'demo_tick':raw['demo_tick'], 'fresh_recipe':False, 'tasks':[],
+                'graph_resource':graph, 'unavailable_pose':details,
+                'context':[_field(raw,'m_nServerGraphInstanceIteration'),
+                           _field(raw,'m_nServerSerializationContextIteration')]}
     dependency_counts = {0: 1, 1: 0, 4: 1, 5: 0, 6: 2, 7: 2, 8: 2, 9: 2, 11: 1, 12: 0}
     header = recipe_header(raw, tick, task_type_bits=len(registry).bit_length(),
                            topology_dependency_counts={i: dependency_counts[TASKS[name]]
@@ -446,6 +502,12 @@ def evaluate_segment(segment_path: Path, output: Path, assets: Path,
     result = copy.deepcopy(segment)
     diagnostics = []; reports = []
     for entity in result['entities']:
+        # Evaluation replaces a previous job's pose coverage rather than
+        # carrying its unavailable-frame flags into newly evaluated arrays.
+        for key in ('pose_file','skeleton_file','animation_status','pose_unavailable_ticks'):
+            entity.pop(key,None)
+        for sample in entity['samples']:
+            sample.pop('pose_available',None)
         identity = str(entity['id']); label = entity.get('hero_name', identity)
         try:
             desired = sorted({s['tick'] for s in entity['samples']
@@ -479,17 +541,20 @@ def evaluate_segment(segment_path: Path, output: Path, assets: Path,
                     recorded, registry = timeline.at(row['demo_tick'])
                     primary = int(_field(row, 'm_primaryGraphId'))
                     matches = [g for g in recorded if g.endswith('.vnmgraph') and resource_id(g) == primary]
-                    if len(matches) != 1 or matches[0] not in graph_catalog:
+                    if len(matches) != 1:
                         raise AnimationError(f'Asset pack has no graph/skeleton mapping for primary graph ID {primary}')
                     current = matches[0]
                     if graph is not None and current != graph:
-                        raise AnimationError('Primary graph changes within one entity; rig switching is unsupported')
+                        raise _graph_change_error(graph, current, row, selected_raw)
+                    if current not in graph_catalog:
+                        raise AnimationError(f'Asset pack has no graph/skeleton mapping for primary graph ID {primary}')
                     graph = current; name, entry = graph_catalog[graph]
                     if skeleton is None:
                         skeleton = _skeleton(assets, entry, name)
                     if row['demo_tick'] not in server_ticks:
                         raise AnimationError(f'Missing network server tick at demo tick {row["demo_tick"]}')
-                    selected.append(_bind(row, server_ticks[row['demo_tick']], recorded, registry, entry, skeleton))
+                    selected.append(_bind(row, server_ticks[row['demo_tick']], recorded, registry, entry, skeleton,
+                                          model_track=entity.get('model_track'), allow_unavailable=not strict))
             by_tick = {r['demo_tick']: r for r in selected}
             if len(by_tick) != len(selected):
                 raise AnimationError('Duplicate animation records for one entity and tick')
@@ -499,6 +564,7 @@ def evaluate_segment(segment_path: Path, output: Path, assets: Path,
             _require_cached_clips(selected, assets/'clip_cache')
             evaluator = Evaluator(label, skeleton, assets/'clip_cache')
             q = []; t = []; s = []; fresh = []; last = None; context = None
+            evaluated_ticks = []; unavailable_ticks = []
             desired_set = set(desired)
             for row in sorted(selected, key=lambda r: r['demo_tick']):
                 if row['demo_tick'] > desired[-1]:
@@ -507,6 +573,12 @@ def evaluate_segment(segment_path: Path, output: Path, assets: Path,
                 if context is not None and current_context != context:
                     last = None
                 context = current_context
+                if row.get('unavailable_pose'):
+                    last = None
+                    evaluator.pose_cache.clear()
+                    if row['demo_tick'] in desired_set:
+                        unavailable_ticks.append(row['demo_tick'])
+                    continue
                 if row['fresh_recipe']:
                     last = evaluator.evaluate(row)
                 elif last is None:
@@ -517,17 +589,29 @@ def evaluate_segment(segment_path: Path, output: Path, assets: Path,
                 if row['demo_tick'] in desired_set:
                     q.append(last.q.copy()); t.append(last.t.copy()); s.append(last.s.copy())
                     fresh.append(bool(row['fresh_recipe']))
+                    evaluated_ticks.append(row['demo_tick'])
+            if not evaluated_ticks:
+                raise AnimationError('The selected model contains only an unrecorded reset pose; '
+                    'choose a range ending before the reset or containing a later recorded pose.',
+                    details={'code':'animation_reset_only_range','ticks':unavailable_ticks})
             slug = re.sub(r'[^A-Za-z0-9_-]', '_', identity)[:60]
             slug += '_' + hashlib.sha256(identity.encode()).hexdigest()[:8]
             pose_path = output/f'{slug}_poses.npz'
             skeleton_path = output/f'{slug}_skeleton.json'
             np.savez_compressed(pose_path, q=np.array(q), t=np.array(t), s=np.array(s),
-                                ticks=np.asarray(desired, dtype=np.int64), fresh=np.asarray(fresh, dtype=bool))
+                                ticks=np.asarray(evaluated_ticks, dtype=np.int64), fresh=np.asarray(fresh, dtype=bool))
             skeleton_path.write_text(json.dumps(skeleton, separators=(',', ':'))+'\n', encoding='utf-8')
             entity['pose_file'] = str(pose_path)
             entity['skeleton_file'] = str(skeleton_path)
-            entity['animation_status'] = 'evaluated'
-            reports.append({'id': entity['id'], 'frames': len(desired), 'bones': len(evaluator.names),
+            entity['animation_status'] = 'evaluated_partial' if unavailable_ticks else 'evaluated'
+            if unavailable_ticks:
+                entity['pose_unavailable_ticks'] = unavailable_ticks
+                for sample in entity['samples']:
+                    sample['pose_available'] = sample['tick'] not in unavailable_ticks
+                diagnostics.append({'id':entity['id'], 'code':'animation_reset_pose_unavailable',
+                    'ticks':unavailable_ticks, 'message':'The new model has no recorded reset pose; these samples are hidden in explicit partial export.'})
+            reports.append({'id': entity['id'], 'frames': len(evaluated_ticks), 'bones': len(evaluator.names),
+                            'unavailable_pose_ticks':unavailable_ticks,
                             'fresh': sum(fresh), 'held': len(fresh)-sum(fresh),
                             'operations': dict(evaluator.histogram), 'clips': len(evaluator.clips),
                             'mask_diagnostics': evaluator.mask_diagnostics,
@@ -540,7 +624,7 @@ def evaluate_segment(segment_path: Path, output: Path, assets: Path,
         except (AnimationError, ValueError, FileNotFoundError, KeyError, AssertionError, IndexError) as error:
             message = f'{label} ({identity}): {error}'
             details = getattr(error, 'details', None)
-            if strict:
+            if strict or (details and details.get('code')=='animation_reset_only_range'):
                 raise AnimationError(message, details=details) from error
             entity['animation_status'] = 'unsupported'
             diagnostic = {'id': entity['id'], 'code': 'unsupported_animation', 'message': message}
@@ -558,7 +642,8 @@ def evaluate_segment(segment_path: Path, output: Path, assets: Path,
                         'Secondary animation, cloth, and physics simulation are unsupported.'],
     }
     result.setdefault('coverage', {})['skeletal_animation'] = {
-        'evaluated_entities': len(reports), 'unsupported_entities': len(diagnostics),
+        'evaluated_entities': sum(e.get('animation_status') == 'evaluated' for e in result['entities']),
+        'unsupported_entities': sum(e.get('animation_status') != 'evaluated' for e in result['entities']),
         'all_requested_entities': not diagnostics,
     }
     manifest = output/'animated_segment.json'

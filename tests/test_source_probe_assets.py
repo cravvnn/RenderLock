@@ -99,3 +99,45 @@ def test_small_probe_inventory_still_checks_storage_budget_before_decode():
         validate_probe_budget(1, 256 * 1024 * 1024 + 1)
     with pytest.raises(LightingRegionError, match='No installed lighting probes'):
         validate_probe_budget(0, 0)
+
+
+def test_sparse_actor_selection_excludes_empty_space_between_distant_heroes(monkeypatch):
+    from types import SimpleNamespace
+    from agr import source_probe_assets as assets
+    from agr.source_lightmap import SHADER_SHA256
+    probes=[]
+    for index,x in enumerate((-100,0,100)):
+        row=dict(probe(),hammeruniqueid=str(index),array_index=index,origin=[x,0,0],cubemaptexture='cube.vtex')
+        probes.append(row)
+    monkeypatch.setattr(assets,'selected_world',lambda provider:'world')
+    monkeypatch.setattr(assets,'_entity_properties',lambda value:value)
+    monkeypatch.setattr(assets,'dump_map_data',lambda decoder,name,provider:
+        {'m_entityLumps':['lump']} if name=='world' else {'m_entityKeyValues':probes})
+    provider=SimpleNamespace(resource_identity=lambda name:dict(sha256=SHADER_SHA256 if name==assets.SHADER_RESOURCE
+        else assets.WORLD_SHA256 if name=='world' else 'a'*64))
+    outer=[[-120,120],[-20,20],[-20,20]]
+    sparse=[dict(entity_id='left',bounds=[[-110,-90],[-5,5],[-5,5]]),
+            dict(entity_id='right',bounds=[[90,110],[-5,5],[-5,5]])]
+    plan=assets.plan_probe_assets(provider,None,outer,source_regions=sparse)
+    assert [row['array_index'] for row in plan['probes']]==[0,2]
+    assert plan['source_regions']==sparse and len(plan['atlas_decode_batches'])==1
+    assert len(assets.plan_probe_assets(provider,None,outer)['probes'])==3
+
+
+def test_large_sparse_inventory_is_partitioned_without_raising_native_limits():
+    from agr.source_probe_assets import atlas_decode_batches,MAX_ATLAS_BYTES,MAX_SELECTED_PROBES,WORLD_SHA256
+    probes=[dict(probe(),hammeruniqueid=str(i),array_index=i) for i in range(76)]
+    batches=atlas_decode_batches(probes,WORLD_SHA256)
+    expected=[row['name'] for p in probes for row in probe_regions(p)]
+    assert [name for batch in batches for name in batch['region_names']]==expected
+    assert len(batches)==3
+    assert all(batch['atlas_bytes']<=MAX_ATLAS_BYTES and len(batch['probe_ids'])<=MAX_SELECTED_PROBES for batch in batches)
+
+
+def test_atlas_batching_also_bounds_bytes_when_one_probe_spans_multiple_batches():
+    from agr.source_probe_assets import atlas_decode_batches,MAX_ATLAS_BYTES,WORLD_SHA256
+    large=dict(probe(),light_probe_size_x=200,light_probe_size_y=200,light_probe_size_z=70)
+    batches=atlas_decode_batches([large],WORLD_SHA256)
+    assert len(batches)>1
+    assert all(row['atlas_bytes']<=MAX_ATLAS_BYTES for row in batches)
+    assert sum(len(row['region_names']) for row in batches)==7

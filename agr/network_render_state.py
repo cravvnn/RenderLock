@@ -14,7 +14,7 @@ def render_state_track(entity):
         previous=tick
         value=sample.get('network_render_state')
         if value is not None:
-            if not isinstance(value,dict) or not value or set(value)-{'rgba8_packed','mode'}:
+            if not isinstance(value,dict) or not value or set(value)-{'rgba8_packed','mode','material_group'}:
                 raise ValueError('Invalid network render-state record')
             if any(type(v) is not int or not 0<=v<=0xffffffff for v in value.values()):
                 raise ValueError('Network render-state values must be uint32')

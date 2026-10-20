@@ -36,6 +36,22 @@ def test_changed_pose_bytes_rejected(fixture):
         validate_package(package, scene)
 
 
+def test_explicit_render_root_basis_invalidates_prepared_particles(fixture):
+    scene, package = fixture
+    original = package['scene_identity']
+    entity = scene['entities'][0]
+    entity['render_root_yaw_degrees'] = 180
+    with pytest.raises(ValueError, match='do not match'):
+        validate_package(package, scene)
+    package['scene_identity'] = scene_identity(scene, ['83:906'])
+    validate_package(package, scene)
+    entity['render_root_yaw_degrees'] = 0
+    with pytest.raises(ValueError, match='do not match'):
+        validate_package(package, scene)
+    del entity['render_root_yaw_degrees']
+    assert scene_identity(scene, ['83:906']) == original
+
+
 @pytest.mark.parametrize('change', ['attachment', 'lifecycle', 'resource'])
 def test_recorded_particle_events_are_part_of_cached_scene_identity(fixture, change):
     scene, package = fixture
@@ -86,6 +102,34 @@ def test_older_request_bound_cache_cannot_bypass_dependency_validation(fixture):
     package['simulation_request_sha256'] = package['simulation']['request_sha256'] = 'a'*64
     with pytest.raises(ValueError, match='dependency provenance; regenerate'):
         validate_package(package, scene)
+
+
+@pytest.mark.parametrize('policy',['agr_set_child_position_inputs_v1','agr_authored_child_controls_v2'])
+def test_qualified_authored_control_points_survive_prepared_package_validation(fixture,policy):
+    scene,package=fixture
+    row=package['simulation']['instances'][0]
+    row.update(control_point_indices=[0],materialized_control_point_indices=[0,3],
+        control_point_input_policy=policy,declared_control_point_inputs=[0],
+        authored_control_point_indices=[3],unprovided_control_point_indices=[])
+    validate_package(package,scene)
+
+
+@pytest.mark.parametrize('field,value',[
+    ('control_point_input_policy',None),('control_point_input_policy','unknown'),
+    ('declared_control_point_inputs',[0,3]),('authored_control_point_indices',[0,3]),
+    ('authored_control_point_indices',[3,3]),('authored_control_point_indices',[True]),
+    ('unprovided_control_point_indices',[3]),('unprovided_control_point_indices',[7]),
+    ('unprovided_control_point_indices',None),('materialized_control_point_indices',[0,3,7]),
+])
+def test_prepared_packages_cannot_hide_missing_or_earlier_unprovided_inputs(fixture,field,value):
+    scene,package=fixture
+    row=package['simulation']['instances'][0]
+    row.update(control_point_indices=[0],materialized_control_point_indices=[0,3],
+        control_point_input_policy='agr_authored_child_controls_v2',declared_control_point_inputs=[0],
+        authored_control_point_indices=[3],unprovided_control_point_indices=[])
+    row[field]=value
+    with pytest.raises(ValueError,match='unqualified control-point dependencies'):
+        validate_package(package,scene)
 
 
 @pytest.mark.parametrize('change', ['definition','hierarchy','model','missing','ack'])

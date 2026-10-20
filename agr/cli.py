@@ -144,6 +144,13 @@ def animation_mode(data, motion_only=False, saved_package=False, partial=False):
         return "motion"
     if coverage.get("animation") == "not_requested":
         del coverage["animation"]
+    start, end = data.get('start_tick', 0), data.get('end_tick', float('inf'))
+    for entity in data['entities']:
+        selected = [s for s in entity.get('samples', []) if start <= s['tick'] <= end]
+        if selected and all(s.get('pose_available') is False for s in selected):
+            raise ValueError('A selected model track contains only an unavailable reset pose; choose a range before the reset or containing a later recorded pose.')
+    if not partial and any(start <= t <= end for e in data['entities'] for t in e.get('pose_unavailable_ticks', [])):
+        raise ValueError('Saved model tracks contain unavailable reset pose samples; enable explicit partial export or select a range after the reset.')
     complete = [bool(e.get("pose_file") and e.get("skeleton_file")) for e in data["entities"]]
     if all(complete):
         return "cached"
@@ -159,6 +166,188 @@ def animation_mode(data, motion_only=False, saved_package=False, partial=False):
     return "evaluate"
 
 
+def read_blender_completion(path, *, segment, output, data, fps, partial=False,
+                            requested_stages=(), shot_hero=None):
+    """A scene file alone cannot establish which stages Blender completed."""
+    try:
+        report = json.loads(Path(path).read_text(encoding='utf-8'))
+    except (OSError, ValueError) as exc:
+        raise RuntimeError('Blender completion report is missing or unreadable; the scene was not published.') from exc
+    if not isinstance(report, dict) or type(report.get('schema_version')) is not int or report['schema_version'] != 1:
+        raise RuntimeError('Blender completion report has an unsupported schema; the scene was not published.')
+    for key, expected in (('segment', segment), ('output', output)):
+        value = report.get(key)
+        if not isinstance(value, str) or Path(value).resolve() != Path(expected).resolve():
+            raise RuntimeError(f'Blender completion report {key} differs from this job; the scene was not published.')
+    for key, expected in (('start_tick', data['start_tick']), ('end_tick', data['end_tick']),
+                          ('tick_rate', data['tick_rate']), ('fps', fps)):
+        value = report.get(key)
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or value != expected:
+            raise RuntimeError(f'Blender completion report {key} differs from this job; the scene was not published.')
+    rows = report.get('entities')
+    if (not isinstance(rows, list) or any(not isinstance(row, dict) or not isinstance(row.get('id'), str) for row in rows)
+            or len({row['id'] for row in rows}) != len(rows)
+            or {row['id'] for row in rows} != {entity['id'] for entity in data['entities']}):
+        raise RuntimeError('Blender completion report character tracks differ from this job; the scene was not published.')
+    warnings = report.get('warnings')
+    if not isinstance(warnings, list) or any(not isinstance(item, str) for item in warnings):
+        raise RuntimeError('Blender completion report has invalid warnings; the scene was not published.')
+    if not isinstance(report.get('coverage', {}), dict):
+        raise RuntimeError('Blender completion report has invalid coverage; the scene was not published.')
+    poses_requested = data.get('coverage', {}).get('animation') != 'not_requested'
+    baked = 0
+    for row in rows:
+        entity=next(entity for entity in data['entities'] if entity['id']==row['id'])
+        pose = row.get('pose')
+        if not isinstance(pose, dict) or not isinstance(pose.get('status'), str):
+            raise RuntimeError('Blender completion report lacks character animation outcomes; the scene was not published.')
+        if row.get('model_status') not in ('imported', 'missing asset placeholder'):
+            raise RuntimeError('Blender completion report lacks character model outcomes; the scene was not published.')
+        if row['model_status'] != 'imported':
+            if not partial:
+                raise RuntimeError(f"{row['id']}: Blender used a model placeholder without partial export.")
+            warnings.append(f"{row['id']}: model unavailable; visible placeholder used")
+        if poses_requested:
+            missing = [t for t in entity.get('pose_unavailable_ticks', []) if data['start_tick'] <= t <= data['end_tick']]
+            if missing:
+                from .blender_scene import visibility_changes
+                expected_keys = [{'frame':f, 'hidden':h} for f,h in visibility_changes(entity,entity['samples'],data,fps)]
+                if (not partial or pose['status'] != 'baked_partial' or pose.get('unavailable_pose_ticks') != missing
+                        or row.get('visibility',{}).get('keys') != expected_keys
+                        or type(pose.get('sample_count')) is not int or pose['sample_count'] <= 0):
+                    raise RuntimeError(f"{row['id']}: Blender completion lacks exact partial reset-pose visibility coverage.")
+            elif pose['status'] == 'baked_partial':
+                raise RuntimeError(f"{row['id']}: Unexpected partial reset-pose claim.")
+            if pose['status'] == 'baked':
+                if type(pose.get('sample_count')) is not int or pose['sample_count'] <= 0:
+                    raise RuntimeError(f"{row['id']}: Blender completion report claims a bake without recorded pose samples.")
+                baked += 1
+            else:
+                detail = str(pose.get('reason') or pose['status'])
+                if not partial:
+                    raise RuntimeError(f"{row['id']}: Blender did not complete skeletal animation: {detail}")
+                warnings.append(f"{row['id']}: " + ('partial skeletal animation. ' if pose['status']=='baked_partial'
+                                                   else 'skeletal animation unavailable; imported rest pose. ') + detail)
+        if entity.get('model_track') is not None and row.get('model_track') != entity['model_track']:
+            raise RuntimeError(f"{row['id']}: Blender model-track identity differs from this job.")
+        if entity.get('model_mesh_groups') is not None:
+            from .blender_mesh_groups import expected_mesh_group_summary,validate_mesh_group_consent
+            expected=expected_mesh_group_summary(entity['model_mesh_groups'],entity['samples'])
+            try:validate_mesh_group_consent(expected,poses_requested=poses_requested,partial=partial)
+            except ValueError as error:raise RuntimeError(f"{row['id']}: {error}") from error
+            actual=row.get('mesh_groups')
+            if not isinstance(actual,dict) or any(actual.get(key)!=expected[key] for key in
+                    ('status','basis','mesh_count','default_mask','selections')):
+                raise RuntimeError(f"{row['id']}: Blender completion lacks exact mesh-group visibility coverage; the scene was not published.")
+        if entity.get('model_material_groups') is not None:
+            from .model_material_groups import (material_group_summary,validate_material_group_contract,
+                validate_material_group_consent)
+            contract=entity['model_material_groups']
+            validate_material_group_contract(contract,entity['samples'],model=entity.get('model_file'))
+            validate_material_group_consent(contract,poses_requested=poses_requested,partial=partial)
+            if row.get('material_groups')!=material_group_summary(contract):
+                raise RuntimeError(f"{row['id']}: Blender completion lacks exact material-group slot coverage; the scene was not published.")
+        if entity.get('secondary_motion_file'):
+            motion=row.get('secondary_motion')
+            if not isinstance(motion,dict) or motion.get('status') not in ('baked_partial','baked','failed'):
+                raise RuntimeError(f"{row['id']}: Blender completion report lacks requested cloth outcome; the scene was not published.")
+            if motion['status']=='failed':
+                if not partial:raise RuntimeError(f"{row['id']}: requested cloth failed: {motion.get('error','no completed bake')}")
+                warnings.append(f"{row['id']}: requested cloth failed: {motion.get('error','no completed bake')}")
+    stages=set(requested_stages)
+    for key,stage in [('hero_lighting','hero_lighting'),('npr_runtime','npr_lighting'),('effects','effects')]:
+        if data.get(key) is not None:stages.add(stage)
+    allowed={'hero_lighting':{'partial'},'npr_lighting':{'partial'},'character_shader':{'partial'},
+             'effects':{'partial','no_events','rendered'},'map':{'imported'},'map_lighting':{'partial'}}
+    if not stages<=set(allowed):raise RuntimeError('Unknown requested Blender completion stage')
+    identities={row['id'] for row in rows}
+    expected_materials={};expected_contracts={}
+    if stages & {'npr_lighting','character_shader'}:
+        package=data.get('npr_materials',{})
+        try:
+            for actor in package['entities']:
+                from .source_npr_scene import material_set_key
+                model=package['models'][material_set_key(actor)]
+                expected_materials[actor['entity_id']]={m['material'] for m in model['materials']}
+                if model.get('schema_version')==3:
+                    for material in model['materials']:expected_contracts[actor['entity_id'],material['material']]=material
+        except (KeyError,TypeError):
+            raise RuntimeError('Blender completion lacks the current NPR material selection') from None
+        if set(expected_materials)!=identities or any(not values for values in expected_materials.values()):
+            raise RuntimeError('Blender completion NPR material selection differs from this job')
+    for stage in sorted(stages):
+        map_result=report.get('map')
+        result=(map_result.get('lighting') if isinstance(map_result,dict) else None) if stage=='map_lighting' else report.get(stage)
+        if not isinstance(result,dict) or not isinstance(result.get('status'),str):
+            raise RuntimeError(f'Blender completion report lacks requested {stage} outcome; the scene was not published.')
+        status=result['status']
+        if status in ('failed','unavailable') and partial:
+            warnings.append(f"Requested {stage} {status}: {result.get('error') or result.get('reason') or 'See stage diagnostics'}")
+            continue
+        if status not in allowed[stage]:
+            raise RuntimeError(f'Blender did not complete requested {stage}: {status}; the scene was not published.')
+        if stage=='hero_lighting':
+            materials=result.get('materials');count=result.get('material_count')
+            if (type(count) is not int or count<=0 or not isinstance(materials,list) or len(materials)!=count
+                    or any(not isinstance(m,str) or not m for m in materials) or len(set(materials))!=count
+                    or result.get('applied_components')!=data.get('hero_lighting_components',['diffuse','reflections'])
+                    or set(result.get('actor_probes',{}))!=identities):
+                raise RuntimeError('Blender completion report lacks exact applied hero lighting coverage; the scene was not published.')
+        elif stage=='npr_lighting':
+            prepared=result.get('preparation',{});actors=prepared.get('actors',[])
+            if (not isinstance(actors,list) or any(not isinstance(a,dict) for a in actors)
+                    or len(actors)!=len(identities) or {a.get('entity_id') for a in actors}!=identities
+                    or any(not a.get('materials') for a in actors)
+                    or not prepared.get('materials')
+                    or len(prepared['materials'])!=sum(len(m) for m in expected_materials.values())
+                    or any(len(a['materials'])!=len(expected_materials[a['entity_id']]) for a in actors)
+                    or any({m.get('source_material') for m in a['materials']}!=expected_materials[a['entity_id']] for a in actors)):
+                raise RuntimeError('Blender completion report lacks exact applied NPR actor coverage; the scene was not published.')
+        elif stage=='character_shader':
+            materials=result.get('materials')
+            if (not isinstance(materials,list) or not materials or any(not isinstance(m,dict) for m in materials)
+                    or len(materials)!=sum(len(m) for m in expected_materials.values())
+                    or {m.get('entity_id') for m in materials}!=identities
+                    or any({m.get('material') for m in materials if m.get('entity_id')==identity}!=expected
+                           for identity,expected in expected_materials.items())):
+                raise RuntimeError('Blender completion report lacks exact character shader actor coverage; the scene was not published.')
+        elif stage=='map' and (type(result.get('mesh_objects')) is not int or result['mesh_objects']<=0):
+            raise RuntimeError('Blender completion report claims map import without mesh objects; the scene was not published.')
+        elif stage=='map_lighting' and not result.get('applied'):
+            raise RuntimeError('Blender completion report claims static lighting without applied surfaces; the scene was not published.')
+        if stage in ('npr_lighting','character_shader') and expected_contracts:
+            material_rows=([(a['entity_id'],m['source_material'],m) for a in result['preparation']['actors'] for m in a['materials']]
+                           if stage=='npr_lighting' else [(m['entity_id'],m['material'],m) for m in result['materials']])
+            for identity,resource,material in material_rows:
+                expected=expected_contracts.get((identity,resource))
+                if expected is None:continue
+                if (any(material.get(key)!=expected[key] for key in ('route','runtime','fidelity_gaps'))
+                        or ('expression_evaluation' in expected and material.get('expression_evaluation')!=expected['expression_evaluation'])
+                        or (stage=='npr_lighting' and expected['route']=='npr_indirect'
+                            and material.get('no_specular_at_full_roughness') is not expected['no_specular_at_full_roughness'])
+                        or (stage=='character_shader' and material.get('artist_shader_applied') is not (expected['route']=='npr_indirect'))):
+                    raise RuntimeError('Blender completion material route/runtime coverage differs; the scene was not published.')
+            gaps=sorted({gap['feature'] for value in expected_contracts.values() for gap in value['fidelity_gaps']})
+            if gaps:warnings.append('Static Source material reference leaves these fidelity gaps unresolved: '+', '.join(gaps))
+    if shot_hero is not None:
+        shot=report.get('camera')
+        from .model_tracks import actor_id
+        targets={actor_id(e) for e in data['entities'] if str(e.get('hero_id'))==str(shot_hero)}
+        if (not isinstance(shot,dict) or shot.get('mode')!='hero follow' or str(shot.get('hero_id'))!=str(shot_hero)
+                or shot.get('entity_id') not in targets or type(shot.get('frames')) is not int
+                or shot['frames']!=math.ceil(1+(data['end_tick']-data['start_tick'])*fps/data['tick_rate'])):
+            raise RuntimeError('Blender completion report lacks the requested hero follow camera; the scene was not published.')
+    report['requested_stages']=sorted(stages)
+    report['warnings'] = list(dict.fromkeys(warnings))
+    if poses_requested:
+        coverage = {'evaluated_entities': baked, 'unsupported_entities': len(rows) - baked,
+                    'all_requested_entities': baked == len(rows),
+                    'scope': 'Actual Blender skeletal bakes for the selected output range'}
+        report.setdefault('coverage', {})['skeletal_animation'] = coverage
+        data.setdefault('coverage', {})['skeletal_animation'] = dict(coverage)
+    return report
+
+
 def _rename_package_path(source, destination):
     """Allow short Windows sharing locks without weakening atomic publication."""
     for attempt in range(6):
@@ -168,6 +357,46 @@ def _rename_package_path(source, destination):
             if getattr(exc, 'winerror', None) not in (5, 32, 33) or attempt == 5:
                 raise
             time.sleep(.1 * 2**attempt)
+
+
+def validate_cloth_preparation(data, *, partial=False):
+    """Requested cloth must have a complete preparation outcome before Blender.
+
+    Explicit broad partial export can retain a reported failure or unsupported
+    layout. Lighting consent never permits absent character/cloth data.
+    """
+    report=data.get('coverage',{}).get('scene_extras',{}).get('secondary_motion')
+    if not isinstance(report,dict) or report.get('status') not in (
+            'prepared','prepared_partial','not_applicable','no_supported_entities','failed'):
+        raise RuntimeError('Requested cloth has no preparation outcome; the scene was not published.')
+    expected={str(entity['id']) for entity in data['entities']}
+    seen=set();issues=[];ready=0
+    for field in ('supported_entities','unsupported_entities','failed_entities','not_applicable_entities'):
+        rows=report.get(field,[])
+        if not isinstance(rows,list):raise RuntimeError('Invalid cloth preparation entity coverage.')
+        for row in rows:
+            if not isinstance(row,dict) or str(row.get('id')) not in expected or str(row['id']) in seen:
+                raise RuntimeError('Cloth preparation character identities differ from this job.')
+            seen.add(str(row['id']))
+            if field=='supported_entities':
+                entity=next(entity for entity in data['entities'] if str(entity['id'])==str(row['id']))
+                source=entity.get('secondary_motion_file')
+                if row.get('status')!='ready_to_bake' or not isinstance(source,str) or not Path(source).is_file():
+                    raise RuntimeError('Prepared cloth lacks its requested bake input; the scene was not published.')
+                ready+=1
+            elif field in ('unsupported_entities','failed_entities'):
+                label=row.get('hero_name') or str(row['id'])
+                issues.append(str(label)+': '+str(row.get('error') or row.get('reason') or 'cloth unavailable'))
+    if seen!=expected and report['status']!='failed':
+        raise RuntimeError('Cloth preparation omitted selected characters; the scene was not published.')
+    if report['status'] in ('prepared','prepared_partial') and not ready:
+        raise RuntimeError('Cloth preparation claims success without bake inputs; the scene was not published.')
+    if report['status']=='not_applicable' and (ready or issues):
+        raise RuntimeError('Cloth not-applicable outcome conflicts with its entity coverage.')
+    if not partial and (issues or report['status'] in ('failed','no_supported_entities','prepared_partial')):
+        detail='; '.join(issues) or str(report.get('error') or report.get('reason') or report['status'])
+        raise RuntimeError('Requested cloth preparation did not complete: '+detail)
+    return report
 
 
 def publish_package(manifest, destination, overwrite=False):
@@ -190,6 +419,8 @@ def publish_package(manifest, destination, overwrite=False):
                     entity[key] = target.as_posix()
             # Models are resolved by the chosen asset pack on the next import.
             entity.pop("model_file", None)
+            entity.pop('model_mesh_groups',None)
+            entity.pop('model_material_groups',None)
             entity.pop("secondary_motion_file", None)
         # Recorded events remain portable. Rebuild derived textures/geometry
         # through the installed cache on a later import instead of retaining
@@ -198,6 +429,8 @@ def publish_package(manifest, destination, overwrite=False):
         data.pop("map", None)
         data.pop('hero_lighting', None)
         data.pop('npr_materials', None)
+        data.pop('npr_runtime', None)
+        data.pop('hero_lighting_components',None)
         data.setdefault("metadata", {})["application"] = "RenderLock"
         data["metadata"]["application_version"] = __version__
         save_scene(data, temp / "manifest.json")
@@ -248,19 +481,21 @@ def convert(args):
     lighting_dotnet = getattr(args, 'lighting_dotnet', None)
     source_hero_lighting = getattr(args,'source_hero_lighting',False)
     source_npr_lighting=getattr(args,'source_npr_lighting',False)
+    partial_lighting=bool(args.partial or getattr(args,'partial_lighting',False))
+    character_lighting=bool(source_lighting and getattr(args,'character_only',False))
     character_shader=getattr(args,'character_shader',None)
     if character_shader is not None:
-        if not source_npr_lighting or not args.partial:
-            raise ValueError('--character-shader requires --source-npr-lighting and --partial')
+        if not source_npr_lighting or not partial_lighting:
+            raise ValueError('--character-shader requires --source-npr-lighting and --partial-lighting (or --partial)')
         from .blender_character_shader import validate_character_shader_library
         character_shader=validate_character_shader_library(character_shader)
-    if source_npr_lighting and (not source_hero_lighting or not args.partial):
-        raise ValueError('--source-npr-lighting requires --source-hero-lighting and --partial')
+    if source_npr_lighting and (not source_hero_lighting or not partial_lighting):
+        raise ValueError('--source-npr-lighting requires --source-hero-lighting and --partial-lighting (or --partial)')
     if source_npr_lighting and getattr(args,'shot_hero',None) is None:
         raise ValueError('--source-npr-lighting requires --shot-hero for a qualified perspective camera')
     atlas_probe = getattr(args,'probe_atlas_decoder',None)
     cube_probe = getattr(args,'cubemap_decoder',None)
-    if source_hero_lighting:
+    if source_hero_lighting or character_lighting:
         if not source_lighting:raise ValueError('--source-hero-lighting requires --source-lighting')
         from .source_hero_lighting import validate_hero_decoder_paths
         validate_hero_decoder_paths(atlas_probe,cube_probe,lighting_dotnet)
@@ -269,10 +504,13 @@ def convert(args):
     if source_lighting:
         if not args.include_map or args.assets:
             raise ValueError('--source-lighting requires --include-map and installed-game assets')
-        if not lighting_probe or not lighting_dotnet:
+        if not partial_lighting:
+            raise ValueError('--source-lighting requires --partial-lighting (or --partial) to accept reference lighting limits')
+        if not lighting_dotnet or not character_lighting and not lighting_probe:
             raise ValueError('--source-lighting requires --world-region-probe and --lighting-dotnet')
-        from .source_region import regional_command
-        regional_command(lighting_probe, lighting_dotnet)
+        if not character_lighting:
+            from .source_region import regional_command
+            regional_command(lighting_probe, lighting_dotnet)
     elif lighting_probe or lighting_dotnet:
         raise ValueError('--world-region-probe and --lighting-dotnet require --source-lighting')
     shot_hero = getattr(args, 'shot_hero', None)
@@ -309,6 +547,10 @@ def convert(args):
     if not args.overwrite and any(p.exists() for p in (output, package, report_path)):
         raise ValueError("Output or its companion package already exists. Choose a new name, or explicitly enable --overwrite.")
     engine = executable(args.blender_python or args.blender)
+    from .blender_runtime import check_blender
+    log('Checking Blender startup and required capabilities...')
+    blender_capabilities = check_blender(engine, python_mode=bool(args.blender_python),
+                                         character_shader=character_shader is not None)
     heroes = args.heroes
     log("Hero selection: all heroes in the range." if heroes is None else
         "Hero selection: explicit IDs " + ", ".join(map(str, heroes)))
@@ -384,6 +626,8 @@ def convert(args):
                                              lighting_probe=lighting_probe, lighting_dotnet=lighting_dotnet,
                                              source_hero_lighting=source_hero_lighting,atlas_probe=atlas_probe,cube_probe=cube_probe,
                                              source_npr_lighting=source_npr_lighting,
+                                             allow_partial_lighting=partial_lighting,
+                                             character_only=bool(getattr(args,'character_only',False)),
                                              secondary_motion=args.secondary_motion)
             assets = Path(assets).resolve()
             if not assets.is_dir():
@@ -391,6 +635,10 @@ def convert(args):
         stage = "model_coverage"
         data = read_scene(segment)
         data.setdefault("metadata", {})["application_version"] = __version__
+        if args.secondary_motion:
+            stage='validate_cloth_preparation'
+            validate_cloth_preparation(data,partial=args.partial)
+            stage='model_coverage'
         models = record_model_coverage(data, assets, segment.parent, heroes)
         save_scene(data, segment)
         log(f"Roster: {models['entity_tracks']} entity tracks; "
@@ -454,6 +702,8 @@ def convert(args):
             command += ['--character-only']
         if args.partial:
             command += ["--partial"]
+        if getattr(args,'partial_lighting',False):
+            command += ['--partial-lighting']
         if particle_probe:
             runtime={key:str(asset_source[key]) for key in ('install_path','cache_dir','converter')}
             # These plans, diagnostics and prepared states are part of the
@@ -466,27 +716,39 @@ def convert(args):
         subprocess.run(command, check=True)
         if not scene_output.is_file() or scene_output.stat().st_size == 0:
             raise RuntimeError("Blender finished without producing a scene.")
+        stage = "validate_blender_completion"
+        generated = read_scene(segment)
+        requested_stages=set()
+        character_only=getattr(args,'character_only',False)
+        if args.include_map and not character_only:requested_stages.add('map')
+        if getattr(args,'source_lighting',False):requested_stages.add('hero_lighting' if character_only else 'map_lighting')
+        if getattr(args,'source_hero_lighting',False):requested_stages.add('hero_lighting')
+        if getattr(args,'source_npr_lighting',False):requested_stages.add('npr_lighting')
+        if character_shader is not None:requested_stages.add('character_shader')
+        if particle_probe:requested_stages.add('effects')
+        blender_report = read_blender_completion(scene_output.with_suffix('.scene.json'),
+            segment=segment, output=scene_output, data=generated, fps=args.fps, partial=args.partial,
+            requested_stages=requested_stages,shot_hero=getattr(args,'shot_hero',None))
+        save_scene(generated, segment)
         log("[4/4] Saving the scene package and coverage report...")
         stage = "publish_scene"
-        publish_package(segment, package, args.overwrite)
         generated = read_scene(segment)
         report = {"application": "RenderLock", "version": __version__, "status": "converted", "output": str(output), "scene_package": str(package / "manifest.json"), "start_tick": generated["start_tick"], "end_tick": generated["end_tick"], "tick_rate": generated["tick_rate"], "export_fps": args.fps, "entities": len(generated["entities"]), "coverage": generated.get("coverage", {}), "seconds": round(time.monotonic() - started, 3), "scene_extras": generated.get("coverage", {}).get("scene_extras", {}), "ragdoll": "outside_current_scope", "death_workflow": "user_authored_animation",
                   "map_workflow": "installed_region" if args.include_map else "external_blend", "backward_dash_facing": "not_validated"}
+        report['blender_runtime'] = blender_capabilities
         report["particles"] = report["scene_extras"].get("particles", {"status": "not_requested"})
         report["map"] = report["scene_extras"].get("map", {"status": "not_requested"})
         report['hero_lighting'] = report['scene_extras'].get('hero_lighting',{'status':'not_requested'})
         report['npr_lighting']=report['scene_extras'].get('npr_materials',{'status':'not_requested'})
         if 'hero_lighting' in generated:
             report['hero_lighting_package'] = generated['hero_lighting']
-        scene_report = scene_output.with_suffix(".scene.json")
-        if scene_report.exists():
-            report["blender"] = json.loads(scene_report.read_text(encoding="utf-8"))
-            report["blender"]["segment"] = str(package / "manifest.json")
-            report["blender"]["output"] = str(output)
-            report["particles"] = merge_stage_coverage(report["particles"], report["blender"].get("effects"))
-            report["map"] = merge_stage_coverage(report["map"], report["blender"].get("map"))
-            if 'hero_lighting' in report['blender']:
-                report['hero_lighting'] = merge_stage_coverage(report['hero_lighting'],report['blender']['hero_lighting'])
+        report["blender"] = blender_report
+        report["blender"]["segment"] = str(package / "manifest.json")
+        report["blender"]["output"] = str(output)
+        report["particles"] = merge_stage_coverage(report["particles"], report["blender"].get("effects"))
+        report["map"] = merge_stage_coverage(report["map"], report["blender"].get("map"))
+        if 'hero_lighting' in report['blender']:
+            report['hero_lighting'] = merge_stage_coverage(report['hero_lighting'],report['blender']['hero_lighting'])
         if 'npr_lighting' in report.get('blender',{}):
             report['npr_lighting']=report['blender']['npr_lighting']
         if 'character_shader' in report.get('blender',{}):
@@ -503,8 +765,9 @@ def convert(args):
             report["status"] = "converted_with_warnings"
         report["summary"] = scene_completion_message(report)
         # Input replay/asset files are never written by the job.
-        os.replace(scene_output, output)
-        report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+        from .export_publish import publish_export
+        publish_export(scene_output, segment, output, report, overwrite=args.overwrite,
+                       stage_package=publish_package)
         success = True
         log(f"Saved: {output}")
         log(f"Range: {generated['start_tick']}â€“{generated['end_tick']} inclusive; {len(generated['entities'])} entity tracks")
@@ -525,7 +788,10 @@ def convert(args):
         raise
     finally:
         if success and not args.keep_work:
-            shutil.rmtree(work)
+            try:
+                shutil.rmtree(work)
+            except OSError as cleanup_error:
+                log(f"Scene saved; temporary files retained at {work}: {cleanup_error}")
 
 
 def parser():
@@ -581,6 +847,7 @@ def parser():
     cv.add_argument("--blender")
     cv.add_argument("--blender-python", help=argparse.SUPPRESS)
     cv.add_argument("--partial", action="store_true", help="Allow unsupported animation/models with explicit coverage diagnostics")
+    cv.add_argument('--partial-lighting',action='store_true',help='Accept artistic/reference lighting limits while keeping character models and animation strict')
     cv.add_argument("--motion-only", action="store_true", help="Explicitly export movement without skeletal evaluation")
     cv.add_argument("--overwrite", action="store_true")
     cv.add_argument("--keep-work", action="store_true")
@@ -595,6 +862,8 @@ def parser():
 
 
 def main(argv=None):
+    from .console import configure_stdio
+    configure_stdio()
     args = parser().parse_args(argv)
     try:
         if args.command in (None, "gui"):

@@ -13,7 +13,27 @@ def preflight_hero_lighting(scene, provider, decoder, *, map_name, margin_metres
     from .installed_map import replay_bounds
     mounted = GameAssetProvider(provider.install_path, provider.cache_dir,
                                map_name=map_name or getattr(provider, 'map_name', None))
-    return plan_probe_assets(mounted, decoder, replay_bounds(scene, margin_metres))
+    return plan_probe_assets(mounted, decoder, replay_bounds(scene, margin_metres),
+                             source_regions=actor_lighting_regions(scene,margin_metres))
+
+
+def actor_lighting_regions(scene,margin_metres):
+    from .installed_map import replay_bounds
+    return [dict(entity_id=entity['id'],bounds=replay_bounds({'entities':[entity]},margin_metres).tolist())
+            for entity in scene['entities']]
+
+
+def prepare_character_lighting_descriptor(scene,provider,decoder,*,margin_metres):
+    """Prepare character lighting data without exporting discarded map meshes."""
+    from .installed_map import selected_world,replay_bounds
+    from .source_brdf_assets import prepare_brdf_assets
+    world=selected_world(provider);identity=provider.resource_identity(world)
+    return dict(schema_version=1,status='ready',source='installed_game',
+        source_world_resource=world,source_world_sha256=identity['sha256'],
+        source_bounds_xyz=replay_bounds(scene,margin_metres).tolist(),
+        geometry='not_requested',lighting=dict(mode='character_indirect_data',
+            brdf=prepare_brdf_assets(provider,decoder)),
+        limits=['Installed world identity, selection and BRDF only; probe decoding and evaluated character shading are separate stages.'])
 
 
 def validate_hero_decoder_paths(atlas,cube,dotnet):
@@ -25,11 +45,11 @@ def validate_hero_decoder_paths(atlas,cube,dotnet):
     return atlas,cube,dotnet
 
 
-def prepare_hero_lighting(descriptor,provider,decoder,*,atlas_probe,cube_probe,dotnet,allow_partial=False):
+def prepare_hero_lighting(descriptor,provider,decoder,*,atlas_probe,cube_probe,dotnet,allow_partial=False,source_regions=None):
     if allow_partial is not True or descriptor.get('status')!='ready' or 'brdf' not in descriptor.get('lighting',{}):
         raise ConversionError('Hero lighting requires explicit partial selection and prepared Source map lighting')
     atlas_probe,cube_probe,dotnet=validate_hero_decoder_paths(atlas_probe,cube_probe,dotnet)
-    plan=plan_probe_assets(provider,decoder,descriptor['source_bounds_xyz'])
+    plan=plan_probe_assets(provider,decoder,descriptor['source_bounds_xyz'],source_regions=source_regions)
     if plan['world_sha256']!=descriptor['source_world_sha256']:raise ConversionError('Hero/map world identity mismatch')
     atlas=prepare_probe_atlas(provider,decoder,plan,probe=atlas_probe,dotnet=dotnet)
     cubes=prepare_cube_assets(provider,decoder,plan,probe=cube_probe,dotnet=dotnet)

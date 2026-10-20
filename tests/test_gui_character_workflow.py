@@ -62,6 +62,9 @@ def controller(tmp_path):
     loaded, cleared = [], []
     app.character_picker = SimpleNamespace(has_roster=True, hero_ids={11}, load=loaded.append,
         clear=lambda **kw: cleared.append(kw), set_busy=lambda busy: None)
+    app.follow_rosters,app.follow_clears=[],[]
+    app.follow_picker=SimpleNamespace(load=app.follow_rosters.append,
+        clear=lambda **kw:app.follow_clears.append(kw),set_busy=lambda busy:None)
     app.root = SimpleNamespace(after=lambda *args: None, destroy=lambda: None)
     app.events = queue.Queue()
     app.cancel_requested = threading.Event()
@@ -91,6 +94,7 @@ def test_late_inspection_result_cannot_populate_a_changed_input(tmp_path, change
     app.events.put(("finished", ("inspect", 0, json.dumps(dict(total_ticks=1000, heroes=[{"hero_id": 11}])))))
     app._poll()
     assert loaded == [] and cleared == [{"reset_selection": True}, {"reset_selection": False}]
+    assert app.follow_rosters==[] and app.follow_clears==[{"reset_selection":True},{"reset_selection":False}]
     assert app.values["end"].get() == ""
     assert "Input changed" in app.status.get()
 
@@ -101,8 +105,21 @@ def test_successful_inspection_loads_checklist_and_keeps_short_preview(tmp_path)
     app.events.put(("finished", ("inspect", 0, json.dumps(metadata))))
     app._poll()
     assert loaded == [metadata]
+    assert app.follow_rosters==[metadata]
     assert app._roster_source == app._input_identity()
     assert (app.values["start"].get(), app.values["end"].get()) == ("0", "120")
+
+
+@pytest.mark.parametrize("start,end,expected", [("60000", "60030", ("0", "120")),
+                                              ("100", "60030", ("100", "220")),
+                                              ("100", "50", ("100", "220")),
+                                              ("100", "130", ("100", "130"))])
+def test_inspection_repairs_out_of_range_ticks_retained_from_another_recording(tmp_path, start, end, expected):
+    app, _, _ = controller(tmp_path)
+    app.values["start"].set(start)
+    app.values["end"].set(end)
+    app._apply_metadata(dict(total_ticks=1000, heroes=[{"hero_id": 11}]))
+    assert (app.values["start"].get(), app.values["end"].get()) == expected
 
 
 def test_file_replaced_after_inspection_requires_refresh_before_export(tmp_path, monkeypatch):
@@ -119,6 +136,7 @@ def test_file_replaced_after_inspection_requires_refresh_before_export(tmp_path,
     app._convert()
     assert not starts and len(errors) == 2 and "changed since inspection" in errors[0][1]
     assert cleared == [{"reset_selection": False}, {"reset_selection": False}]
+    assert app.follow_clears==[{"reset_selection":False},{"reset_selection":False}]
     assert app.values["heroes"].get() == "11"
 
 

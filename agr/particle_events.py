@@ -514,6 +514,13 @@ def iter_particle_events(demo: Path, end_tick: int,
 def _full_entity_ids(entities: Iterable[dict[str, Any]] | None) -> dict[int, str] | None:
     if entities is None:
         return None
+    entities = list(entities)
+    if any(e.get('model_track') is not None for e in entities):
+        from .model_tracks import logical_entities
+        try:
+            entities = logical_entities(entities).values()
+        except ValueError as error:
+            raise ParticleEventError(str(error)) from error
     result = {}
     for entity in entities:
         entry, serial = entity.get("entity_index"), entity.get("entity_serial")

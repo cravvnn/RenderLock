@@ -6,7 +6,7 @@ import pytest
 from agr.recorded_effect_simulation import (fixed_attachment, fixed_point_bindings,
     validate_control_response, substitute_seed, validate_seed_response, SEED_POLICY,
     regeneration_bindings, validate_model_response, validate_regeneration_definitions,
-    REGEN_RESOURCE, validate_request_response)
+    REGEN_RESOURCE, validate_request_response, validate_event_response, root_origin_bindings)
 from agr.cli import parser
 
 
@@ -75,6 +75,123 @@ def test_stale_or_incomplete_simulator_states_are_withheld(change):
 
 def test_release_does_not_destroy_fixed_point_follow_binding():
     assert fixed_attachment(instance(),100,120)['attachment']==7
+
+
+def literal_point_instance():
+    row=instance()
+    row['index']=23
+    row['generation']=2
+    row['events'][0]['data']=dict(index=23,create_particle=dict(entity_handle=row['entity_handle'],attach_type=5,cluster=False))
+    row['events'].insert(2,dict(type='UPDATE_TRANSFORM',tick=100,
+        data=dict(index=23,update_particle_transform=dict(control_point=2,position=dict(x=.82)))))
+    row['events'].append(dict(type='UPDATE_TRANSFORM',tick=102,
+        data=dict(index=23,update_particle_transform=dict(control_point=2,position=dict(x=3,y=4,z=5)))))
+    return row
+
+
+def test_literal_provider_preserves_packet_space_and_all_updates_without_replacing_attachments():
+    row=literal_point_instance()
+    bindings=fixed_point_bindings(row,100,120)
+    assert [binding['control_point'] for binding in bindings]==[0,2]
+    assert bindings[0]['attachment']==7
+    assert bindings[1]['provider']=='literal_transform'
+    assert [(update['tick'],update['position']) for update in bindings[1]['updates']]==[
+        (100,[.8199999928474426,0,0]),(102,[3,4,5])]
+
+
+@pytest.mark.parametrize('change,match',[
+    (lambda row:row['events'][2]['data']['update_particle_transform'].update(control_point=0),'cannot replace'),
+    (lambda row:row['events'][2].update(tick=101),'ordered'),
+    (lambda row:row['events'][2]['data']['update_particle_transform'].update(interpolation_interval=.25),'setter qualification'),
+    (lambda row:row['events'][1]['data']['update_particle_ent'].update(attach_type=1),'exact-serial'),
+])
+def test_literal_controls_cannot_expand_entity_provider_or_timeline_scope(change,match):
+    row=literal_point_instance();change(row)
+    with pytest.raises(ValueError,match=match):fixed_point_bindings(row,100,120)
+
+
+def test_literal_control_point_requires_creation_time_value():
+    row=literal_point_instance()
+    row['events'].pop(2)
+    with pytest.raises(ValueError,match='creation-time transform'):fixed_point_bindings(row,100,120)
+
+
+@pytest.mark.parametrize('change',[
+    lambda row:row.update(generation=1),
+    lambda row:row.update(entity_id='17:4'),
+    lambda row:row['events'][0]['data']['create_particle'].update(entity_handle=17),
+    lambda row:row['events'][0]['data']['create_particle'].update(attach_type=0),
+    lambda row:row['events'][0]['data']['create_particle'].update(cluster=True),
+    lambda row:row['events'][0]['data'].pop('create_particle'),
+])
+def test_new_control_policy_requires_full_owned_creation_identity(change):
+    row=literal_point_instance();change(row)
+    with pytest.raises(ValueError,match='identity|creation provider'):fixed_point_bindings(row,100,120)
+
+
+def root_point_instance():
+    row=literal_point_instance()
+    row['events'][1]['data']['update_particle_ent'].update(attach_type=1,attachment=0,include_wearables=True)
+    return row
+
+
+def test_native_root_origin_provider_bypasses_unnamed_wearable_search_and_retains_literal_cp2():
+    bindings=root_origin_bindings(root_point_instance(),100,120)
+    assert [binding['provider'] for binding in bindings]==['root_origin','literal_transform']
+    assert bindings[0]['entity_handle']==(3<<14)|17
+    assert bindings[1]['updates'][0]['position']==[.8199999928474426,0,0]
+
+
+@pytest.mark.parametrize('change',[
+    lambda row:row['events'][1]['data']['update_particle_ent'].update(attachment=3),
+    lambda row:row['events'][1]['data']['update_particle_ent'].update(entity_handle=17),
+    lambda row:row['events'][1]['data']['update_particle_ent'].update(fallback_position={'x':.1}),
+    lambda row:row['events'][1]['data']['update_particle_ent'].update(offset_position={'x':1}),
+    lambda row:row['events'][1].update(tick=101),
+])
+def test_native_root_provider_does_not_infer_named_or_offset_semantics(change):
+    row=root_point_instance();change(row)
+    with pytest.raises(ValueError):root_origin_bindings(row,100,120)
+
+
+def test_valid_parent_attachment_cannot_replace_client_child_inventory():
+    row=root_point_instance()
+    named=copy.deepcopy(row['events'][1])
+    named['data']['update_particle_ent'].update(control_point=1,attach_type=5,attachment=4)
+    row['events'].insert(2,named)
+    with pytest.raises(ValueError,match='client-child attachment inventory'):
+        root_origin_bindings(row,100,120)
+
+
+def test_model_and_literal_response_requires_both_cp_provenance_and_exact_bone_count():
+    row=dict(id='23:2',control_point_indices=[0,2],materialized_control_point_indices=[0,2],model_bone_count=227)
+    validate_model_response(dict(instances=[row]),'23:2',227,[0,2])
+    with pytest.raises(ValueError,match='confirm the requested model bones'):
+        validate_model_response(dict(instances=[row]),'23:2',227,[0])
+    row['materialized_control_point_indices']=[0,1,2]
+    with pytest.raises(ValueError,match='confirm the requested model bones'):
+        validate_model_response(dict(instances=[row]),'23:2',227,[0,2])
+
+
+@pytest.mark.parametrize('immediate',[False,True])
+def test_fixed_attachment_lifecycle_records_destroy_and_requires_new_helper_confirmation(immediate):
+    from agr.particle_control_events import compile_control_events
+    row=literal_point_instance()
+    row.update(destroy_tick=104,destroy_immediately=immediate)
+    row['events'].append(dict(type='DESTROY',tick=104,
+        data=dict(index=23,destroy_particle=dict(destroy_immediately=immediate))))
+    assert len(fixed_point_bindings(row,100,120))==2
+    expected=compile_control_events(row,100,120)
+    response=dict(instances=[dict(id=row['id'],replay_event_policy='agr_recorded_control_lifecycle_v1',
+        literal_transforms_applied=expected['literal_transforms'],destroy_applied=expected['destroy'],
+        release_ticks=expected['release_ticks'])])
+    validate_event_response(response,row,100,120)
+    for field in ('replay_event_policy','literal_transforms_applied','destroy_applied','release_ticks'):
+        stale=copy.deepcopy(response);stale['instances'][0].pop(field)
+        with pytest.raises(ValueError,match='rebuild ParticleProbe'):
+            validate_event_response(stale,row,100,120)
+    stale=copy.deepcopy(response);stale['instances'][0]['destroy_applied']['destroy_immediately']=not immediate
+    with pytest.raises(ValueError,match='rebuild ParticleProbe'):validate_event_response(stale,row,100,120)
 
 
 @pytest.mark.parametrize('change', [
@@ -156,6 +273,47 @@ def test_unsupplied_default_control_points_cannot_produce_a_supported_instance(m
         'materialized_control_point_indices':materialized}]}
     with pytest.raises(ValueError,match='unqualified control-point dependencies'):
         validate_control_response(response,'23:2',fixed_point_bindings(instance(),100,120))
+
+
+def authored_child_response():
+    return {'id':'23:2','control_point_indices':[0],
+        'materialized_control_point_indices':[0,3],
+        'control_point_input_policy':'agr_set_child_position_inputs_v1',
+        'declared_control_point_inputs':[0], 'authored_control_point_indices':[3],
+        'unprovided_control_point_indices':[], 'model_bone_count':227}
+
+
+@pytest.mark.parametrize('policy',['agr_set_child_position_inputs_v1','agr_authored_child_controls_v2'])
+def test_qualified_child_positions_acknowledge_authored_dependencies(policy):
+    row=authored_child_response();row['control_point_input_policy']=policy
+    response={'instances':[row]}
+    validate_control_response(response,'23:2',fixed_point_bindings(instance(),100,120))
+    validate_model_response(response,'23:2',227)
+
+
+@pytest.mark.parametrize('field,value',[
+    ('control_point_input_policy',None),
+    ('control_point_input_policy','unknown'),
+    ('declared_control_point_inputs',None),
+    ('declared_control_point_inputs',[0,3]),
+    ('unprovided_control_point_indices',None),
+    ('unprovided_control_point_indices',[3]),
+    ('unprovided_control_point_indices',[7]),
+    ('authored_control_point_indices',None),
+    ('authored_control_point_indices',[0,3]),
+    ('authored_control_point_indices',[3,3]),
+    ('authored_control_point_indices',[True,3]),
+    ('authored_control_point_indices',[64]),
+    ('materialized_control_point_indices',[0,3,7]),
+    ('materialized_control_point_indices',[0]),
+])
+def test_authored_points_do_not_hide_unsupplied_or_read_before_write_dependencies(field,value):
+    row=authored_child_response();row[field]=value
+    response={'instances':[row]}
+    with pytest.raises(ValueError,match='unqualified control-point dependencies'):
+        validate_control_response(response,'23:2',fixed_point_bindings(instance(),100,120))
+    with pytest.raises(ValueError,match='confirm the requested model bones'):
+        validate_model_response(response,'23:2',227)
 
 
 @pytest.mark.parametrize('change',[

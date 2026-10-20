@@ -13,7 +13,7 @@ import shutil
 import numpy as np
 
 from .animation import (AnimationError, _bind, _field, _hash, _identity,
-                        _inside, _load_table, _read, _select_rows,
+                        _graph_change_error, _inside, _load_table, _read, _select_rows,
                         _skeleton, _TableTimeline, _trim_prehistory)
 from .vendor.resource_hash import resource_id
 
@@ -163,7 +163,7 @@ def prepare_animation_assets(segment_path: Path, pack_root: Path, provider, conv
                     raise AnimationError(f'Missing or ambiguous recorded primary graph ID {primary}')
                 graph_name = _resource(matches[0], '.vnmgraph')
                 if entry is not None and graph_name != entry['graph']:
-                    raise AnimationError('Primary graph changes within one entity; rig switching is unsupported')
+                    raise _graph_change_error(entry['graph'], graph_name, row, chosen)
                 if entry is None:
                     if graph_name not in graphs:
                         source(graph_name)
@@ -175,10 +175,15 @@ def prepare_animation_assets(segment_path: Path, pack_root: Path, provider, conv
                              'masks': [m['m_ID'] for m in skeleton['m_maskDefinitions']]}
                 if row['demo_tick'] not in server_ticks:
                     raise AnimationError(f'Missing network server tick at demo tick {row["demo_tick"]}')
-                bound = _bind(row, server_ticks[row['demo_tick']], recorded, registry, entry, skeleton)
+                bound = _bind(row, server_ticks[row['demo_tick']], recorded, registry, entry, skeleton,
+                              model_track=entity.get('model_track'), allow_unavailable=not strict)
                 if any(t.get('extension_flag_b') for t in bound['tasks'] if t['type_id'] == 4):
                     raise AnimationError('Unimplemented IK extension')
                 selected.append(bound)
+                if bound.get('unavailable_pose'):
+                    diagnostics.append({'id':entity['id'], 'hero_id':entity['hero_id'],
+                        'code':'animation_reset_pose_unavailable', 'details':bound['unavailable_pose'],
+                        'message':'No recorded reset pose; explicit partial export will hide this sample.'})
             by_tick = {row['demo_tick']: row for row in selected}
             if len(by_tick) != len(selected):
                 raise AnimationError('Duplicate animation records for one entity and tick')
@@ -192,6 +197,9 @@ def prepare_animation_assets(segment_path: Path, pack_root: Path, provider, conv
                 if context is not None and context != row.get('context'):
                     live = False
                 context = row.get('context')
+                if row.get('unavailable_pose'):
+                    live = False
+                    continue
                 live |= row['fresh_recipe']
                 if row['demo_tick'] in desired_set and not live:
                     raise AnimationError(f'First recipe at tick {row["demo_tick"]} is stale; extract earlier state')

@@ -6,12 +6,14 @@ import types
 
 import pytest
 
-from agr import cli
+from agr import cli, game_assets
 from agr.scene_package import read_scene, save_scene
+from blender_fixture import write_blender_completion
 
 
 @pytest.fixture
 def inputs(tmp_path, monkeypatch):
+    monkeypatch.setattr('agr.blender_runtime.check_blender', lambda *a, **k: {'fixture': True})
     install = tmp_path / "Steam Library" / "Deadlock"
     install.mkdir(parents=True)
     converter = tmp_path / "Source2Viewer-CLI.exe"
@@ -30,15 +32,16 @@ def inputs(tmp_path, monkeypatch):
                   "samples": [{"tick": 10, "position": [0, 0, 0], "body_angles": [0, 0, 0]}]}
                  for hero in hero_ids]}
     segment = save_scene(scene, tmp_path / "input.json")
-    provider = types.ModuleType("agr.game_assets")
-    provider.discover_installations = lambda: [install]
-    provider.normalize_install_path = lambda path: Path(path).resolve()
+    # Keep real validation helpers available to lazily imported NPR/completion
+    # code. Replacing the whole module made these tests depend on collection order.
+    provider = game_assets
+    monkeypatch.setattr(provider, 'discover_installations', lambda: [install])
+    monkeypatch.setattr(provider, 'normalize_install_path', lambda path: Path(path).resolve())
     adapter = types.ModuleType("agr.installed_assets")
     adapter.prepare_installed_assets = lambda **kwargs: assets
-    monkeypatch.setitem(sys.modules, "agr.game_assets", provider)
     monkeypatch.setitem(sys.modules, "agr.installed_assets", adapter)
     def blender(command, check):
-        Path(command[command.index("--output") + 1]).write_bytes(b"simulated test scene")
+        write_blender_completion(command)
     monkeypatch.setattr(cli.subprocess, "run", blender)
     return types.SimpleNamespace(install=install, converter=converter, engine=engine,
                                  assets=assets, segment=segment, provider=provider,
@@ -177,6 +180,145 @@ def test_baked_segment_reuses_pose_files_without_raw_animation_inputs(inputs, mo
     report = cli.convert(args)
     assert calls[0]["need_animation"] is False
     assert report["entities"] == 12
+
+
+@pytest.mark.parametrize('fault', ['missing', 'unreadable', 'other_job', 'missing_character'])
+def test_invalid_blender_completion_cannot_replace_existing_scene_or_publish_companions(inputs, monkeypatch, fault):
+    args = arguments(inputs, '--assets', str(inputs.assets), '--overwrite')
+    args.output.write_bytes(b'previous user scene')
+    def blender(command, check):
+        report = write_blender_completion(command)
+        path = Path(command[command.index('--output') + 1]).with_suffix('.scene.json')
+        if fault == 'missing':
+            path.unlink()
+        elif fault == 'unreadable':
+            path.write_text('{interrupted report')
+        else:
+            if fault == 'other_job':
+                report['output'] = str(inputs.root / 'other-scene.blend')
+            else:
+                report['entities'].pop()
+            path.write_text(json.dumps(report))
+    monkeypatch.setattr(cli.subprocess, 'run', blender)
+    with pytest.raises(RuntimeError, match='Blender completion report'):
+        cli.convert(args)
+    assert args.output.read_bytes() == b'previous user scene'
+    assert not args.output.with_suffix('.agrscene').exists()
+    assert not args.output.with_suffix('.agr-report.json').exists()
+    failure = json.loads(next(inputs.root.glob('agr-*/failure.json')).read_text())
+    assert failure['stage'] == 'validate_blender_completion'
+
+
+@pytest.mark.parametrize('stage',['hero_lighting','npr_lighting','effects','cloth','camera'])
+@pytest.mark.parametrize('partial',[False,True])
+def test_dropped_requested_stage_cannot_publish_even_partial(inputs,monkeypatch,stage,partial):
+    data=read_scene(inputs.segment)
+    if stage=='hero_lighting':data['hero_lighting']={'status':'prepared'}
+    elif stage=='npr_lighting':
+        data['npr_runtime']={'mode':'partial_indirect_reference'}
+        data['npr_materials']={'entities':[{'entity_id':e['id'],'model_sha256':'model'} for e in data['entities']],
+                               'models':{'model':{'materials':[{'material':'body.vmat_c'}]}}}
+    elif stage=='effects':data['effects']={'manifest_file':'effects.json'}
+    elif stage=='cloth':
+        definition=inputs.root/'cloth.json';definition.write_text('{}')
+        data['entities'][0]['secondary_motion_file']=str(definition)
+    save_scene(data,inputs.segment)
+    extra=['--assets',str(inputs.assets),'--overwrite']
+    if partial:extra.append('--partial')
+    if stage=='camera':extra+=['--shot-hero','15']
+    args=arguments(inputs,*extra);args.output.write_bytes(b'previous final scene')
+    with pytest.raises(RuntimeError,match='completion|requested'):
+        cli.convert(args)
+    assert args.output.read_bytes()==b'previous final scene'
+    assert not args.output.with_suffix('.agrscene').exists()
+    assert not args.output.with_suffix('.agr-report.json').exists()
+    failure=json.loads(next(inputs.root.glob('agr-*/failure.json')).read_text())
+    assert failure['stage']=='validate_blender_completion'
+
+
+@pytest.mark.parametrize('partial',[False,True])
+def test_failed_requested_effect_stage_requires_explicit_broad_partial(inputs,monkeypatch,partial):
+    data=read_scene(inputs.segment);data['effects']={'manifest_file':'effects.json'};save_scene(data,inputs.segment)
+    def blender(command,check):write_blender_completion(command,effects={'status':'failed','error':'Decoder process exited1'})
+    monkeypatch.setattr(cli.subprocess,'run',blender)
+    args=arguments(inputs,'--assets',str(inputs.assets),*(['--partial'] if partial else ['--partial-lighting']))
+    if not partial:
+        with pytest.raises(RuntimeError,match='did not complete requested effects'):cli.convert(args)
+        assert not args.output.exists()
+    else:
+        report=cli.convert(args)
+        assert report['status']=='converted_with_warnings'
+        assert any('Requested effects failed' in warning for warning in report['warnings'])
+
+
+def test_blender_capability_failure_precedes_conversion_work_and_assets(inputs, monkeypatch):
+    from agr.blender_runtime import BlenderPreflightError
+    calls = []
+    def reject(engine, **options):
+        calls.append((engine, options))
+        raise BlenderPreflightError('Selected Blender lacks the required animation API')
+    monkeypatch.setattr('agr.blender_runtime.check_blender', reject)
+    inputs.adapter.prepare_installed_assets = lambda **kwargs: pytest.fail('Assets must not be converted')
+    args = arguments(inputs, '--game-install', str(inputs.install), '--source2viewer', str(inputs.converter))
+    with pytest.raises(BlenderPreflightError, match='required animation API'):
+        cli.convert(args)
+    assert calls == [(str(inputs.engine), dict(python_mode=False, character_shader=False))]
+    assert not list(inputs.root.glob('agr-*'))
+    assert not args.output.exists()
+
+
+def test_artistic_lighting_acceptance_does_not_allow_incompatible_character_animation(inputs,monkeypatch):
+    from agr.animation import AnimationError
+    calls=[]
+    def prepare(**kwargs):
+        calls.append(('assets',kwargs['strict'],kwargs['allow_partial_lighting']))
+        return inputs.assets
+    inputs.adapter.prepare_installed_assets=prepare
+    def animation(*args,**kwargs):
+        calls.append(('animation',kwargs['strict']))
+        raise AnimationError('Recorded bone indices differ from the installed skeleton')
+    monkeypatch.setattr('agr.animation.evaluate_segment',animation)
+    args=arguments(inputs,'--source2viewer',str(inputs.converter),'--partial-lighting')
+    args.motion_only=False
+    with pytest.raises(AnimationError,match='bone indices differ'):
+        cli.convert(args)
+    assert calls==[('assets',True,True),('animation',True)]
+    assert not args.output.exists()
+
+
+@pytest.mark.parametrize('partial', [False, True])
+def test_missing_pose_result_never_retains_cached_evaluated_coverage(inputs, monkeypatch, partial):
+    import numpy as np
+    np.savez(inputs.root / 'cached.npz', ticks=np.array([1]),
+             q=np.array([[[0., 0., 0., 1.]]]), t=np.zeros((1, 1, 3)), s=np.ones((1, 1)))
+    (inputs.root / 'rig.json').write_text(json.dumps(dict(names=['root'], parents=[-1])))
+    data = read_scene(inputs.segment)
+    for entity in data['entities']:
+        entity.update(pose_file=str(inputs.root / 'cached.npz'), skeleton_file=str(inputs.root / 'rig.json'))
+    data['coverage'] = {'skeletal_animation': {'evaluated_entities': 12, 'unsupported_entities': 0}}
+    save_scene(data, inputs.segment)
+    def blender(command, check):
+        result = write_blender_completion(command)
+        for row in result['entities']:
+            row['pose'] = dict(status='unsupported', sample_count=0,
+                               reason='No recorded bone poses cover the selected range.')
+        Path(command[command.index('--output') + 1]).with_suffix('.scene.json').write_text(json.dumps(result))
+    monkeypatch.setattr(cli.subprocess, 'run', blender)
+    args = arguments(inputs, '--assets', str(inputs.assets), *(['--partial'] if partial else []))
+    args.motion_only = False
+    if not partial:
+        with pytest.raises(RuntimeError, match='did not complete skeletal animation'):
+            cli.convert(args)
+        assert not args.output.exists()
+    else:
+        report = cli.convert(args)
+        coverage = report['coverage']['skeletal_animation']
+        assert coverage['evaluated_entities'] == 0 and coverage['unsupported_entities'] == 12
+        assert not coverage['all_requested_entities']
+        assert report['status'] == 'converted_with_warnings'
+        assert any('skeletal animation unavailable; imported rest pose' in warning for warning in report['warnings'])
+        saved = read_scene(args.output.with_suffix('.agrscene'))
+        assert saved['coverage']['skeletal_animation'] == coverage
 
 
 def test_unique_discovered_install_is_selected(inputs):

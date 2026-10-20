@@ -22,7 +22,12 @@ def select_output_with_history(data, start):
     result = slice_scene(data, start, data['end_tick'])
     originals = {e['id']: e for e in data['entities']}
     for entity in result['entities']:
-        entity['samples'] = copy.deepcopy(originals[entity['id']]['samples'])
+        original = originals[entity['id']]
+        entity['samples'] = copy.deepcopy(original['samples'])
+        # Availability flags belong to the restored samples, including earlier
+        # unavailable inputs. Selected-output diagnostics/coverage remain sliced.
+        if 'pose_unavailable_ticks' in original:
+            entity['pose_unavailable_ticks'] = list(original['pose_unavailable_ticks'])
     result['particle_history'] = {'schema_version': 1, 'start_tick': data['start_tick'],
                                   'scope': 'Explicit recovered motion; older effects remain unsupported'}
     result['coverage']['particle_history'] = copy.deepcopy(result['particle_history'])

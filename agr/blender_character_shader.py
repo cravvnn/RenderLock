@@ -71,7 +71,17 @@ def _copy_groups(tree, memo, regions):
     if tree.name.startswith('AGR seamless cube'):
         images=[n.image for n in tree.nodes if n.type=='TEX_IMAGE']
         if len(images)!=7:raise ValueError('Expected unmodified seven-mip cube group')
-        result=create_cube_group(images,pack_mips=True)
+        if tree.get('agr_cube_mips_packed') is True:
+            image=images[0];offsets=[];height=0
+            for level in range(7):offsets.append(height);height+=6*((256>>level)+2)
+            if (any(value!=image for value in images) or image is None
+                    or tuple(image.size)!=(258,height)
+                    or image.colorspace_settings.name!='Non-Color'
+                    or image.alpha_mode!='CHANNEL_PACKED'
+                    or list(image.get('agr_cube_mip_offsets',[]))!=offsets):
+                raise ValueError('Packed cube mip atlas changed')
+            result=tree.copy()
+        else:result=create_cube_group(images,pack_mips=True)
     elif tree.name.startswith('AGR volume '):
         images=[n.image for n in tree.nodes if n.type=='TEX_IMAGE']
         if len(images)!=2 or images[0]!=images[1] or images[0] not in regions:
@@ -89,7 +99,8 @@ def _copy_groups(tree, memo, regions):
 def apply_character_shader(scene, roots, data, library, *, manifest_dir, allow_partial=False):
     """All-material preflight and deferred mesh assignment; discard failed scenes."""
     import bpy
-    from .blender_npr_selection import select_npr_materials
+    from .blender_npr_selection import select_npr_actor_materials,actor_material_rows
+    from .source_material_routes import material_route,NPR_ROUTE
     from .blender_npr_package import validate_npr_pixels
     from .blender_material_emission import add_converted_emission
     from .npr_material_identity import material_resource
@@ -99,8 +110,33 @@ def apply_character_shader(scene, roots, data, library, *, manifest_dir, allow_p
         raise ValueError('Character shader requires explicit NPR runtime')
     path=validate_character_shader_library(library)
     if 'd2b_character_shader' in scene:raise ValueError('Character shader is already applied')
-    package,materials,objects=select_npr_materials(data['npr_materials'],data['entities'],roots,
-                                                manifest_dir=manifest_dir)
+    actors=select_npr_actor_materials(data['npr_materials'],data['entities'],roots,
+                                     manifest_dir=manifest_dir)
+    all_materials=[material for actor in actors for material in actor['materials']]
+    materials=[material for actor in actors for material,row in actor_material_rows(actor) if material_route(row)==NPR_ROUTE]
+    objects=[obj for actor in actors for obj in actor['objects']]
+    if len(set(all_materials))!=len(all_materials) or len(set(objects))!=len(objects):
+        raise ValueError('Character look requires distinct prepared actor materials/meshes')
+    mask_textures={};masks={};material_actors={};contracts={};preserved=[]
+    for actor in actors:
+        rows={row['material']:row for row in actor['package']['materials']}
+        pixels=validate_npr_pixels(actor['package'])
+        summaries={row['material']:row['textures']['g_tTintMaskRimLightMask']
+                   for row in pixels['materials'] if 'g_tTintMaskRimLightMask' in row['textures']}
+        for material,row in actor_material_rows(actor):
+            if material_route(row)!=NPR_ROUTE:
+                if material.get('agr_source_material_route')!=material_route(row):
+                    raise ValueError('Character look generic material route differs')
+                preserved.append(dict(material=row['material'],entity_id=actor['entity']['id'],route=material_route(row),
+                    status='preserved_generic_reference',artist_shader_applied=False,
+                    runtime=row.get('runtime'),fidelity_gaps=row.get('fidelity_gaps',[])))
+                if 'expression_evaluation' in row:preserved[-1]['expression_evaluation']=row['expression_evaluation']
+                continue
+            resource=material_resource(material)
+            mask_textures[material]=rows[resource]['textures']['g_tTintMaskRimLightMask']
+            masks[material]=summaries[resource]
+            material_actors[material]=actor['entity']['id']
+            contracts[material]=row
     plans=[]
     for material in materials:
         nodes=material.node_tree.nodes;npr=nodes.get('AGR NPR indirect preview')
@@ -112,17 +148,14 @@ def apply_character_shader(scene, roots, data, library, *, manifest_dir, allow_p
                 or nodes.get('AGR frame rim') is not None):
             raise ValueError('Expected prepared opaque NPR character material')
         bsdf=bsdfs[0];normal=normals[0]
-        if bsdf.inputs['Alpha'].is_linked or bsdf.inputs['Alpha'].default_value!=1:
-            raise ValueError('Character shader transparency needs separate qualification')
+        from .blender_material_alpha import validate_alpha
+        validate_alpha(material,bsdf)
         if (normal.inputs['Strength'].is_linked or normal.inputs['Strength'].default_value!=1
                 or not normal.inputs['Color'].is_linked or not npr.inputs['Albedo'].is_linked):
             raise ValueError('Character shader requires qualified albedo and unit-strength tangent normal')
         if 'Irradiance' not in npr.outputs or 'Specular' not in npr.outputs:
             raise ValueError('Source-reference shader outputs missing')
         plans.append((material,material_resource(material)))
-    pixels=validate_npr_pixels(package)
-    masks={r['material']:r['textures']['g_tTintMaskRimLightMask']['linear_rim_mask']
-           for r in pixels['materials']}
     regions=_probe_regions(data['hero_lighting'])
     with bpy.data.libraries.load(str(path),link=False) as (source,destination):
         if MATERIAL_NAME not in source.materials:raise ValueError('Qualified author material absent')
@@ -175,10 +208,14 @@ def apply_character_shader(scene, roots, data, library, *, manifest_dir, allow_p
             if socket.is_linked:links.new(socket.links[0].from_socket,packed.inputs[dst])
             else:packed.inputs[dst].default_value=socket.default_value
         links.new(packed.outputs['Color'],shader.inputs['ORM'])
-        mask=masks[resource]
-        # Elagrimm exposes strength rather than a mask socket. Apply the
-        # qualified material's constant Source green mask to the author's value.
-        shader.inputs['Rimlight Strength'].default_value *= mask
+        mask=masks[old]
+        from .blender_npr_masks import bind_mask_texture
+        _,green=bind_mask_texture(material,mask_textures[old])
+        author_strength=shader.inputs['Rimlight Strength'].default_value
+        factor=nodes.new('ShaderNodeMath');factor.operation='MULTIPLY'
+        factor.name='AGR Elagrimm spatial rim strength'
+        factor.inputs[1].default_value=author_strength
+        links.new(green,factor.inputs[0]);links.new(factor.outputs[0],shader.inputs['Rimlight Strength'])
         # Preserve converted emission once, outside the author's optional
         # emission branch. Otherwise authored/default emission could double it.
         shader.inputs['Use Emission'].default_value=False
@@ -192,14 +229,21 @@ def apply_character_shader(scene, roots, data, library, *, manifest_dir, allow_p
             if node.type=='OUTPUT_MATERIAL':node.is_active_output=False
         output=nodes.new('ShaderNodeOutputMaterial');output.is_active_output=True
         emission=nodes.new('ShaderNodeEmission');emission.inputs['Strength'].default_value=1
-        links.new(final,emission.inputs['Color']);links.new(emission.outputs['Emission'],output.inputs['Surface'])
+        links.new(final,emission.inputs['Color'])
+        from .blender_material_alpha import alpha_surface
+        surface,alpha=alpha_surface(material,bsdf,emission.outputs['Emission']);links.new(surface,output.inputs['Surface'])
         material['d2b_character_shader']=LIBRARY_SHA256
         replacements[old]=material
-        rows.append(dict(material=resource,rim_mask=mask,rim_factor=shader.inputs['Rimlight Strength'].default_value,
+        rows.append(dict(material=resource,entity_id=material_actors[old],route=NPR_ROUTE,status='applied_artist_reference',artist_shader_applied=True,
+                         runtime=contracts[old].get('runtime'),fidelity_gaps=contracts[old].get('fidelity_gaps',[]),
+                         rim_mask=mask,rim_author_strength=author_strength,
+                         rim_factor='green mask texture multiplied by author strength',
+                         opacity=alpha,
                          converted_emission_preserved=True))
+        if 'expression_evaluation' in contracts[old]:rows[-1]['expression_evaluation']=contracts[old]['expression_evaluation']
     # Every selected material is fully constructed before changing any mesh slot.
     for obj in objects:
-        for slot in obj.material_slots:slot.material=replacements[slot.material]
+        for slot in obj.material_slots:slot.material=replacements.get(slot.material,slot.material)
     scene.render.engine='BLENDER_EEVEE'
     # The Source reference path supplies indirect lighting only. Keep the
     # builder's editable preview key/fill lights so the artist shader also has
@@ -208,10 +252,11 @@ def apply_character_shader(scene, roots, data, library, *, manifest_dir, allow_p
                    if obj.type=='LIGHT' and obj.name in ('AGR | Key','AGR | Fill')]
     report=dict(status='partial',author='Elagrimm',library_sha256=LIBRARY_SHA256,
                 library_commit=LIBRARY_COMMIT,library_url=LIBRARY_URL,
-                mode='source_reference_rgb_bridge',materials=rows,renderer=scene.render.engine,
+                mode='source_reference_rgb_bridge',materials=rows+preserved,
+                artist_material_count=len(rows),preserved_material_count=len(preserved),renderer=scene.render.engine,
                 additional_lights='Native Eevee diffuse/specular added with editable Additional Light Influence',
                 disabled_review_lights=[],preview_lights=review_lights,
-                rim='Elagrimm artist rim multiplied by constant green Source mask; no Source rim parity',
+                rim='Elagrimm artist rim multiplied by spatial green Source mask; no Source rim parity',
                 limits=['Author group copied; diffuse/specular ShaderToRGB inputs replaced by Source NPR references.',
                         'Source specular is already shaded before author shaping; artistic approximation.',
                         'Author shadow tint and artistic controls retain library defaults; Source transmission is not reconstructed.',
@@ -219,6 +264,7 @@ def apply_character_shader(scene, roots, data, library, *, manifest_dir, allow_p
                         'Packed lookup bilinear references qualified; Eevee implicit minification unqualified.',
                         'Additional Blender lights use artist shader response; Source light units/shadows are not certified.',
                         'Editable key/fill preview lights remain enabled; these are artistic Blender lights, not recovered game direct lighting.',
-                        'Opaque NPR characters only; integer camera bake requires rebaking after edits.'])
+                        'Converted opacity and pbr additive color composition retained; arbitrary layered responses remain unqualified.',
+                        'Integer camera bake requires rebaking after edits.'])
     scene['d2b_character_shader']=json.dumps(report)
     return report

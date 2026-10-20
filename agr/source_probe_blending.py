@@ -7,6 +7,51 @@ import numpy as np
 from agr.source_probe_assets import vector, rotation
 
 
+def contributing_actor_probes(probes, coverage):
+    """Keep every possible contributor over each verified actor trajectory.
+
+    The blend is sequential, including equal-priority siblings. Once an entire
+    convex actor box has alpha one, later probes have zero remaining weight.
+    Intersecting predecessors are retained even when they cover only part of a
+    surface. Conservative box intersection includes triangle interiors.
+    """
+    from itertools import product
+    from .source_probe_assets import bounds_array, intersects_bounds
+    probe_weights(probes,np.empty((0,3)))
+    ordered=sorted(probes,key=lambda p:(-p['indoor_outdoor_level'],p['array_index']))
+    identities=[str(p['hammeruniqueid']) for p in ordered]
+    if len(set(identities))!=len(identities):raise ValueError('Duplicate probe identity')
+    if (coverage.get('status')!='verified_integer_frame_bounds'
+            or coverage.get('scope')!='per_actor_convex_bounds' or not coverage.get('frames')):
+        raise ValueError('Verified per-actor surface coverage required')
+    selected={};expected=None;frames=set()
+    for frame in coverage['frames']:
+        if type(frame.get('frame')) is not int or frame['frame'] in frames:
+            raise ValueError('Distinct integer coverage frames required')
+        frames.add(frame['frame']);seen=set()
+        for actor in frame['actors']:
+            identity=actor['entity_id']
+            if not isinstance(identity,str) or not identity or identity in seen:
+                raise ValueError('Distinct actor coverage required')
+            seen.add(identity);keep=selected.setdefault(identity,set())
+            bounds=bounds_array(np.column_stack((actor['low'],actor['high'])))
+            corners=np.array(list(product(*bounds)));covered=False
+            for prop in ordered:
+                if not intersects_bounds(prop,bounds):continue
+                keep.add(str(prop['hammeruniqueid']))
+                local=(corners-vector(prop['origin']))@rotation(prop['angles']).T
+                low=vector(prop['box_mins'])+vector(prop['edge_fade_dists'])
+                high=vector(prop['box_maxs'])-vector(prop['edge_fade_dists'])
+                if np.all(local>=low) and np.all(local<=high):
+                    covered=True;break
+            if not covered:raise ValueError('No fully covering actor probe for graph selection')
+        if not seen or (expected is not None and seen!=expected):
+            raise ValueError('Actor coverage differs between frames')
+        expected=seen
+    return {identity:[p for p in ordered if str(p['hammeruniqueid']) in keep]
+            for identity,keep in selected.items()}
+
+
 def probe_weights(probes, positions):
     points=np.asarray(positions,dtype=float)
     if points.ndim!=2 or points.shape[1]!=3 or not np.isfinite(points).all():

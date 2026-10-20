@@ -30,7 +30,9 @@ fn main() -> anyhow::Result<()> {
                 for (key, value) in &entity.fields {
                     let Some(name) = serializer.field_name_for_key(*key) else { continue; };
                     let lower = name.to_ascii_lowercase();
-                    if ["parent", "owner", "follow", "attachment", "wearable", "modelname", "m_hmodel"]
+                    if ["parent", "owner", "follow", "attachment", "wearable", "modelname", "m_hmodel",
+                        "cosmetic", "econ", "loadout", "inventory", "itemdef", "itemid",
+                        "variant", "skin", "bodygroup"]
                         .iter().any(|word| lower.contains(word)) {
                         field_names.insert(name.clone());
                         fields.insert(name, serde_json::to_value(value)?);

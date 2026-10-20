@@ -20,6 +20,7 @@ import numpy as np
 
 from .vendor.kv3_text import parse_kv3
 from .vendor.build_clip_cache import decode_frames
+from .path_io import native_path
 
 
 class ConversionError(ValueError):
@@ -32,7 +33,7 @@ def compiled(path):
 
 
 def sha(path):
-    with Path(path).open('rb') as f:
+    with open(native_path(path), 'rb') as f:
         return hashlib.file_digest(f, 'sha256').hexdigest()
 
 
@@ -208,7 +209,7 @@ class AssetConverter:
             # VRF's --game loader does not expand this engine token for loose
             # cache trees. An explicit private path works on both drive layouts.
             gameinfo.write_text('"GameInfo" { "FileSystem" { "SearchPaths" { "Game" ' +
-                                json.dumps(tree.resolve().as_posix()) + ' } } }\n', encoding='utf-8')
+                                json.dumps(tree.resolve().as_posix(), ensure_ascii=False) + ' } } }\n', encoding='utf-8')
             out = temp / 'model.glb'
             command = [str(self.executable), '-i', str(tree / compiled(resource_path)),
                        '-o', str(out), '-d', '--game', str(gameinfo),

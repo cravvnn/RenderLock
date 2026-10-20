@@ -11,6 +11,9 @@ import math
 from pathlib import Path
 import subprocess
 from .particle_runtime import particle_command, particle_environment
+from .particle_control_events import compile_control_events, require_owned_event_provider
+from .particle_control_provenance import (confirmed_points as _confirmed_points,
+    confirmed_materialized_points as _confirmed_materialized_points)
 
 SEED_POLICY = 'agr_substitute_sha256_v1'
 REGEN_RESOURCE = 'particles/generic/generic_health_regen.vpcf'
@@ -52,6 +55,8 @@ def regeneration_bindings(instance, start, end):
     Unnamed ABSORIGIN_FOLLOW CP0 does not enter the native wearable search.
     Optional named CP1 is retained as provenance, not evaluated or redirected.
     """
+    controls = compile_control_events(instance, start, end)
+    require_owned_event_provider(instance, controls)
     birth = instance['created_tick']
     if type(birth) is not int or not 0 <= start <= birth <= end:
         raise ValueError('Regeneration requires complete creation-time history')
@@ -65,7 +70,7 @@ def regeneration_bindings(instance, start, end):
             or not birth <= e['tick'] <= end for e in events)
             or [e['tick'] for e in events] != sorted(e['tick'] for e in events)):
         raise ValueError('Particle events must have ordered integer ticks within the instance range')
-    if any(e['type'] not in ('CREATE', 'UPDATE_ENT', 'RELEASE')
+    if any(e['type'] not in ('CREATE', 'UPDATE_ENT', 'RELEASE', 'DESTROY')
            or type(e['tick']) is not int or not birth <= e['tick'] <= end for e in events):
         raise ValueError('Unsupported regeneration lifecycle/control event')
     creates = [e for e in events if e['type'] == 'CREATE']
@@ -103,17 +108,62 @@ def regeneration_bindings(instance, start, end):
     return [bindings[index] for index in sorted(bindings)]
 
 
-def _confirmed_points(row, field, expected):
-    points = row.get(field)
-    return isinstance(points, list) and all(type(i) is int for i in points) and points == expected
+def root_origin_bindings(instance, start, end):
+    """Current native unnamed root CP0 plus complete literal control points.
+
+    Named entity attachments must acquire a separately qualified ordered child
+    inventory. A valid parent attachment alone cannot establish that provider.
+    """
+    controls = compile_control_events(instance, start, end)
+    require_owned_event_provider(instance, controls, always=True)
+    birth = instance['created_tick']
+    bindings = {}
+    for event in controls['entity_binding_events']:
+        binding = event['data'].get('update_particle_ent')
+        if not isinstance(binding, dict):
+            raise ValueError('Invalid particle entity binding')
+        if binding.get('control_point') != 0:
+            raise ValueError('Named particle control points require qualified client-child attachment inventory')
+        if (event['tick'] != birth or bindings or type(binding.get('control_point')) is not int
+                or binding.get('entity_handle') != instance['entity_handle']
+                or type(binding.get('entity_handle')) is not int
+                or type(binding.get('attach_type')) is not int or binding['attach_type'] != 1
+                or type(binding.get('attachment')) is not int or binding['attachment'] != 0
+                or type(binding.get('include_wearables', False)) is not bool
+                or set(binding) - {'control_point', 'entity_handle', 'attach_type', 'attachment',
+                    'include_wearables', 'offset_position', 'offset_angles', 'fallback_position'}):
+            raise ValueError('Root particles require an exact unnamed creation-time ABSORIGIN_FOLLOW CP0')
+        zero_binding_offsets(binding)
+        fallback = binding.get('fallback_position', {})
+        if (not isinstance(fallback, dict) or set(fallback) - set('xyz')
+                or any(type(value) not in (int, float) or not math.isfinite(value) or value != 0
+                       for value in fallback.values())):
+            raise ValueError('Root particle fallback requires separate provider qualification')
+        bindings[0] = dict(binding, provider='root_origin')
+    if 0 not in bindings:
+        raise ValueError('Root particles require an explicit unnamed CP0 entity binding')
+    for update in controls['literal_transforms']:
+        cp = update['control_point']
+        if cp == 0:
+            raise ValueError('Literal transforms cannot replace the root entity provider')
+        if cp not in bindings:
+            if update['tick'] != birth:
+                raise ValueError('Literal control points require an explicit creation-time transform')
+            bindings[cp] = dict(control_point=cp, provider='literal_transform', updates=[])
+        bindings[cp]['updates'].append(update)
+    return [bindings[index] for index in sorted(bindings)]
 
 
-def validate_model_response(simulation, instance_id, bone_count):
+def validate_model_response(simulation, instance_id, bone_count, control_points=None):
     rows = simulation.get('instances', [])
+    expected = [0] if control_points is None else control_points
     if (type(bone_count) is not int or bone_count <= 0 or len(rows) != 1
             or rows[0].get('id') != instance_id
-            or not _confirmed_points(rows[0], 'control_point_indices', [0])
-            or not _confirmed_points(rows[0], 'materialized_control_point_indices', [0])
+            or not isinstance(expected, list) or not expected or expected[0] != 0
+            or any(type(value) is not int or not 0 <= value <= 63 for value in expected)
+            or expected != sorted(set(expected))
+            or not _confirmed_points(rows[0], 'control_point_indices', expected)
+            or not _confirmed_materialized_points(rows[0], expected)
             or type(rows[0].get('model_bone_count')) is not int
             or rows[0]['model_bone_count'] != bone_count):
         raise ValueError('Simulator did not confirm the requested model bones; rebuild ParticleProbe')
@@ -146,6 +196,8 @@ def fixed_point_bindings(instance, start, end):
 
     Root-origin/model providers remain excluded until separately qualified.
     """
+    controls = compile_control_events(instance, start, end)
+    require_owned_event_provider(instance, controls)
     birth = instance['created_tick']
     if type(birth) is not int:
         raise ValueError('Particle birth requires an integer tick')
@@ -156,7 +208,7 @@ def fixed_point_bindings(instance, start, end):
             or not birth <= e['tick'] <= end for e in events)
             or [e['tick'] for e in events] != sorted(e['tick'] for e in events)):
         raise ValueError('Particle events must have ordered integer ticks within the instance range')
-    if any(e['type'] not in ('CREATE', 'UPDATE_ENT', 'RELEASE') for e in events):
+    if any(e['type'] not in ('CREATE', 'UPDATE_ENT', 'UPDATE_TRANSFORM', 'RELEASE', 'DESTROY') for e in events):
         raise ValueError('Unsupported lifecycle/control event')
     creates = [e for e in events if e['type'] == 'CREATE']
     updates = [e for e in events if e['type'] == 'UPDATE_ENT']
@@ -177,9 +229,32 @@ def fixed_point_bindings(instance, start, end):
             raise ValueError('Expected unique exact-serial own-entity creation-time point-follow bindings')
         zero_binding_offsets(binding)
         bindings[cp] = binding
+    literal = {}
+    for update in controls['literal_transforms']:
+        literal.setdefault(update['control_point'], []).append(update)
+    for cp, updates_for_cp in literal.items():
+        if cp in bindings:
+            raise ValueError('Literal transforms cannot replace an entity-bound control point without provider-change qualification')
+        if updates_for_cp[0]['tick'] != birth:
+            raise ValueError('Literal control points require an explicit creation-time transform')
+        bindings[cp] = dict(control_point=cp,provider='literal_transform',updates=updates_for_cp)
     if 0 not in bindings:
         raise ValueError('A control-point 0 binding is required')
     return [bindings[index] for index in sorted(bindings)]
+
+
+def validate_event_response(simulation, instance, start, end):
+    """Old helpers cannot silently accept new literal updates or stop events."""
+    expected = compile_control_events(instance, start, end)
+    if not expected['literal_transforms'] and expected['destroy'] is None:
+        return
+    rows = simulation.get('instances', [])
+    if (len(rows) != 1 or rows[0].get('id') != instance['id']
+            or rows[0].get('replay_event_policy') != 'agr_recorded_control_lifecycle_v1'
+            or rows[0].get('literal_transforms_applied') != expected['literal_transforms']
+            or rows[0].get('destroy_applied') != expected['destroy']
+            or rows[0].get('release_ticks') != expected['release_ticks']):
+        raise ValueError('Simulator did not confirm recorded literal controls and lifecycle; rebuild ParticleProbe')
 
 
 def fixed_attachment(instance, start, end):
@@ -197,7 +272,7 @@ def validate_control_response(simulation, instance_id, bindings):
     if (len(rows) != 1 or rows[0].get('id') != instance_id
             or not _confirmed_points(rows[0], 'control_point_indices', expected)):
         raise ValueError('Simulator did not confirm all requested control points; rebuild ParticleProbe')
-    if not _confirmed_points(rows[0], 'materialized_control_point_indices', expected):
+    if not _confirmed_materialized_points(rows[0], expected):
         raise ValueError('Simulator used unqualified control-point dependencies or lacks their provenance; rebuild ParticleProbe or qualify the missing provider')
 
 
@@ -250,11 +325,12 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
     if not source.is_absolute():source=Path(manifest_dir)/source
     attachments=json.loads(source.read_text(encoding='utf-8')).get('attachments',{})
     selected=set(entity_objects)
-    entities={entity['id']:entity for entity in data['entities']}
+    from .model_tracks import logical_entities
+    entities=logical_entities(data['entities'])
     motion_start=history_start(data)
     history_ticks={}
     if motion_start < data['start_tick']:
-        for entity in data['entities']:
+        for entity in entities.values():
             if entity['id'] in selected and entity.get('pose_file'):
                 with np.load(entity['pose_file'], allow_pickle=False) as poses:
                     history_ticks[entity['id']]=({s['tick'] for s in entity['samples']}, set(poses['ticks'].tolist()))
@@ -267,10 +343,12 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
             'rendered_instances':0,'objects':0,'particle_tracks':0,'point_lights':0,
             'history_start_tick':motion_start,'pre_shot_rendered_instances':0,
             'unsupported':[],'instances':[],
-            'limitations':['Fixed point-follow CPs, plus the hash-qualified generic health regeneration root-model profile',
+            'limitations':['Fixed point-follow CPs and exact unnamed root-origin CP0 with model bones/literal controls',
                 'Wearable child redirection is not reconstructed; attachments are evaluated on the selected hero model',
                 'Qualified regeneration uses CP0 body bones; recorded CP1 is unused by its exact audited definition tree',
-                'Earlier-than-recovered history and changing/lifetime control events are not simulated',
+                'Literal CPs require complete creation-time values and zero interpolation; entity-provider changes remain unqualified',
+                'Recorded non-immediate destruction preserves authored tails/endcaps; immediate destruction clears the entire tree',
+                'Earlier-than-recovered history is not simulated',
                 'Unresolved simulator diagnostics withhold that entire instance',
                 'Repeatable AGR substitute seeds are used; the original engine seeds are unavailable',
                 'Blender particle shaders/lights and random seeds approximate Source behavior'],
@@ -303,28 +381,45 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
 
     for number,instance in enumerate(instances):
         try:
+            if entities[instance['entity_id']].get('model_tracks'):
+                raise ValueError('Particle model/attachment providers across recorded model changes are not yet qualified')
             model_profile=instance.get('resource')==REGEN_RESOURCE
-            bindings=(regeneration_bindings if model_profile else fixed_point_bindings)(instance,motion_start,data['end_tick'])
+            root_profile=model_profile or any(isinstance(e, dict) and e.get('type') == 'UPDATE_ENT'
+                and isinstance(e.get('data'), dict)
+                and isinstance(e['data'].get('update_particle_ent'), dict)
+                and e['data']['update_particle_ent'].get('control_point') == 0
+                and e['data']['update_particle_ent'].get('attach_type') == 1
+                for e in instance.get('events', []))
+            binding_provider=(regeneration_bindings if model_profile else root_origin_bindings
+                              if root_profile else fixed_point_bindings)
+            bindings=binding_provider(instance,motion_start,data['end_tick'])
             model_provenance=None
-            if model_profile:
+            if root_profile:
                 from .blender_particle_model import capture_root_model_points
-                for name in REGEN_DEFINITIONS:
-                    if name not in definitions:definitions[name]=decoder.dump(name,provider)
-                validate_regeneration_definitions({name:definitions[name] for name in REGEN_DEFINITIONS})
+                if model_profile:
+                    for name in REGEN_DEFINITIONS:
+                        if name not in definitions:definitions[name]=decoder.dump(name,provider)
+                    validate_regeneration_definitions({name:definitions[name] for name in REGEN_DEFINITIONS})
                 model=entities[instance['entity_id']].get('model_constraints')
                 if (not model or provider.resolve(compiled(model['resource'])).sha256!=model['resource_sha256']):
-                    raise ValueError('Regeneration requires the matching installed model and authored constraints')
+                    raise ValueError('Root model particles require the matching installed model and authored constraints')
                 points,model_provenance=capture_root_model_points(data,entities[instance['entity_id']],
                     entity_objects[instance['entity_id']],scene,instance,manifest_dir)
-                model_provenance.update(profile='generic_health_regen_cp0_bones_v1',
-                    definition_sha256=dict(REGEN_DEFINITIONS),
-                    unused_recorded_control_points=[b['control_point'] for b in bindings if b['control_point']!=0])
+                model_provenance.update(profile='generic_health_regen_cp0_bones_v1' if model_profile else 'owned_absorigin_follow_model_v1',
+                    unused_recorded_control_points=[b['control_point'] for b in bindings if b['control_point']!=0] if model_profile else [])
+                if model_profile:model_provenance['definition_sha256']=dict(REGEN_DEFINITIONS)
             if instance['created_tick'] < data['start_tick']:
                 root_ticks, pose_ticks=history_ticks.get(instance['entity_id'], (set(),set()))
                 require_history_samples(instance,data['end_tick'],root_ticks,pose_ticks)
             rig=entity_objects[instance['entity_id']]['rig']
             transforms=[]
+            literal_bindings = []
             for binding in ([] if model_profile else bindings):
+                if binding.get('provider') == 'root_origin':
+                    continue
+                if binding.get('provider') == 'literal_transform':
+                    literal_bindings.append(binding)
+                    continue
                 definition=attachments[f"{instance['entity_id']}/{binding['attachment']}"]['definition']
                 if (definition['m_nInfluences']!=1 or abs(definition['m_influenceWeights'][0]-1)>1e-6
                         or definition.get('m_bIgnoreRotation') or definition['m_bInfluenceRootTransform'][0]):
@@ -335,20 +430,28 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
                 offset=Matrix.LocRotScale(Vector(definition['m_vInfluenceOffsets'][0])*.0254,
                                          Quaternion((q[3],*q[:3])),Vector((1,1,1)))
                 transforms.append((binding['control_point'],bone,offset))
-            if not model_profile:points=[]
+            root_points = {point['tick']: point for point in points} if root_profile else {}
+            if not root_profile:points=[]
             for tick in ([] if model_profile else range(instance['created_tick'],data['end_tick']+1)):
                 frame=tick_frame(tick,data['start_tick'],data['tick_rate'],scene.render.fps/scene.render.fps_base)
                 scene.frame_set(math.floor(frame),subframe=frame-math.floor(frame))
-                samples=[]
+                original = root_points.get(tick)
+                samples=[dict(index=0,position=original['position'],rotation=original['rotation'])] if original else []
                 for cp,bone,offset in transforms:
                     matrix=rig.matrix_world@rig.pose.bones[bone].matrix@offset
                     pos,rot,scale=matrix.decompose()
                     samples.append(dict(index=cp,position=[x/.0254 for x in pos],
                                         rotation=[rot.x,rot.y,rot.z,rot.w]))
+                for binding in literal_bindings:
+                    update = next(row for row in reversed(binding['updates']) if row['tick'] <= tick)
+                    samples.append(dict(index=binding['control_point'],position=update['position'],rotation=update['rotation']))
+                samples.sort(key=lambda row: row['index'])
                 primary=samples[0]
                 point=dict(tick=tick,position=primary['position'],rotation=primary['rotation'])
                 if len(samples)>1:point['extra_control_points']=samples[1:]
-                points.append(point)
+                if original:
+                    original.update(point)
+                else:points.append(point)
             plan={key:data[key] for key in ('start_tick','end_tick','tick_rate')}
             plan.update(gameinfo=str(Path(runtime['install_path'])/'game/citadel/gameinfo.gi'),
                         seed=substitute_seed(data,instance),instances=[dict(instance,control_points=points)])
@@ -370,8 +473,10 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
             validate_request_response(simulation, instance, data['start_tick'], data['end_tick'],
                                       data['tick_rate'], request_sha256)
             validate_seed_response(simulation,plan['seed'])
-            if model_profile:
-                validate_model_response(simulation,instance['id'],model_provenance['bone_count'])
+            validate_event_response(simulation,instance,motion_start,data['end_tick'])
+            if root_profile:
+                validate_model_response(simulation,instance['id'],model_provenance['bone_count'],
+                    [0] if model_profile else [binding['control_point'] for binding in bindings])
             else:validate_control_response(simulation,instance['id'],bindings)
             if simulation['warnings']:raise ValueError('Simulator diagnostics: '+'; '.join(simulation['warnings']))
             simulation['instances'][0]['entity_id']=instance['entity_id']

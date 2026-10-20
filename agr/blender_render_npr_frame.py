@@ -14,8 +14,8 @@ def render_frame(scene_path,data,output,frame,*,manifest_dir,width=960,height=54
         raise ValueError('Positive integer viewport/samples and integer frame required')
     if max(width,height)>4096 or samples>256:raise ValueError('Bounded render dimensions/samples required')
     output=Path(output).resolve()
-    if output.drive.upper()!='C:' or output.exists() or not output.parent.is_dir():
-        raise ValueError('New C-only render directory with existing parent required')
+    if output.exists() or not output.parent.is_dir():
+        raise ValueError('New render directory with existing parent required')
     if shutil.disk_usage(output.parent).free<96*1024*1024+width*height*128:
         raise ValueError('Insufficient space for one audited frame')
     import bpy
@@ -44,27 +44,41 @@ def render_frame(scene_path,data,output,frame,*,manifest_dir,width=960,height=54
         apply=validate_prepared_scene_npr if scene.get('agr_npr_lighting') else apply_scene_npr
         prepared=apply(scene,roots,data,manifest_dir=manifest_dir,
                        coordinates=coords,allow_partial=True)
-        materials={s.material for root in roots for o in root.children_recursive if o.type=='MESH' for s in o.material_slots}
-        masks={r['material']:r['textures']['g_tTintMaskRimLightMask']['linear_rim_mask']
-               for r in prepared['preparation']['pixels']['materials']}
+        from .blender_npr_selection import select_npr_actor_materials,actor_material_rows
+        from .source_material_routes import material_route,NPR_ROUTE
+        actors=select_npr_actor_materials(data['npr_materials'],data['entities'],roots,manifest_dir=manifest_dir)
+        materials=[material for actor in actors for material,row in actor_material_rows(actor) if material_route(row)==NPR_ROUTE]
+        if not materials:raise ValueError('NPR frame rim requires at least one selected NPR material draw')
+        masks={}
+        for actor in actors:
+            for row in actor['package']['materials']:
+                if material_route(row)!=NPR_ROUTE:continue
+                name=row['material'];texture=row['textures']['g_tTintMaskRimLightMask']
+                if name in masks and masks[name]!=texture:
+                    raise ValueError('Conflicting shared frame-rim mask identities')
+                masks[name]=texture
         contract,rows=apply_frame_rim(scene_path,coords,depth['depth_path'],depth['manifest_path'],materials,masks,allow_partial=True)
         audit.register()
         for row in rows:
             mat=row['material']
-            audit.attach(mat.node_tree.nodes,mat.node_tree.links,row['project'],row['depths'],row['rim'],row['npr'],row['total'],base_socket=row['base'])
+            if row['depth_policy']!=depth['depth_policy']:
+                raise ValueError('Rim depth policy changed after capture')
+            audit.attach(mat.node_tree.nodes,mat.node_tree.links,row['project'],row['depths'],row['rim'],row['npr'],row['total'],base_socket=row['base'],depth_policy=row['depth_policy'])
         diagnostics=output/'diagnostics';diagnostics.mkdir();audit.compositor(diagnostics)
         scene.cycles.samples=samples;scene.render.image_settings.file_format='PNG'
         image_path=output/'frame.png';scene.render.filepath=str(image_path)
         assert_rim_frame(scene_path,coords,contract)
         bpy.ops.render.render(write_still=True)
-        checks=audit.verify(diagnostics,frame,width,height)
+        checks=audit.verify(diagnostics,frame,width,height,depth_policy=depth['depth_policy'])
         if sha(scene_path)!=baseline_sha:raise ValueError('Baseline changed during frame render')
         scratch=list((output/'depth').iterdir())+list(diagnostics.glob('*.exr'))
         if len(scratch)!=8 or any(not p.is_file() or p.is_symlink() or p.stat().st_nlink!=1 for p in scratch):
             raise ValueError('Unexpected owned scratch inventory; preserving evidence')
         files=[dict(path=str(p.relative_to(output)),bytes=p.stat().st_size,sha256=sha(p)) for p in scratch]
         receipt.update(status='verified',image=dict(path='frame.png',sha256=sha(image_path)),
-            audit=checks,depth_identity=contract,scratch_files=files,diagnostics_retained=True,
+            audit=checks,depth_identity=contract,depth_policy=depth['depth_policy'],
+            npr_material_draws=len(materials),npr_material_resources=len(masks),
+            scratch_files=files,diagnostics_retained=True,
             scope='Partial NPR indirect/rim reference. Direct lighting/runtime fields/engine parity remain unqualified.')
         save()
         if not retain_diagnostics:

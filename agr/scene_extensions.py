@@ -21,7 +21,8 @@ def prepare_scene_extensions(segment_path, pack, provider, decoder, bindings, *,
                              map_name=None, map_margin=26.0, secondary_motion=False, log=print,
                              simulate_effects=False, source_lighting=False,
                              lighting_probe=None, lighting_dotnet=None, source_hero_lighting=False,
-                             atlas_probe=None, cube_probe=None, prepare_npr_materials=False, apply_npr_indirect=False):
+                             atlas_probe=None, cube_probe=None, prepare_npr_materials=False, apply_npr_indirect=False,
+                             character_only=False):
     if apply_npr_indirect and not prepare_npr_materials:
         raise ValueError('NPR application requires material preparation')
     if prepare_npr_materials and not source_hero_lighting:
@@ -30,6 +31,8 @@ def prepare_scene_extensions(segment_path, pack, provider, decoder, bindings, *,
         raise ValueError('Hero Source lighting requires Source map lighting')
     if source_lighting and not include_map:
         raise ValueError('Partial Source lighting requires map preparation')
+    prepare_hero=bool(source_hero_lighting or character_only and source_lighting)
+    components=['diffuse','reflections'] if source_hero_lighting else ['diffuse']
     report = {name: {"status": "not_requested"}
               for name in ("particles", "map", "secondary_motion", "hero_lighting", "npr_materials")}
     data = _read(segment_path)
@@ -43,15 +46,17 @@ def prepare_scene_extensions(segment_path, pack, provider, decoder, bindings, *,
     data.pop('hero_lighting', None)
     data.pop('npr_materials', None)
     data.pop('npr_runtime', None)
+    data.pop('hero_lighting_components',None)
     data['scene_options']['npr_materials']='prepare_partial' if prepare_npr_materials else 'not_requested'
-    if source_hero_lighting:
+    if prepare_hero:
         data['scene_options']['hero_lighting']='partial_indirect_reference'
+        data['hero_lighting_components']=components
     for entity in data["entities"]:
         entity.pop("secondary_motion_file", None)
     data.setdefault("coverage", {})["scene_extras"] = report
     _write(segment_path, data)
 
-    if source_hero_lighting:
+    if prepare_hero:
         from .source_hero_lighting import preflight_hero_lighting
         log('Checking Source/NPR lighting region before map preparation...')
         try:
@@ -117,7 +122,11 @@ def prepare_scene_extensions(segment_path, pack, provider, decoder, bindings, *,
             selected = _read(segment_path)
             map_provider = GameAssetProvider(provider.install_path, provider.cache_dir,
                 map_name=map_name or getattr(provider, "map_name", None))
-            if source_lighting:
+            if character_only and source_lighting:
+                from .source_hero_lighting import prepare_character_lighting_descriptor
+                descriptor=prepare_character_lighting_descriptor(selected,map_provider,decoder,
+                    margin_metres=map_margin)
+            elif source_lighting:
                 from .source_region import prepare_source_map
                 descriptor = prepare_source_map(selected,map_provider,decoder,probe=lighting_probe,
                     dotnet=lighting_dotnet,margin_metres=map_margin,allow_partial=True,log=log)
@@ -127,20 +136,22 @@ def prepare_scene_extensions(segment_path, pack, provider, decoder, bindings, *,
             _write(segment_path, selected)
             return descriptor
         stage("map", map_geometry)
-    if source_hero_lighting:
-        from .source_hero_lighting import prepare_hero_lighting
+    if prepare_hero:
+        from .source_hero_lighting import prepare_hero_lighting, actor_lighting_regions
         from .game_assets import GameAssetProvider
         log('Preparing explicit partial hero Source lighting...')
         try:
             selected=_read(segment_path)
             map_provider=GameAssetProvider(provider.install_path,provider.cache_dir,map_name=map_name or getattr(provider,'map_name',None))
             package=prepare_hero_lighting(selected.get('map',{}),map_provider,decoder,
-                atlas_probe=atlas_probe,cube_probe=cube_probe,dotnet=lighting_dotnet,allow_partial=True)
+                atlas_probe=atlas_probe,cube_probe=cube_probe,dotnet=lighting_dotnet,allow_partial=True,
+                source_regions=actor_lighting_regions(selected,map_margin))
             selected['hero_lighting']=package
             _write(segment_path,selected)
             report['hero_lighting']={'status':'prepared_partial','mode':package['mode'],
                 'assumptions':package['assumptions'],'limits':package['limits'],
-                'probe_count':len(package['plan']['probes']),'coverage':'requires_evaluated_surface_validation'}
+                'probe_count':len(package['plan']['probes']),'coverage':'requires_evaluated_surface_validation',
+                'requested_components':components,'applied_components':[]}
         except Exception as exc:
             report['hero_lighting']={'status':'failed','stage':'preparation','error':str(exc),'error_type':type(exc).__name__}
             _write(Path(pack)/'scene_extension_report.json',report)

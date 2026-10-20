@@ -434,7 +434,9 @@ def brand_window(root):
         except (AttributeError, OSError):
             pass
     def mapped(event):
-        if event.widget is root:
+        # Not once the window runs the frameless chrome (gui_chrome): that sets its own outline color,
+        # which restyling the (hidden) native title bar after a restore would overwrite.
+        if event.widget is root and not getattr(root, "_frameless_chrome", False):
             style_title_bar(root)
     root.bind("<Map>", mapped, add="+")
     return root._renderlock_icon

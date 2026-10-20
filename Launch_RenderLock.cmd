@@ -11,7 +11,7 @@ if not defined LOCALAPPDATA set "RENDERLOCK_LOG_DIR=%TEMP%\RenderLock\logs"
 if not exist "%RENDERLOCK_LOG_DIR%" mkdir "%RENDERLOCK_LOG_DIR%"
 if exist "%~dp0.renderlock-update-pending" goto recover
 if not exist "%~dp0runtime\python.exe" goto incomplete
-"%~dp0runtime\python.exe" -I -B -u "%~dp0portable_launcher.py" %* >"%RENDERLOCK_LOG_DIR%\startup.log" 2>&1
+"%~dp0runtime\python.exe" -I -X utf8 -B -u "%~dp0portable_launcher.py" %* >"%RENDERLOCK_LOG_DIR%\startup.log" 2>&1
 set "EXIT_CODE=%ERRORLEVEL%"
 if "%EXIT_CODE%"=="0" exit /b 0
 type "%RENDERLOCK_LOG_DIR%\startup.log"
@@ -24,5 +24,5 @@ echo The portable runtime is missing. Extract the complete RenderLock ZIP into a
 pause
 exit /b 1
 :recover
-start "" /b "%~dp0.renderlock-update\worker-runtime\python.exe" -I -B "%~dp0.renderlock-update\worker.py" --recover
+start "" /b "%~dp0.renderlock-update\worker-runtime\python.exe" -I -X utf8 -B "%~dp0.renderlock-update\worker.py" --recover
 exit /b 0

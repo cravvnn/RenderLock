@@ -9,7 +9,8 @@ import json
 from pathlib import Path
 import numpy as np
 from .asset_converter import ConversionError,compiled,sha
-from .source_probe_assets import WORLD_SHA256,bounds_array,probe_regions,intersects_bounds
+from .source_probe_assets import (WORLD_SHA256,bounds_array,probe_regions,intersects_bounds,
+                                 selection_regions,atlas_decode_batches,MAX_ATLAS_BYTES)
 from .source_lightmap import SHADER_SHA256
 from .source_brdf_assets import validate_brdf_asset
 from .source_lighting_profiles import probe_layout
@@ -60,9 +61,17 @@ def validate_hero_lighting_package(package,world_sha256,manifest_dir):
     if canonical_sha(plan)!=p.get('plan_sha256') or plan.get('world_sha256')!=world_sha256 or plan.get('shader_sha256')!=SHADER_SHA256:
         raise ConversionError('Hero probe plan identity changed')
     bounds=bounds_array(plan['source_bounds']);probes=plan['probes']
-    if not 1<=len(probes)<=32 or len({str(q['hammeruniqueid']) for q in probes})!=len(probes) or len({q['array_index'] for q in probes})!=len(probes):
+    sparse=selection_regions(bounds,plan.get('source_regions'))
+    batched='atlas_decode_batches' in plan
+    if batched != (sparse is not None):raise ConversionError('Incomplete sparse hero decode contract')
+    _,cube_depth=probe_layout(world_sha256)
+    if not 1<=len(probes)<=(cube_depth if batched else 32) or len({str(q['hammeruniqueid']) for q in probes})!=len(probes) or len({q['array_index'] for q in probes})!=len(probes):
         raise ConversionError('Invalid hero probe inventory')
-    if any(not intersects_bounds(q,bounds) for q in probes):raise ConversionError('Probe outside bound selection')
+    regions_to_check=[row['bounds'] for row in sparse] if sparse else [bounds]
+    if any(not any(intersects_bounds(q,region) for region in regions_to_check) for q in probes):raise ConversionError('Probe outside bound selection')
+    if batched and plan['atlas_decode_batches']!=atlas_decode_batches(probes,world_sha256,
+            max_decoded_bytes=plan.get('atlas_batch_limit_bytes',0)):
+        raise ConversionError('Hero atlas batch inventory or allocation bound changed')
     regions=[r for q in probes for r in probe_regions(q,world_sha256)]
     if regions!=plan['regions']:raise ConversionError('Hero atlas plan layout changed')
     expected={r['name']:r for r in regions};rows=p['atlas']
@@ -83,10 +92,12 @@ def validate_hero_lighting_package(package,world_sha256,manifest_dir):
         length=int(np.prod(e['size']))*16;total+=length
         if row.get('bytes')!=length:raise ConversionError('Hero atlas size changed')
         resolved_atlas[row['name']]=payload(row,length)
-    if total>256*1024*1024:raise ConversionError('Hero atlas storage bound exceeded')
+    if not batched and total>MAX_ATLAS_BYTES:raise ConversionError('Hero atlas storage bound exceeded')
+    if batched and total!=plan.get('decoded_atlas_bytes'):raise ConversionError('Batched hero atlas byte count changed')
     selection={(compiled(q['cubemaptexture']),q['array_index']) for q in probes}
     seen=set();resolved_cubes={};coefficients={}
     for array in p['cubes']:
+        if not 1<=len(array['indices'])<=4:raise ConversionError('Hero cube batch bound exceeded')
         resource=array['resource'];source=plan['inputs'].get(resource)
         if source is None or source['sha256']!=array['source_sha256']:raise ConversionError('Hero cube source mismatch')
         for index in array['indices']:

@@ -19,6 +19,17 @@ def test_unlit_black_does_not_become_white_and_input_is_preserved():
     assert repair_materials(fixed)[0] == fixed
 
 
+def test_npr_unlit_dependency_changes_only_unlit_surface():
+    original=material({'F_UNLIT':1},VectorParams={'g_vColorTint1':[0,0,0,0]})
+    other=material({'F_GLASS':1,'F_SELF_ILLUM':1},FloatParams={'g_flSelfIllumScale1':3},VectorParams={'g_vSelfIllumTint1':[1,0,0,0]})['materials'][0]
+    other['emissiveTexture']={'index':0}
+    original['materials'].append(other)
+    fixed,report=repair_materials(original,unlit_only=True)
+    assert fixed['materials'][1]==other
+    assert fixed['materials'][0]['extensions']=={'KHR_materials_unlit':{}}
+    assert len(report['materials'])==1
+
+
 def test_invalid_unlit_tint_does_not_opt_in_to_blender_repair():
     original = material({'F_UNLIT': 1}, VectorParams={'g_vColorTint1': [-1, 0, 0, 0]})
     fixed, report = repair_materials(original)

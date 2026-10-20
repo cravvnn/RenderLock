@@ -36,10 +36,12 @@ def current_identity(scene_path, coordinates):
         camera=scene.camera.name, source_row_matrix=matrix,
         width=render.resolution_x, height=render.resolution_y,
         pixel_aspect=[render.pixel_aspect_x, render.pixel_aspect_y],
-        coordinates=coordinates, blender_version=bpy.app.version_string, engine=render.engine)
+        coordinates=coordinates, blender_version=bpy.app.version_string, engine=render.engine,
+        camera_clip_source=[float(camera.data.clip_start)/coordinates['unit_scale'],
+                            float(camera.data.clip_end)/coordinates['unit_scale']])
 
 
-def load_current_depth(scene_path, coordinates, depth_path, manifest_path):
+def load_current_depth(scene_path, coordinates, depth_path, manifest_path, *, return_policy=False):
     """No image or shader mutation until current-state and payload checks pass.
 
     Call after opening the baseline and setting frame/viewport, before edits to
@@ -47,4 +49,5 @@ def load_current_depth(scene_path, coordinates, depth_path, manifest_path):
     """
     current = current_identity(scene_path, coordinates)
     manifest = json.loads(Path(manifest_path).read_text(encoding='utf-8'))
-    return load_verified(depth_path, manifest, current), current
+    depth,policy=load_verified(depth_path, manifest, current,return_policy=True)
+    return (depth,current,policy) if return_policy else (depth,current)

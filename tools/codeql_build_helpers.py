@@ -19,7 +19,8 @@ PARTICLE_REVISION = "42743fb93030c552f834fabb30708dad84d0cbf5"
 PROJECTS = ("ParticleProbe", "WorldRegionProbe", "ProbeAtlasDecode", "CubemapDecode")
 PATCHES = ("vrf-ramp-scalar-spline.patch", "vrf-invalid-transform-identity.patch",
            "vrf-create-on-model-bones.patch", "vrf-kv3-v5-unsigned-constants.patch",
-           "vrf-bounded-model-extraction.patch")
+           "vrf-bounded-model-extraction.patch", "vrf-set-child-control-points.patch",
+           "vrf-per-child-control-point.patch")
 
 
 def run(*args, cwd=ROOT):

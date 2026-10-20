@@ -65,17 +65,91 @@ def rope_sample(nodes,t,orientation,camera):
     return {'position':position,'radius':radius,'width':width,'tangent':tangent,'color':color}
 
 
-def build_rope_geometry(particles,renderer,age=0.,camera_position=None):
-    """Build fixed-tessellation ribbon geometry, preserving live array order.
+def rope_collection_bounds(particles, definition=None):
+    """Native finite leaf bounds: particle radius plus authored box padding."""
+    definition = definition or {}
+    if definition.get('m_bInfiniteBounds'):
+        raise UnsupportedEffect('Infinite rope collection bounds are not captured')
+    if definition.get('m_Children') or any(r.get('_class') == 'C_OP_RenderTrails'
+            for r in definition.get('m_Renderers', [])):
+        raise UnsupportedEffect('Rope child/trail-expanded collection bounds are not captured')
+    low_pad = _vector(definition.get('m_BoundingBoxMin', [-10]*3), 3)
+    high_pad = _vector(definition.get('m_BoundingBoxMax', [10]*3), 3)
+    if np.any(low_pad > high_pad):
+        raise UnsupportedEffect('Invalid rope collection bounding-box padding')
+    if not particles:
+        raise UnsupportedEffect('Empty rope has no finite collection bounds')
+    positions = np.array([_vector(p['position'], 3) for p in particles], dtype=np.float32)
+    radii = np.array([_number(p['radius']) for p in particles], dtype=np.float32)
+    if np.any(radii < 0):
+        raise UnsupportedEffect('Negative particle radius cannot establish rope bounds')
+    with np.errstate(over='ignore', invalid='ignore'):
+        low = (positions-radii[:, None]).min(axis=0)+low_pad
+        high = (positions+radii[:, None]).max(axis=0)+high_pad
+    if not np.isfinite(low).all() or not np.isfinite(high).all():
+        raise UnsupportedEffect('Rope collection bounds exceed float32 range')
+    return low, high
 
-    Screen-size tessellation, CP-driven texture coordinates, non-normal vector
-    fields and camera fading are explicit gaps. Bookworm's authored geometry uses
+
+def rope_subdivisions(particles, renderer, camera_position=None, camera_projection=None, definition=None):
+    """Current native collection-level projected-size density, rounded upward to a power of two."""
+    minimum = renderer.get('m_nMinTesselation', 1)
+    maximum = renderer.get('m_nMaxTesselation', 128)
+    if (type(minimum) is not int or type(maximum) is not int
+            or any(not -2**31 <= value < 2**31 for value in (minimum, maximum))):
+        raise UnsupportedEffect('Invalid rope tessellation bounds')
+    if minimum == maximum and 1 <= minimum <= 128:
+        return 1 << (minimum-1).bit_length()
+    if camera_position is None or not isinstance(camera_projection, dict):
+        raise UnsupportedEffect('Adaptive rope tessellation requires a sampled camera projection')
+    camera = _vector(camera_position, 3)
+    low, high = rope_collection_bounds(particles, definition)
+    with np.errstate(over='ignore', invalid='ignore'):
+        delta = high-low
+        diagonal = _F(np.sqrt(_F(_F(delta[2]*delta[2]+delta[1]*delta[1])+delta[0]*delta[0])))
+        centre = (low+high)*_F(.5)
+    if not np.isfinite(diagonal) or not np.isfinite(centre).all():
+        raise UnsupportedEffect('Rope projected bounds exceed float32 range')
+    if camera_projection.get('type') == 'ORTHO':
+        height = _number(camera_projection.get('height'))
+        if height <= 0:
+            raise UnsupportedEffect('Invalid orthographic rope projection height')
+        coverage = np.clip(_F(_F(2)*diagonal/height), 0, 1)
+    elif camera_projection.get('type') == 'PERSP':
+        projection_y = _number(camera_projection.get('projection_y'))
+        if projection_y <= 0:
+            raise UnsupportedEffect('Invalid perspective rope projection scale')
+        with np.errstate(over='ignore', invalid='ignore'):
+            distance = centre-camera
+            distance2 = _F(_F(distance[1]*distance[1]+distance[0]*distance[0])+distance[2]*distance[2])
+        if diagonal*diagonal > distance2:
+            coverage = _F(1)
+        elif distance2 == 0:
+            coverage = _F(0)
+        else:
+            coverage = np.clip(_F(_F(diagonal*projection_y)*_F(1/np.sqrt(distance2))), 0, 1)
+    else:
+        raise UnsupportedEffect('Unsupported rope camera projection')
+    scale = _number(renderer.get('m_flTessScale', 1))
+    metric = _F(_F(np.sqrt(_F(coverage)))*_F(1024))
+    metric = _F(metric*_F(_F(1)/_F(len(particles))))
+    with np.errstate(over='ignore', invalid='ignore'):
+        measured = _F(_F(metric*scale)*_F(.1))
+    if not np.isfinite(measured) or not -2**31 <= measured < 2**31:
+        raise UnsupportedEffect('Rope tessellation metric exceeds native integer range')
+    raw = int(measured)
+    count = max(1, min(128, max(minimum, min(maximum, raw))))
+    return 1 << (count-1).bit_length()
+
+
+def build_rope_geometry(particles,renderer,age=0.,camera_position=None,*,camera_projection=None,definition=None):
+    """Build fixed or sampled adaptive ribbons, preserving live array order.
+
+    CP-driven texture coordinates, non-normal vector fields and camera fading
+    remain explicit gaps. Bookworm's authored geometry uses
     fixed tessellation 2, normal orientation and scratch-float scalar coordinates.
     """
-    minimum=renderer.get('m_nMinTesselation',1);maximum=renderer.get('m_nMaxTesselation',128)
-    if type(minimum) is not int or minimum!=maximum or not 1<=minimum<=128:
-        raise UnsupportedEffect('Adaptive rope tessellation is not implemented')
-    subdivisions=1<<(minimum-1).bit_length()
+    subdivisions = rope_subdivisions(particles, renderer, camera_position, camera_projection, definition) if len(particles) >= 2 else 1
     if renderer.get('m_bEnableFadingAndClamping') or renderer.get('m_flStartFadeDot',1)<1:
         raise UnsupportedEffect('Camera-dependent rope fading is not implemented')
     if renderer.get('m_nTextureVParamsCP',-1)!=-1 or any(renderer.get(k,0)!=0 for k in
@@ -117,7 +191,7 @@ def build_rope_geometry(particles,renderer,age=0.,camera_position=None):
     arc=_number(scalar(renderer.get('m_flTextureVScrollRate'),default=0))*_number(age)
     offset=_number(scalar(renderer.get('m_flTextureVOffset'),default=0))
     def map_v(v):
-        value=v if use_scalar else v/worldsize+offset
+        value=v if use_scalar else v*_F(_F(1)/worldsize)+offset
         return float(np.clip(value,0,1) if renderer.get('m_bClampV') else value)
     previous_width=np.zeros(3,dtype=np.float32)
     def aligned_sample(control,t):

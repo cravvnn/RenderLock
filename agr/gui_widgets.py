@@ -18,6 +18,8 @@ import base64
 import math
 import random
 import struct
+import sys
+import time
 import tkinter as tk
 import zlib
 from tkinter import font as tkfont
@@ -692,6 +694,215 @@ def paper_image(master, size, rect, angle, dx, dy, fill):
     return _cached(("paper", size, rect, round(angle, 3), round(dx, 2), round(dy, 2), fill), make)
 
 
+def wrap_to_width(label):
+    """Wrap a label's text at the label's own width instead of a fixed column.
+
+    Grid it with ``sticky="ew"`` (or pack with ``fill="x"``) so it spans its card: the text
+    then uses the card's full width on big windows and never runs past the edge on small ones.
+    """
+    def wrap(event):
+        if event.width > 1 and getattr(label, "_wrap_width", None) != event.width:
+            label._wrap_width = event.width
+            label.configure(wraplength=event.width)
+    label.bind("<Configure>", wrap, add="+")
+    return label
+
+
+INFO_GLYPH = ""  # "Info" in Segoe Fluent Icons and Segoe MDL2 Assets
+BUBBLE_STYLE = "rounded"   # "rounded": soft rounded bubble without a border; "plain": the text alone
+BUBBLE_RADIUS = 7
+
+
+def _bubble_widget(canvas, text, theme, width):
+    """The bubble itself: a small canvas with a rounded, borderless fill behind the text."""
+    t = theme
+    under = t["CARD"]  # what the bubble's rounded corners blend into (cards and trays are this dark)
+    font = tkfont.Font(font=gui_theme.FONT_SMALL)
+    if BUBBLE_STYLE == "plain":
+        return tk.Label(canvas, text=text, background=under, foreground=t["TEXT"], font=font, justify="left",
+                        anchor="w", wraplength=px(width), bd=0, padx=0, pady=0)
+    pad_x, pad_y = px(10), px(6)
+    tip = tk.Canvas(canvas, background=under, highlightthickness=0, bd=0)
+    label = tip.create_text(pad_x, pad_y, text=text, anchor="nw", fill=t["TEXT"], font=font, width=px(width))
+    x0, y0, x1, y1 = tip.bbox(label)
+    w, h = (x1 - x0) + 2 * pad_x, (y1 - y0) + 2 * pad_y
+    tip.configure(width=w, height=h)
+    draw_rounded(tip, 0, 0, w, h, px(BUBBLE_RADIUS), t["FIELD"], None, under)
+    tip.tag_raise(label)
+    return tip
+
+
+def open_bubble(widget, text, *, theme, box=None, width=320, center=False):
+    """Show ``text`` in a small bubble just below ``box`` of ``widget`` and return a handle.
+
+    ``box`` is (x0, y0, x1, y1) in the widget's own pixels (default: the whole widget). The
+    bubble is a window item on the nearest canvas *around* the widget (the page), above the
+    cards, so it never takes focus and is never clipped by the widget itself. It opens upwards
+    when there is no room below. Close it with ``close_bubble(handle)``.
+    """
+    canvas = widget.master
+    while canvas is not None and not isinstance(canvas, tk.Canvas):
+        canvas = canvas.master
+    if canvas is None or not widget.winfo_viewable():
+        return None
+    tip = _bubble_widget(canvas, text, dict(theme), width)
+    tip.update_idletasks()
+    tip_w, tip_h = tip.winfo_reqwidth(), tip.winfo_reqheight()
+    x0, y0, x1, y1 = box or (0, 0, widget.winfo_width(), widget.winfo_height())
+    left, top = canvas.canvasx(0), canvas.canvasy(0)
+    ox = left + widget.winfo_rootx() - canvas.winfo_rootx()
+    oy = top + widget.winfo_rooty() - canvas.winfo_rooty()
+    x = ox + ((x0 + x1 - tip_w) / 2 if center else x0 - px(6))
+    y = oy + y1 + px(6)
+    x = max(left, min(x, left + canvas.winfo_width() - tip_w - 1))
+    # While the page continues below, its bottom edge is faded (gui_fade): that strip is no room either.
+    from .gui_fade import FADE_HEIGHT
+    faded = min(px(FADE_HEIGHT), canvas.winfo_height() // 3) if canvas.yview()[1] < 0.9995 else 0
+    if y + tip_h > top + canvas.winfo_height() - faded:  # no room below: open upwards
+        y = oy + y0 - tip_h - px(6)
+    item = canvas.create_window(x, y, window=tip, anchor="nw")
+    tk.Misc.lift(tip)  # the widget above the cards (Canvas.lift would mean raising a canvas item)
+    return canvas, tip, item
+
+
+def close_bubble(handle):
+    if handle is not None:
+        canvas, tip, item = handle
+        try:
+            canvas.delete(item)
+            tip.destroy()
+        except tk.TclError:
+            pass
+
+
+class InfoIcon(tk.Label):
+    """A small "i" beside a title or option; hovering or focusing it shows ``text`` in a bubble.
+
+    The bubble is drawn inside the page canvas the icon sits on (as a window item above the
+    cards), not as a separate window, so it never takes focus from the main window.
+    """
+
+    def __init__(self, parent, *, text, theme, size=13, width=320):
+        self._theme = dict(theme)
+        self.text = text
+        self._width = width
+        self._tip = None
+        self._job = None
+        family = gui_theme.icon_font(parent)
+        glyph, font = (INFO_GLYPH, (family, -px(size))) if family else ("ⓘ", gui_theme.FONT)
+        super().__init__(parent, text=glyph, font=font, background=parent.cget("background"),
+                         foreground=self._theme["DIM"], bd=0, padx=0, pady=0, highlightthickness=0,
+                         takefocus=1, cursor="question_arrow")
+        self.bind("<Enter>", lambda _e: self._later(), add="+")
+        self.bind("<Leave>", lambda _e: self._hide(), add="+")
+        self.bind("<FocusIn>", lambda _e: self._show(), add="+")
+        self.bind("<FocusOut>", lambda _e: self._hide(), add="+")
+        self.bind("<Destroy>", lambda _e: self._hide(), add="+")
+
+    def _later(self):
+        self.configure(foreground=self._theme["ACCENT"])
+        if self._job is None:
+            self._job = self.after(150, self._show)
+
+    def _show(self):
+        self._job = None
+        self.configure(foreground=self._theme["ACCENT"])
+        if self._tip is None:
+            self._tip = open_bubble(self, self.text, theme=self._theme, width=self._width)
+
+    def _hide(self):
+        if self._job is not None:
+            self.after_cancel(self._job)
+            self._job = None
+        try:
+            self.configure(foreground=self._theme["DIM"])
+        except tk.TclError:
+            pass  # being destroyed
+        close_bubble(self._tip)
+        self._tip = None
+
+
+class CollapsibleNote(tk.Frame):
+    """A long note shown as one line that ends in a clickable "…"; clicking shows all of it.
+
+    Grid it with ``sticky="ew"``: the line is cut to the note's width, at a word boundary.
+    """
+
+    def __init__(self, parent, *, text, theme, font=None):
+        background = parent.cget("background")
+        super().__init__(parent, background=background)
+        t = dict(theme)
+        self.text = " ".join(text.split())
+        self.expanded = False
+        self._font = tkfont.Font(font=font or gui_theme.FONT_SMALL)
+        common = dict(background=background, font=self._font, bd=0, padx=0, pady=0, anchor="w", justify="left")
+        self._line = tk.Label(self, foreground=t["MUTED"], cursor="hand2", **common)
+        self._more = tk.Label(self, text="…", foreground=t["ACCENT"], cursor="hand2", takefocus=1, **common)
+        self._full = wrap_to_width(tk.Label(self, text=self.text, foreground=t["MUTED"],
+                                            wraplength=px(700), **common))
+        self._less = tk.Label(self, text="Show less", foreground=t["ACCENT"], cursor="hand2", takefocus=1, **common)
+        self._focus_font = self._font.copy()
+        self._focus_font.configure(underline=True)
+        self.columnconfigure(2, weight=1)
+        for widget, action in ((self._line, self.expand), (self._more, self.expand), (self._less, self.collapse)):
+            widget.bind("<Button-1>", lambda _e, act=action: act(), add="+")
+            widget.bind("<Return>", lambda _e, act=action: act(), add="+")
+            widget.bind("<space>", lambda _e, act=action: act(), add="+")
+        for link in (self._more, self._less):  # keyboard focus: brighter and underlined
+            link.bind("<FocusIn>", lambda _e, w=link: w.configure(foreground=t["TEXT"], font=self._focus_font), add="+")
+            link.bind("<FocusOut>", lambda _e, w=link: w.configure(foreground=t["ACCENT"], font=self._font), add="+")
+        self.bind("<Configure>", lambda event: self._fit(event.width), add="+")
+        self._place()
+
+    def _fit(self, width):
+        """Cut the text to one line of ``width`` pixels, leaving room for the "…"."""
+        if self.expanded or width <= 1:
+            return
+        room = width - self._font.measure(" …") - px(2)
+        if self._font.measure(self.text) <= width:
+            self._line.configure(text=self.text)
+            self._more.grid_remove()
+            return
+        low, high = 0, len(self.text)
+        while low < high:  # longest prefix that fits
+            middle = (low + high + 1) // 2
+            if self._font.measure(self.text[:middle]) <= room:
+                low = middle
+            else:
+                high = middle - 1
+        cut = self.text[:low]
+        if " " in cut and low < len(self.text) and self.text[low] != " ":
+            cut = cut[:cut.rfind(" ")]
+        self._line.configure(text=cut.rstrip(" ,;:.") + " ")
+        self._more.grid(row=0, column=1, sticky="w")
+
+    def _place(self):
+        if self.expanded:
+            self._line.grid_remove()
+            self._more.grid_remove()
+            self._full.grid(row=0, column=0, columnspan=3, sticky="ew")
+            self._less.grid(row=1, column=0, sticky="w", pady=(px(4), 0))
+        else:
+            self._full.grid_remove()
+            self._less.grid_remove()
+            self._line.grid(row=0, column=0, sticky="w")
+            self._fit(self.winfo_width())
+
+    def expand(self):
+        had_focus = self.focus_get() is self._more
+        self.expanded = True
+        self._place()
+        if had_focus:
+            self._less.focus_set()  # keep the keyboard on the note's link
+
+    def collapse(self):
+        had_focus = self.focus_get() is self._less
+        self.expanded = False
+        self._place()
+        if had_focus:
+            self._more.focus_set()
+
+
 class CanvasText:
     """A text item that behaves like a label for ``configure(text=, foreground=)``."""
 
@@ -1344,3 +1555,149 @@ class ProgressLine(tk.Canvas):
         self.create_rectangle(max(0, self._pos - span), 0, min(width, self._pos), height,
                               fill=self._theme["ACCENT"], width=0)
         self._job = self.after(self._interval, self._tick)
+
+
+# --------------------------------------------------------------------------
+# Copy to the clipboard, and the small copy button.
+
+COPY_SIZE = 26
+COPY_GLYPH, DONE_GLYPH = "", ""   # Segoe Fluent Icons / MDL2 Assets: Copy, CheckMark
+COPIED_MS = 1500
+
+
+def _win32_copy(widget, text):
+    """Hand ``text`` to the Windows clipboard directly. Tk renders clipboard text on request from its
+    own window; this way the copy no longer depends on that window (the update window closes
+    soon after a copy, and its process ends)."""
+    import ctypes
+    from ctypes import wintypes
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    user32.OpenClipboard.argtypes = [wintypes.HWND]
+    user32.OpenClipboard.restype = wintypes.BOOL
+    user32.EmptyClipboard.restype = wintypes.BOOL
+    user32.SetClipboardData.argtypes = [wintypes.UINT, wintypes.HANDLE]
+    user32.SetClipboardData.restype = wintypes.HANDLE
+    user32.CloseClipboard.restype = wintypes.BOOL
+    kernel32.GlobalAlloc.argtypes = [wintypes.UINT, ctypes.c_size_t]
+    kernel32.GlobalAlloc.restype = wintypes.HGLOBAL
+    kernel32.GlobalLock.argtypes = [wintypes.HGLOBAL]
+    kernel32.GlobalLock.restype = ctypes.c_void_p
+    kernel32.GlobalUnlock.argtypes = [wintypes.HGLOBAL]
+    kernel32.GlobalFree.argtypes = [wintypes.HGLOBAL]
+    kernel32.GlobalFree.restype = wintypes.HGLOBAL
+    try:
+        hwnd = widget.winfo_id()  # the clipboard needs an owner window of this process
+    except tk.TclError:
+        return False
+    buffer = ctypes.create_unicode_buffer(text.replace("\r\n", "\n").replace("\n", "\r\n"))
+    size = ctypes.sizeof(buffer)
+    handle = kernel32.GlobalAlloc(0x0002, size)  # GMEM_MOVEABLE
+    if not handle:
+        return False
+    pointer = kernel32.GlobalLock(handle)
+    if not pointer:
+        kernel32.GlobalFree(handle)
+        return False
+    ctypes.memmove(pointer, buffer, size)
+    kernel32.GlobalUnlock(handle)
+    for _ in range(10):  # another program (a clipboard manager) may hold it for a moment
+        if user32.OpenClipboard(hwnd):
+            break
+        time.sleep(0.02)
+    else:
+        kernel32.GlobalFree(handle)
+        return False
+    try:
+        if not user32.EmptyClipboard() or not user32.SetClipboardData(13, handle):  # CF_UNICODETEXT
+            kernel32.GlobalFree(handle)
+            return False
+    finally:
+        user32.CloseClipboard()
+    return True
+
+
+def copy_text(widget, text):
+    """Put ``text`` on the clipboard; True when it worked."""
+    if sys.platform == "win32":
+        try:
+            return _win32_copy(widget, text)
+        except (OSError, AttributeError):
+            pass  # no usable user32/kernel32: Tk's clipboard below
+    try:
+        widget.clipboard_clear()
+        widget.clipboard_append(text)
+    except tk.TclError:
+        return False
+    return True
+
+
+class CopyButton(tk.Canvas):
+    """Small icon button that copies text (the update window's diagnostic box, the log drawer).
+
+    ``command`` copies and returns True on success; the button then shows a check mark for
+    ``COPIED_MS``. It sits on a FIELD background."""
+
+    def __init__(self, parent, *, palette, command):
+        self._t = palette
+        self._command = command
+        self._size = gui_theme.px(COPY_SIZE)
+        self._hover = self._pressed = self._focused = self._done = False
+        self._job = None
+        super().__init__(parent, width=self._size, height=self._size, background=palette["FIELD"],
+                         highlightthickness=0, bd=0, takefocus=True, cursor="hand2")
+        family = gui_theme.icon_font(self)
+        self._font = (family, -gui_theme.px(13)) if family else None
+        self.bind("<Enter>", lambda _e: self._set("_hover", True))
+        self.bind("<Leave>", lambda _e: (self._set("_pressed", False), self._set("_hover", False)))
+        self.bind("<ButtonPress-1>", lambda _e: self._set("_pressed", True))
+        self.bind("<ButtonRelease-1>", self._on_release)
+        self.bind("<Return>", lambda _e: self.invoke())
+        self.bind("<space>", lambda _e: self.invoke())
+        self.bind("<FocusIn>", lambda _e: self._set("_focused", True))
+        self.bind("<FocusOut>", lambda _e: self._set("_focused", False))
+        self.bind("<Destroy>", lambda e: e.widget is self and self._job is not None and self.after_cancel(self._job))
+        self._draw()
+
+    def _set(self, name, value):
+        setattr(self, name, value)
+        self._draw()
+
+    def _on_release(self, event):
+        was, self._pressed = self._pressed, False
+        self._draw()
+        if was and 0 <= event.x < self._size and 0 <= event.y < self._size:
+            self.invoke()
+
+    def invoke(self):
+        if self._command():
+            self._done = True
+            self._draw()
+            if self._job is not None:
+                self.after_cancel(self._job)
+            self._job = self.after(COPIED_MS, self._reset)
+
+    def _reset(self):
+        self._job = None
+        self._set("_done", False)
+
+    def _draw(self):
+        self.delete("all")
+        t, s = self._t, self._size
+        face = t["BUTTON_PRESSED"] if self._pressed else (t["BUTTON"] if self._hover else None)
+        outline = t["ACCENT"] if self._focused else None
+        if face or outline:
+            draw_rounded(self, 0, 0, s, s, gui_theme.px(5), face or t["FIELD"], outline, t["FIELD"])
+        ink = t["ACCENT"] if self._done else (t["TEXT"] if self._hover or self._focused else t["MUTED"])
+        c = s / 2
+        if self._font:
+            self.create_text(c, c, text=DONE_GLYPH if self._done else COPY_GLYPH, font=self._font, fill=ink)
+        elif self._done:
+            k = gui_theme.px(4)
+            self.create_line(c - k, c, c - k / 3, c + k * 0.7, c + k, c - k * 0.7, fill=ink, width=gui_theme.hairline())
+        else:  # two overlapping sheets
+            k = gui_theme.px(4)
+            self.create_rectangle(c - k + gui_theme.px(2), c - k - gui_theme.px(1), c + k + gui_theme.px(1), c + k - gui_theme.px(2),
+                                  outline=ink, width=gui_theme.hairline())
+            self.create_rectangle(c - k - gui_theme.px(1), c - k + gui_theme.px(2), c + k - gui_theme.px(2), c + k + gui_theme.px(1),
+                                  outline=ink, fill=t["FIELD"], width=gui_theme.hairline())

@@ -118,11 +118,17 @@ def merge_secondary_motion_coverage(preparation, blender_entities=None):
                 if isinstance(row, dict) and row.get('id') is not None
                 and isinstance(row.get('secondary_motion'), dict)}
     selected = {str(row['id']): row for row in supported if row.get('id') is not None}
+    preparation_failures=rows(prep.get('failed_entities', []))
+    failed_ids={str(row['id']) for row in preparation_failures if row.get('id') is not None}
     for key, row in incoming.items():
+        if key in failed_ids:
+            continue
         if row['secondary_motion'].get('status') not in ('not_requested', 'not_prepared'):
             selected.setdefault(key, {'id': row['id'], 'hero_name': row.get('hero_name')})
-    baked, failed = [], []
+    baked, failed = [], list(preparation_failures)
     for key, source in selected.items():
+        if key in failed_ids:
+            continue
         entity = incoming.get(key, {})
         render = dict(entity.get('secondary_motion', {}))
         row = dict(source)
@@ -176,10 +182,15 @@ def merge_secondary_motion_coverage(preparation, blender_entities=None):
     else:
         result['status'] = 'no_supported_entities'
     details = []
-    if failed:
+    if preparation_failures:
+        details.append('Cloth preparation failed: ' + '; '.join(
+            _cloth_entity_label(row) + ': ' + str(row.get('error', 'preparation did not complete'))
+            for row in preparation_failures))
+    bake_failures=[row for row in failed if row not in preparation_failures]
+    if bake_failures:
         details.append('Withheld cloth bakes: ' + '; '.join(
             _cloth_entity_label(row) + ': ' + str(row.get('error', 'bake did not complete'))
-            for row in failed))
+            for row in bake_failures))
     if baked:
         noun = "entity" if len(baked) == 1 else "entities"
         content = [f"{len(baked)} {noun} baked"]
@@ -253,6 +264,19 @@ def scene_completion_message(report):
     stages = {name: report.get(name, extras.get(name, {}))
               for name in ('map', 'particles', 'secondary_motion')}
     problems = []
+    missing_animation = report.get('coverage', {}).get('skeletal_animation', {}).get('unsupported_entities', 0)
+    if isinstance(missing_animation, int) and missing_animation > 0:
+        rows = [row for row in report.get('blender', {}).get('entities', [])
+                if isinstance(row, dict) and isinstance(row.get('pose'), dict)
+                and row['pose'].get('status') != 'baked']
+        partial_rows = [row for row in rows if row['pose']['status']=='baked_partial']
+        for row in partial_rows:
+            count=len(row['pose'].get('unavailable_pose_ticks', []))
+            problems.append(f"partial skeletal animation for {_cloth_entity_label(row)} ({count} unavailable recorded pose samples hidden)")
+        names = [_cloth_entity_label(row) for row in rows if row not in partial_rows]
+        detail = ', '.join(names) if names else f'{missing_animation} character tracks'
+        if names or not partial_rows:
+            problems.append('skeletal animation unavailable for ' + detail)
     for name, entry in stages.items():
         if not isinstance(entry, dict):
             continue
@@ -287,4 +311,11 @@ def scene_completion_message(report):
         message += ' Additional effect layers remain unsupported; see coverage.'
     elif report.get('warnings'):
         message += ' Review the coverage warnings.'
+    lighting=report.get('hero_lighting',{})
+    if isinstance(lighting,dict):
+        routes=lighting.get('material_routes')
+        count=(sum('diffuse' in row.get('applied_components',[]) for row in routes)
+               if isinstance(routes,list) else lighting.get('applied_material_count',lighting.get('material_count',0)))
+        if 'diffuse' in lighting.get('applied_components',[]) and count>0:
+            message += f" Source character diffuse lighting applied to {count} {'material' if count==1 else 'materials'}."
     return message

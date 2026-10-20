@@ -1,7 +1,22 @@
+# 0.3.0b8 - Character transformations and UI polish
+
+- Integrate Kara's portrait-based character selection, recorded-team trays, accessible follow-camera placement, wrapping notes, copy controls and matching update/recovery artwork; retain all replay heroes and existing strict/partial export controls.
+- Remove missing-reset-pose warnings from a cropped clip when the unavailable tick is outside its selected range; retain the original diagnostics as source provenance.
+- Keep pose-availability metadata with retained particle history, so complete selected body animation can be reused without hiding missing historical inputs. Particle attachments still refuse incomplete history, and a reset-only selected range still refuses export.
+- Preserve each movement sample's full recorded model resource ID, including character transformations; slicing a package into another form clears the previous form's derived model and rig bindings.
+- Installed-game exports separate recorded model runs into their own geometry, skeleton and pose tracks under one pawn root and follow camera. Saved-package inspection and slicing preserve one player identity; no character is removed from selection.
+- Keep strict refusal when a model reset has no recorded pose. Explicit partial export can retain both forms, hide the unavailable sample and identify its exact tick in the report. Particle model/attachment providers across model changes remain unsupported; the first form is never substituted for another.
+- Match an unambiguous ASCII-case difference between animation and model bone names only when their named parents agree; retain these bindings in the pose report.
+
 # 0.3.0b7 — Update checks and character preview lighting
 
 - Fix completed update checks attempting to configure a canvas text ID as a widget; automatic and manual checks now update the redesigned sidebar without a callback exception.
+- Stage the scene, reusable package and report before replacing outputs; save failures restore the previous files and retain diagnostics. A temporary-file cleanup error no longer reports a successfully saved scene as failed.
 - Keep the editable key/fill preview lights enabled for the Elagrimm character look, so partial indirect lighting is supplemented by the artist shader's direct-light response.
+- Place and animate follow-shot preview lights relative to the selected character and camera for clearer, consistent character lighting. These remain editable artistic Blender lights; Source direct lighting and shadows are incomplete.
+- Select follow-camera heroes by their actual inspected names, with Overview and stale-input checks; retain the full replay roster and existing hero ID/settings/CLI behavior.
+- Support the qualified two-target point/orientation, parent and single-influence attachment rules used by the retained current-model regression. Preserve native-disabled missing-slave rules explicitly in reports; strict replay/asset identity and unsupported-mode checks remain.
+- Preserve typed installed physics values used by supported cloth preparation, and accept explicit captured replay-time intervals in the shot backend. Full cloth, particle and NPR/runtime parity remains incomplete and reported.
 
 # 0.3.0b6 — Redesigned UI, automatic cloth and lighting checks
 - Integrate Kara's redesigned interface with the existing charcoal, cream and brass palette, RenderLock branding, character selection and in-app updates.

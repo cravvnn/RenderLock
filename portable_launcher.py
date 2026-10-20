@@ -37,10 +37,16 @@ def verify(root=ROOT):
 
 
 def main(argv=None):
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+            except (OSError, ValueError):
+                pass
     try:
         if (ROOT / ".renderlock-update-pending").exists():
             work = ROOT / ".renderlock-update"
-            subprocess.Popen([str(work / "worker-runtime/python.exe"), "-I", "-B",
+            subprocess.Popen([str(work / "worker-runtime/python.exe"), "-I", "-X", "utf8", "-B",
                               str(work / "worker.py"), "--recover", "--parent", str(__import__('os').getpid())], cwd=work,
                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             return 0

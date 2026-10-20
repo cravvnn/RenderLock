@@ -3,7 +3,7 @@ import copy
 import math
 from agr.blender_simulated_effects import trail_dimensions, texture_control_value, static_texture_sequence, collect_particle_tracks
 from agr.installed_effects import UnsupportedEffect
-from agr.blender_simulated_effects import texture_uv_parameters
+from agr.blender_simulated_effects import texture_uv_parameters, collect_system_samples
 
 def particle(**changes):
  return dict(previous=[-10,0,0],position=[0,0,0],trail=.2,age=.1,radius=4,**changes)
@@ -22,6 +22,15 @@ def test_repeated_child_resources_keep_independent_particle_tracks():
  for path,x in [('root/0/0',10),('root/1/0',20)]:
   samples=tracks['shot',path,'page.vpcf',0]
   assert [p['position'] for _,_,p in samples]==[[x,1,0],[x,2,0]]
+
+
+def test_whole_rope_samples_preserve_live_array_order_empty_frames_and_sibling_identity():
+ data=tree_states();first=data['instances'][0]['frames'][0]['systems'][0]
+ first['particles']=[{'id':9},{'id':2}]
+ data['instances'][0]['frames'][1]['systems'][0]['particles']=[]
+ result=collect_system_samples(data)
+ assert result['shot','root/0/0','page.vpcf']==[(1,[{'id':9},{'id':2}]),(2,[])]
+ assert result['shot','root/1/0','page.vpcf'][0][1][0]['position']==[20,1,0]
 
 
 def test_missing_simulation_tick_cannot_stretch_a_particle_track():

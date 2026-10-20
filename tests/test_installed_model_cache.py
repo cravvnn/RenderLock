@@ -3,6 +3,7 @@
 These are offline fixture checks, not game-frame or Blender import parity tests.
 """
 import json
+import math
 from pathlib import Path
 import struct
 from types import SimpleNamespace
@@ -41,16 +42,27 @@ def installed(tmp_path, monkeypatch):
             return SimpleNamespace(returncode=0, stdout=' '.join((
                 '--gltf_export_format', '--gltf_export_animations', '--gltf_animation_list',
                 '--gltf_export_materials', '--block')), stderr='')
+        if '-b' in command:
+            block=command[command.index('-b')+1]
+            metadata=({'m_modelSkeleton':{'m_boneName':['root'],'m_nParent':[-1]},
+                       'm_modelInfo':{'m_keyValueText':'<!-- kv3 encoding:text:version{e21c7f3c-8a33-41c5-9977-a76d3a32aa0d} format:generic:version{7412167c-06e9-4698-aff2-e63eb59037e7} -->\n{}'},
+                       'm_meshGroups':['default'],'m_refMeshGroupMasks':[1],
+                       'm_refLODGroupMasks':[1],'m_nDefaultMeshGroupMask':1,'m_refMeshes':[]}
+                      if block=='DATA' else {'embedded_meshes':[{'name':'body','mesh_index':0}]})
+            header='<!-- kv3 encoding:text:version{e21c7f3c-8a33-41c5-9977-a76d3a32aa0d} format:generic:version{7412167c-06e9-4698-aff2-e63eb59037e7} -->\n'
+            text=header+json.dumps(metadata).replace('\":','\"= ')
+            return SimpleNamespace(returncode=0,stdout=text if kwargs.get('text') else text.encode(),
+                                   stderr='' if kwargs.get('text') else b'')
         target = Path(command[command.index('-o') + 1])
         assert '--gltf_animation_list' in command
         assert command[command.index('--gltf_animation_list') + 1] == '__agr_no_source_actions__'
         tree = target.parent / 'input'
         assert all((tree / name).read_bytes() == content for name, content in resources.items())
-        document = {'meshes': [{}], 'skins': [{'joints': [1]}],
-                    'nodes': [{'mesh': 0, 'skin': 0}, {'name': 'root'}],
+        document = {'meshes': [{'primitives':[{'material':0}]}], 'skins': [{'joints': [1]}],
+                    'nodes': [{'mesh': 0, 'skin': 0,'name':'hero.vmdl_c.body'}, {'name': 'root'}],
                     'images': [{'uri': 'textures/hero.png'}],
                     'materials': [{'name': 'Hero', 'extras': {'vmat': {
-                        'ShaderName': 'pbr.vfx', 'IntParams': {'F_GLASS': 1}}}}]}
+                        'Name':'materials/hero.vmat','ShaderName': 'pbr.vfx', 'IntParams': {'F_GLASS': 1}}}}]}
         encoded = json.dumps(document).encode()
         encoded += b' ' * (-len(encoded) % 4)
         target.write_bytes(struct.pack('<4sIII4s', b'glTF', 2, 20 + len(encoded),
@@ -72,7 +84,7 @@ def installed(tmp_path, monkeypatch):
     monkeypatch.setattr(gltf_materials, 'repair_glb', repair)
     jobs = []
 
-    def prepare(start=10, material_repairs=False, need_animation=False):
+    def prepare(start=10, material_repairs=False, need_animation=False, model_constraints=False):
         work = tmp_path / f'job-{len(jobs)}'
         work.mkdir()
         jobs.append(work)
@@ -86,7 +98,8 @@ def installed(tmp_path, monkeypatch):
                             for tick in (start, start + 1)]}]}))
         pack = prepare_installed_assets(segment, work, root, cache, converter,
                                         need_animation=need_animation,
-                                        material_repairs=material_repairs, log=messages.append)
+                                        material_repairs=material_repairs, model_constraints=model_constraints,
+                                        log=messages.append)
         data = read_scene(segment)
         report = json.loads((work / 'installed_asset_report.json').read_text())
         return SimpleNamespace(work=work, pack=pack, segment=segment, data=data, report=report,
@@ -95,6 +108,16 @@ def installed(tmp_path, monkeypatch):
     return SimpleNamespace(prepare=prepare, resources=resources, install=root, cache=cache,
                            converter=converter, companion=companion, calls=calls,
                            repairs=repairs, messages=messages, jobs=jobs)
+
+
+def test_constraint_metadata_route_preserves_existing_model_cache(installed):
+    first=installed.prepare()
+    constrained=installed.prepare(model_constraints=True)
+    model=constrained.data['entities'][0]['model_constraints']
+    assert model['schema_version']==1 and model['names']==['root'] and model['definitions']==[]
+    assert model['resource_sha256'] and model['preparation_dependencies']['model_constraints.py']
+    assert first.model==constrained.model and len(installed.calls)==1
+    assert constrained.report['model_cache']['reused']==1
 
 
 @pytest.mark.parametrize('material_repairs', [False, True])
@@ -119,6 +142,27 @@ def test_repeat_and_new_replay_ranges_share_static_files_without_export_copies(i
         assert later.report['model_cache']['material_repairs_reused'] == 1
         assert later.report['model_cache']['material_repairs_built'] == 0
         assert not (first.model.parent / 'model.glb').exists()  # Base is retained in its own entry.
+
+
+def test_installed_pose_basis_matches_client_facing_on_fresh_and_cached_models(installed):
+    """The client render root faces 180 degrees from recorded body angles.
+
+    Source2Viewer's baked basis, followed by Blender's Y-up import, contributes
+    -90 degrees. Exercise the real installed bridge so cache reuse cannot restore
+    the old binding that put animated actors sideways.
+    """
+    first = installed.prepare()
+    reused = installed.prepare(start=300)
+    assert first.model == reused.model and len(installed.calls) == 1
+    for job in (first, reused):
+        entity = job.data['entities'][0]
+        assert entity['render_root_yaw_degrees'] == 180
+        for recorded_yaw in (0, 90, 223.03138732910156, 270):
+            imported = math.radians(recorded_yaw + entity['model_yaw_degrees']
+                                    + entity['pose_basis_yaw_degrees'])
+            client = math.radians(recorded_yaw + 180)
+            assert math.cos(imported) == pytest.approx(math.cos(client), abs=1e-6)
+            assert math.sin(imported) == pytest.approx(math.sin(client), abs=1e-6)
 
 
 @pytest.mark.parametrize('changed', [
@@ -179,7 +223,10 @@ def test_failed_animation_keeps_successful_static_cache_for_retry(installed, mon
 
 def test_material_variant_rejects_bytes_changed_during_copy(installed, monkeypatch):
     first = installed.prepare()
-    texture = first.model.parent / 'textures/hero.png'
+    manifests = list((installed.cache / 'derived-v1').glob('*/conversion.json'))
+    before_manifests=set(manifests)
+    base=next(p.parent for p in manifests if json.loads(p.read_text())['descriptor']['operation']=='hero_glb')
+    texture = base / 'textures/hero.png'
     from agr import installed_assets
     copyfile = installed_assets.shutil.copyfile
 
@@ -194,8 +241,8 @@ def test_material_variant_rejects_bytes_changed_during_copy(installed, monkeypat
         installed.prepare(material_repairs=True)
     assert texture.read_bytes() == b'unchanged image fixture'
     manifests = list((installed.cache / 'derived-v1').glob('*/conversion.json'))
-    assert len(manifests) == 1
-    assert json.loads(manifests[0].read_text())['descriptor']['operation'] == 'hero_glb'
+    assert set(manifests)==before_manifests
+    assert not any(json.loads(p.read_text())['descriptor']['operation']=='hero_material_repairs_v1' for p in manifests)
 
 
 @pytest.mark.parametrize('injected_path', [
@@ -284,3 +331,32 @@ def test_published_scene_rebinds_shared_model_without_saving_cache_dependency(in
     # persistent cache, instead of relying on a deleted per-export model copy.
     retry = installed.prepare(start=300, material_repairs=True)
     assert retry.model == first.model and len(installed.calls) == 1
+
+
+def test_npr_unlit_variant_is_cached_and_does_not_opt_in_other_material_repairs(installed):
+    from agr.installed_assets import _cached_material_repairs
+    from agr.asset_converter import read_glb
+    base=installed.prepare()
+    decoder=AssetConverter(installed.converter,installed.cache,log=lambda _:None)
+    # A model with no used unlit draw stays on the original immutable conversion.
+    unchanged,receipt=_cached_material_repairs(base.model,decoder,unlit_only=True)
+    assert unchanged==base.model and receipt['status']=='not_required'
+    assert not installed.repairs
+    document=read_glb(base.model)
+    document['meshes']=[dict(primitives=[dict(material=0),dict(material=1)])]
+    document['materials']=[dict(name='void',extras=dict(vmat=dict(ShaderName='pbr.vfx',
+        IntParams={'F_UNLIT':1},VectorParams={'g_vColorTint1':[0,0,0,0]}))),document['materials'][0]]
+    encoded=json.dumps(document).encode();encoded+=b' '*(-len(encoded)%4)
+    base.model.write_bytes(struct.pack('<4sIII4s',b'glTF',2,20+len(encoded),len(encoded),b'JSON')+encoded)
+    manifest=base.model.parent/'conversion.json';record=json.loads(manifest.read_text())
+    record['files'][base.model.name]=sha(base.model);manifest.write_text(json.dumps(record))
+    original={p:sha(p) for p in base.model.parent.rglob('*') if p.is_file()}
+    first,receipt=_cached_material_repairs(base.model,decoder,unlit_only=True)
+    second,_=_cached_material_repairs(base.model,decoder,unlit_only=True)
+    assert first==second and len(installed.repairs)==1
+    assert {p:sha(p) for p in original}==original
+    fixed=read_glb(first)
+    assert fixed['materials'][0]['extensions']=={'KHR_materials_unlit':{}}
+    assert fixed['materials'][1]==document['materials'][1]
+    assert fixed['materials'][0]['pbrMetallicRoughness']['baseColorFactor']==[0,0,0,1]
+    assert 'NPR typed unlit route' in receipt['dependency']

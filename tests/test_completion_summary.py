@@ -29,6 +29,40 @@ def test_successful_map_and_partial_effects_are_explicit_supported_content():
     assert 'earlier replay history' in warning and 'not the number of effects missing from the selected clip' in warning
 
 
+def test_partial_character_export_names_missing_skeletal_animation_before_optional_content():
+    report = dict(coverage={'skeletal_animation': {'evaluated_entities': 1, 'unsupported_entities': 1}},
+        blender={'entities': [
+            {'id': '1:1', 'hero_name': 'Bebop', 'pose': {'status': 'baked'}},
+            {'id': '2:1', 'hero_name': 'Seven', 'pose': {'status': 'unsupported'}}]},
+        particles={'status': 'partial', 'objects': 3}, warnings=['missing pose'])
+    summary = scene_completion_message(report)
+    assert summary == 'Scene saved; skeletal animation unavailable for Seven [2:1]. See the coverage report.'
+    assert 'Bebop' not in summary
+
+
+def test_model_reset_summary_names_only_the_hidden_sample_without_claiming_whole_actor_missing():
+    report=dict(coverage={'skeletal_animation':{'unsupported_entities':1}},blender={'entities':[
+        dict(id='7:2',hero_name='Silver',pose=dict(status='baked')),
+        dict(id='7:2@model:12',hero_name='Silver',pose=dict(status='baked_partial',unavailable_pose_ticks=[12]))]})
+    message=scene_completion_message(report)
+    assert 'partial skeletal animation for Silver' in message
+    assert '1 unavailable recorded pose samples hidden' in message
+    assert 'skeletal animation unavailable for' not in message
+
+
+def test_source_diffuse_completion_names_actual_material_application():
+    report=dict(hero_lighting=dict(status='partial',applied_components=['diffuse'],material_count=6))
+    assert 'Source character diffuse lighting applied to 6 materials.' in scene_completion_message(report)
+    report['hero_lighting']['applied_components']=[]
+    assert 'lighting applied' not in scene_completion_message(report)
+
+
+def test_preserved_unlit_surface_is_not_counted_as_applied_diffuse():
+    report=dict(hero_lighting=dict(status='partial',applied_components=['diffuse'],material_count=2,
+        material_routes=[dict(applied_components=['diffuse']),dict(applied_components=[])]))
+    assert 'lighting applied to 1 material.' in scene_completion_message(report)
+
+
 @pytest.mark.parametrize('exit_code', [0,3])
 def test_gui_worker_reads_summary_only_after_successful_export(tmp_path,exit_code):
     from agr.gui import AGRApp

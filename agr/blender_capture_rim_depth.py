@@ -17,7 +17,6 @@ def capture_rim_depth(scene_path,coordinates,output):
     scene=bpy.context.scene
     contract=current_identity(scene_path,coordinates)
     output=Path(output).resolve()
-    if output.drive.upper()!='C:':raise ValueError('Generated rim depth must stay on C:')
     width,height=contract['width'],contract['height']
     if max(width,height)>4096:raise ValueError('Depth viewport exceeds bounded capture size')
     parent=output.parent
@@ -50,12 +49,13 @@ def capture_rim_depth(scene_path,coordinates,output):
         depth=pixels.reshape(height,width,4)[::-1,:,0].astype(np.float64)/coordinates['unit_scale']
         if current_identity(scene_path,coordinates)!=contract:raise ValueError('Depth capture identity changed during render')
         path=output/'axial-source-depth.npy';np.save(path,depth)
-        manifest=make_manifest(path,contract)
+        manifest=make_manifest(path,contract,allow_cycles_background=True)
         load_verified(path,manifest,contract)
         (output/'depth-manifest.json').write_text(json.dumps(manifest,indent=2),encoding='utf-8')
         return dict(status='captured_verified_identity',depth_path=str(path),
                     manifest_path=str(output/'depth-manifest.json'),identity=contract,
-                    limits='Cycles axial reference; no engine depth or arbitrary unsaved geometry authentication.')
+                    depth_policy=manifest['background_policy'],
+                    limits='Cycles axial reference with authenticated Z=1e10 no-hit values; no engine background/depth parity or arbitrary unsaved geometry authentication.')
     finally:
         scene.compositing_node_group=old_tree
         scene.cycles.samples=old_samples;scene.cycles.use_denoising=old_denoising

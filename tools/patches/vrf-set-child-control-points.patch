@@ -1,0 +1,174 @@
+diff --git a/ValveResourceFormat/Particles/ParticleSystemState.cs b/ValveResourceFormat/Particles/ParticleSystemState.cs
+--- a/ValveResourceFormat/Particles/ParticleSystemState.cs
++++ b/ValveResourceFormat/Particles/ParticleSystemState.cs
+@@ -1,3 +1,4 @@
++using System.Linq;
+ using ValveResourceFormat.Particles.Utils;
+ using ValveResourceFormat.ResourceTypes;
+ 
+@@ -186,12 +187,83 @@
+         // C_OP_SetParentControlPointsToChildCP creates them, so it stays null for almost every system.
+         private Dictionary<int, ControlPoint>? controlPointOverrides;
+ 
++        private HashSet<int>? DeclaredInputSet;
++        private readonly HashSet<int> AuthoredPoints = [];
++        private readonly HashSet<int> AuthoredPointSummary = [];
++        private readonly HashSet<int> UnprovidedPointReads = [];
++
++        private ParticleSystemState RootState => ParentSystem?.RootState ?? this;
++
++        /// <summary>The policy used to distinguish supplied and position-authored control points.</summary>
++        public string? ControlPointInputPolicy => RootState.DeclaredInputSet == null
++            ? null : "agr_set_child_position_inputs_v1";
++
++        /// <summary>External control points explicitly supplied before simulation began.</summary>
++        public int[] DeclaredControlPointInputs => RootState.DeclaredInputSet?.Order().ToArray() ?? [];
++
++        /// <summary>Control points written by the position-only child operator.</summary>
++        public int[] AuthoredControlPointIndices => RootState.AuthoredPointSummary.Order().ToArray();
++
++        /// <summary>Control points read without an external or preceding authored value.</summary>
++        public int[] UnprovidedControlPointIndices => RootState.UnprovidedPointReads.Order().ToArray();
++
++        /// <summary>Begins an input audit after the external creation-time snapshots are supplied.</summary>
++        /// <param name="indices">The complete external control point indices.</param>
++        public void BeginControlPointInputAudit(IEnumerable<int> indices)
++        {
++            if (ParentSystem != null || DeclaredInputSet != null)
++            {
++                throw new InvalidOperationException("The input audit must begin once on a fresh root system");
++            }
++
++            var inputs = indices.ToArray();
++            if (inputs.Any(index => index is < 0 or > 63) || inputs.Distinct().Count() != inputs.Length)
++            {
++                throw new ArgumentException("Control point inputs must be distinct indices in 0..63", nameof(indices));
++            }
++
++            DeclaredInputSet = [.. inputs];
++        }
++
++        private void AuditControlPointRead(int cp, bool localOverride)
++        {
++            var root = RootState;
++            if (root.DeclaredInputSet != null && !AuthoredPoints.Contains(cp)
++                && (localOverride || !root.DeclaredInputSet.Contains(cp)))
++            {
++                root.UnprovidedPointReads.Add(cp);
++            }
++        }
++
++        internal void WriteAuthoredChildPosition(int cp, Vector3 position)
++        {
++            var root = RootState;
++            if (root.DeclaredInputSet?.Contains(cp) == true)
++            {
++                throw new InvalidOperationException("Position-only child control points cannot replace an external transform");
++            }
++
++            OverrideControlPoint(cp).Position = position;
++            HighestControlPoint = Math.Max(HighestControlPoint, cp);
++            AuthoredPoints.Add(cp);
++            root.AuthoredPointSummary.Add(cp);
++
++            if (Data != null)
++            {
++                foreach (var child in Data.Children)
++                {
++                    child.RenderState.WriteAuthoredChildPosition(cp, position);
++                }
++            }
++        }
++
+         /// <summary>Gets a control point, creating it and every index below it on first use.</summary>
+         /// <param name="cp">The control point index.</param>
+         public ControlPoint GetControlPoint(int cp)
+         {
+             if (controlPointOverrides != null && controlPointOverrides.TryGetValue(cp, out var overridden))
+             {
++                AuditControlPointRead(cp, localOverride: true);
+                 return overridden;
+             }
+ 
+@@ -200,6 +272,7 @@
+                 return ParentSystem.GetControlPoint(cp);
+             }
+ 
++            AuditControlPointRead(cp, localOverride: false);
+             if (controlPoints.TryGetValue(cp, out var point))
+             {
+                 return point;
+diff --git a/ValveResourceFormat/Particles/ParticleControllerFactory.cs b/ValveResourceFormat/Particles/ParticleControllerFactory.cs
+--- a/ValveResourceFormat/Particles/ParticleControllerFactory.cs
++++ b/ValveResourceFormat/Particles/ParticleControllerFactory.cs
+@@ -172,6 +172,7 @@
+                 ["C_OP_RemapTransformVisibilityToScalar"] = operatorInfo => new RemapTransformVisibilityToScalar(operatorInfo),
+                 ["C_OP_RemapTransformVisibilityToVector"] = operatorInfo => new RemapTransformVisibilityToVector(operatorInfo),
+                 ["C_OP_RotateVector"] = operatorInfo => new RotateVector(operatorInfo),
++                ["C_OP_SetChildControlPoints"] = parse => new SetChildControlPoints(parse),
+                 ["C_OP_SetAttributeToScalarExpression"] = operatorInfo => new SetAttributeToScalarExpression(operatorInfo),
+                 ["C_OP_SetFloat"] = operatorInfo => new SetFloat(operatorInfo),
+                 ["C_OP_SetFloatCollection"] = operatorInfo => new SetFloatCollection(operatorInfo),
+diff --git a/ValveResourceFormat/Particles/Operators/SetChildControlPoints.cs b/ValveResourceFormat/Particles/Operators/SetChildControlPoints.cs
+new file mode 100644
+--- /dev/null
++++ b/ValveResourceFormat/Particles/Operators/SetChildControlPoints.cs
+@@ -0,0 +1,58 @@
++using Microsoft.Extensions.Logging;
++using ValveResourceFormat.Particles.Utils;
++using ValveResourceFormat.ResourceTypes;
++
++namespace ValveResourceFormat.Particles.Operators
++{
++    /// <summary>Writes a particle-position run to matching children and their descendants.</summary>
++    class SetChildControlPoints : ParticleFunctionOperator
++    {
++        private readonly int ChildGroupId;
++        private readonly int FirstControlPoint;
++        private readonly int NumControlPoints;
++        private readonly bool Reverse;
++        private readonly bool Supported;
++        private readonly List<ParticleSystemState> MatchingChildren = [];
++
++        public SetChildControlPoints(ParticleDefinitionParser parse) : base(parse)
++        {
++            ChildGroupId = parse.Int32("m_nChildGroupID", 0);
++            FirstControlPoint = parse.Int32("m_nFirstControlPoint", 0);
++            var requestedCount = parse.Int32("m_nNumControlPoints", 1);
++            var firstSourcePoint = parse.NumberProvider("m_nFirstSourcePoint", new LiteralNumberProvider(0f));
++            Reverse = parse.Boolean("m_bReverse", false);
++            Supported = FirstControlPoint is >= 0 and <= 63 && requestedCount >= 0
++                && firstSourcePoint is LiteralNumberProvider literal && literal.Value == 0f
++                && !parse.Boolean("m_bSetOrientation", false);
++            NumControlPoints = Supported ? Math.Min(requestedCount, 64 - FirstControlPoint) : 0;
++
++            if (!Supported)
++            {
++                parse.Logger.LogWarning("C_OP_SetChildControlPoints requires position-only literal source 0 and control points in 0..63");
++            }
++        }
++
++        public override void Operate(ParticleCollection particles, float frameTime, ParticleSystemState particleSystemState, float strength)
++        {
++            if (!Supported || particleSystemState.Data == null)
++            {
++                return;
++            }
++
++            MatchingChildren.Clear();
++            particleSystemState.Data.CollectChildStatesInGroup(ChildGroupId, MatchingChildren);
++            var live = particles.Current;
++            var count = Math.Min(NumControlPoints, live.Length);
++
++            for (var i = 0; i < count; i++)
++            {
++                var index = Reverse ? live.Length - 1 - i : i;
++                var position = live[index].Position;
++                foreach (var child in MatchingChildren)
++                {
++                    child.WriteAuthoredChildPosition(FirstControlPoint + i, position);
++                }
++            }
++        }
++    }
++}

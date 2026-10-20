@@ -9,6 +9,7 @@ from agr import cli
 from agr.coverage_diagnostics import (merge_secondary_motion_coverage,
                                       scene_completion_message, scene_coverage_warnings)
 from agr.scene_package import read_scene, save_scene
+from blender_fixture import write_blender_completion
 
 
 def preparation():
@@ -125,6 +126,7 @@ def test_cli_cloth_alias_and_legacy_option_share_the_same_setting(flag):
 
 
 def test_cli_publishes_actual_per_hero_cloth_outcomes_and_external_map_scope(tmp_path, monkeypatch):
+    monkeypatch.setattr('agr.blender_runtime.check_blender', lambda *a, **k: {'fixture': True})
     from agr import installed_assets
     assets = tmp_path / 'assets'
     assets.mkdir()
@@ -145,19 +147,27 @@ def test_cli_publishes_actual_per_hero_cloth_outcomes_and_external_map_scope(tmp
         seen.append(kwargs)
         data = read_scene(kwargs['segment_path'])
         data['coverage'] = {'scene_extras': {'secondary_motion': preparation()}}
+        supported={row['id'] for row in preparation()['supported_entities']}
+        for entity in data['entities']:
+            if entity['id'] in supported:
+                definition=tmp_path/('cloth-'+entity['id'].replace(':','-')+'.json')
+                definition.write_text('{}')
+                entity['secondary_motion_file']=str(definition)
         save_scene(data, kwargs['segment_path'])
         return assets
     monkeypatch.setattr(installed_assets, 'prepare_installed_assets', prepare)
     def render(command, check):
-        output = Path(command[command.index('--output')+1])
-        output.write_bytes(b'authored output stub')
-        output.with_suffix('.scene.json').write_text(json.dumps({
-            'entities': blender_rows(haze_status='failed'), 'warnings': [],
-            'effects': {'status': 'partial', 'objects': 160, 'unsupported': [{'reason': 'unsupported layer'}]}}))
+        result = write_blender_completion(command,
+            effects={'status': 'partial', 'objects': 160, 'unsupported': [{'reason': 'unsupported layer'}]})
+        cloth = {row['id']: row['secondary_motion'] for row in blender_rows(haze_status='failed')}
+        for row in result['entities']:
+            if row['id'] in cloth:
+                row['secondary_motion'] = cloth[row['id']]
+        Path(command[command.index('--output')+1]).with_suffix('.scene.json').write_text(json.dumps(result))
     monkeypatch.setattr(cli.subprocess, 'run', render)
     output = tmp_path / 'output.blend'
     args = cli.parser().parse_args(['convert', '--segment', str(manifest), '--output', str(output),
-                                   '--blender', str(engine), '--motion-only', '--cloth'])
+                                   '--blender', str(engine), '--motion-only', '--cloth','--partial'])
     report = cli.convert(args)
     assert seen[0]['secondary_motion'] and not seen[0]['include_map']
     assert report['secondary_motion']['failed_entity_count'] == 1

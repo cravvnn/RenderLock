@@ -10,7 +10,7 @@ import copy
 import math
 
 
-def repair_materials(document, *, approximate_glass=False):
+def repair_materials(document, *, approximate_glass=False,unlit_only=False):
     result = copy.deepcopy(document)
     report = {'status': 'approximation', 'materials': [], 'limitations': [
         'Source NPR, depth/cloak passes and emission Fresnel/albedo mixing are not reproduced',
@@ -36,7 +36,7 @@ def repair_materials(document, *, approximate_glass=False):
                 changes.append('unlit and source color tint')
             else:
                 warnings.append('Unlit tint absent or invalid; material retained')
-        if flags.get('F_SELF_ILLUM') == 1:
+        if flags.get('F_SELF_ILLUM') == 1 and not unlit_only:
             scale = floats.get('g_flSelfIllumScale1')
             tint = vectors.get('g_vSelfIllumTint1')
             if (isinstance(scale, (int, float)) and math.isfinite(scale) and scale >= 0
@@ -49,7 +49,7 @@ def repair_materials(document, *, approximate_glass=False):
                 changes.append('emission texture enabled with source tint and strength')
             else:
                 warnings.append('Self-illumination parameters or converted texture absent/invalid; retained')
-        if flags.get('F_GLASS') == 1:
+        if flags.get('F_GLASS') == 1 and not unlit_only:
             if approximate_glass:
                 ext = material.setdefault('extensions', {})
                 ext['KHR_materials_transmission'] = {'transmissionFactor': 1.0}
@@ -71,7 +71,7 @@ def repair_materials(document, *, approximate_glass=False):
     return result, report
 
 
-def repair_glb(source, output, *, approximate_glass=False):
+def repair_glb(source, output, *, approximate_glass=False,unlit_only=False):
     """Rewrite only JSON; keep every non-JSON chunk byte-for-byte intact."""
     import json
     from pathlib import Path
@@ -97,7 +97,7 @@ def repair_glb(source, output, *, approximate_glass=False):
         offset += 8 + size
     if not chunks or chunks[0][0] != b'JSON' or any(k == b'JSON' for k, _ in chunks[1:]):
         raise ValueError('Expected exactly one leading GLB JSON chunk')
-    document, report = repair_materials(json.loads(chunks[0][1]), approximate_glass=approximate_glass)
+    document, report = repair_materials(json.loads(chunks[0][1]), approximate_glass=approximate_glass,unlit_only=unlit_only)
     encoded = json.dumps(document, separators=(',', ':'), allow_nan=False).encode('utf-8')
     encoded += b' ' * (-len(encoded) % 4)
     chunks[0] = (b'JSON', encoded)

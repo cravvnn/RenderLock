@@ -35,3 +35,42 @@ def test_source_mismatch_and_metadata_change_rejected(tmp_path):
     with pytest.raises(ConversionError,match='metadata'):validate_npr_material_package(package)
     decoded['materials'][0]['textures'][PARAMETERS[0]]['resource']='wrong.vtex_c'
     with pytest.raises(ConversionError,match='source mismatch'):build_npr_material_package(plan,decoded,provider,allow_partial=True)
+
+
+def test_spatial_mask_keeps_dimensions_and_legacy_constant_contract(tmp_path):
+    from agr.source_npr_package import LEGACY_BINDINGS
+    from agr.source_hero_lighting_package import canonical_sha
+    plan,decoded,provider,path=inputs(tmp_path)
+    path.write_bytes(b'\x89PNG\r\n\x1a\n'+b'\0\0\0\rIHDR'+struct.pack('>II',4,2)+bytes(9))
+    for texture in decoded['materials'][0]['textures'].values():
+        texture.update(sha256=sha(path),size=[4,2])
+    package=build_npr_material_package(plan,decoded,provider,allow_partial=True)
+    assert package['schema_version']==2
+    assert validate_npr_material_package(package)['a.vmat_c']['textures'][PARAMETERS[1]]['size']==[4,2]
+    legacy=copy.deepcopy(package);legacy['schema_version']=1;legacy['bindings']=copy.deepcopy(LEGACY_BINDINGS)
+    legacy.pop('content_sha256');legacy['content_sha256']=canonical_sha(legacy)
+    with pytest.raises(ConversionError,match='Variable rim mask'):
+        validate_npr_material_package(legacy)
+
+
+def test_schema3_mixed_contract_keeps_generic_empty_and_cannot_drop_runtime_status(tmp_path):
+    from agr.source_material_routes import source_material_contract
+    from agr.source_hero_lighting_package import canonical_sha
+    plan,decoded,provider,_=inputs(tmp_path)
+    plan['schema_version']=3
+    npr=plan['materials'][0]
+    npr['authored']=dict(m_shaderName='pbr.vfx',m_intParams=[dict(m_name='F_USE_NPR_LIGHTING',m_nValue=1),dict(m_name='F_NO_SPECULAR_AT_FULL_ROUGHNESS',m_nValue=1)])
+    npr.update(source_material_contract(npr['authored']))
+    generic=dict(material='glow.vmat_c',source_sha256='source',textures={},
+                 authored=dict(m_shaderName='pbr.vfx',m_dynamicParams=[dict(m_name='emission',m_value=[0])]))
+    generic.update(source_material_contract(generic['authored']))
+    plan['materials'].append(generic)
+    decoded['materials'].append(dict(material='glow.vmat_c',source_sha256='source',textures={}))
+    package=build_npr_material_package(plan,decoded,provider,allow_partial=True)
+    rows=validate_npr_material_package(package)
+    assert package['schema_version']==3 and rows['glow.vmat_c']['textures']=={}
+    assert rows['a.vmat_c']['no_specular_at_full_roughness'] is True
+    package['materials'][1]['runtime']['status']='static_authored_inputs'
+    package.pop('content_sha256');package['content_sha256']=canonical_sha(package)
+    with pytest.raises(ConversionError,match='route/runtime contract'):
+        validate_npr_material_package(package)

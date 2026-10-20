@@ -6,6 +6,12 @@ import pytest
 
 from agr.cli import convert, parser
 from agr.scene_package import read_scene, save_scene
+from blender_fixture import write_blender_completion
+
+
+@pytest.fixture(autouse=True)
+def blender_preflight(monkeypatch):
+    monkeypatch.setattr('agr.blender_runtime.check_blender', lambda *a, **k: {'fixture': True})
 
 
 def roster():
@@ -34,7 +40,7 @@ def setup(tmp_path, extra=()):
 
 
 def fake_blender(command, check):
-    Path(command[command.index("--output") + 1]).write_bytes(b"stub scene")
+    write_blender_completion(command)
 
 
 def test_default_strict_reports_eight_missing_without_silently_dropping_tracks(tmp_path):
@@ -84,6 +90,7 @@ def test_replay_default_passes_all_roster_to_native_adapter(tmp_path, monkeypatc
 def test_saved_effects_follow_current_explicit_omission(tmp_path, monkeypatch, omit):
     args = setup(tmp_path, ['--heroes', '13'])
     args.no_effects = omit
+    args.partial = not omit  # Retaining a known unavailable requested stage needs consent.
     data = read_scene(args.segment)
     data['effects'] = {'manifest_file': str(tmp_path / 'old-effects.json')}
     data['particle_instances'] = [{'id': 'fx:1', 'created_tick': 10}]
@@ -100,10 +107,10 @@ def test_saved_effects_follow_current_explicit_omission(tmp_path, monkeypatch, o
         assert current['particle_instances'] == data['particle_instances']
         assert current['source_coverage'] == data['coverage']
         fake_blender(command, check)
-        Path(command[command.index('--output') + 1]).with_suffix('.scene.json').write_text(json.dumps({
+        write_blender_completion(command, **{
             'effects': {'status': 'not_requested'} if 'effects' not in current else {
                 'status': 'unavailable', 'reason': 'Old effect preparation failure'},
-            'map': {'status': 'failed', 'error': 'Unrelated map failure'}}))
+            'map': {'status': 'failed', 'error': 'Unrelated map failure'}})
     monkeypatch.setattr('agr.cli.subprocess.run', inspect_blender)
     report = convert(args)
     assert report['particles']['status'] == ('not_requested' if omit else 'unavailable')

@@ -4,7 +4,7 @@ import tkinter as tk
 import pytest
 
 from agr import gui_theme, gui_widgets
-from agr.gui_characters import CharacterChecklist
+from agr.gui_characters import CHARACTERS_INFO, CharacterChecklist
 
 
 @pytest.fixture(scope="module")
@@ -51,7 +51,9 @@ def _selected(widget):
 
 
 def _click(widget, hero_id):
-    widget._rows[hero_id]["checkbox"]._toggle()
+    group = next(g for g in widget._groups if any(h["id"] == hero_id for h in g._heroes))
+    index = next(i for i, h in enumerate(group._heroes) if h["id"] == hero_id)
+    group._activate(index)
 
 
 def test_inspect_hint_and_no_roster_all_reset(checklist):
@@ -162,7 +164,7 @@ def test_roster_warning_and_clip_limit_are_honest(checklist):
     warning = "Two player rows have no valid hero ID; the list may be incomplete."
     widget.load(dict(_roster(), roster_warning=warning))
     assert warning in widget._notice.get()
-    assert "availability may vary by clip" in widget._notice.get().casefold()
+    assert "availability may vary by clip" in CHARACTERS_INFO.casefold()
     widget.load({"heroes": [], "roster_warning": "Roster is unavailable."})
     assert not widget.has_roster
     assert "Roster is unavailable" in widget._notice.get()
@@ -177,7 +179,7 @@ def test_busy_blocks_buttons_checks_and_direct_row_var_edits(checklist):
     widget.set_busy(True)
     assert widget.all_button.cget("state") == "disabled"
     assert widget.none_button.cget("state") == "disabled"
-    assert all(row["checkbox"].cget("state") == "disabled" for row in widget._rows.values())
+    assert all(group._busy and not int(group.cget("takefocus")) for group in widget._groups)
     widget.all_button._invoke()
     widget.none_button._invoke()
     _click(widget, 2)
@@ -185,7 +187,7 @@ def test_busy_blocks_buttons_checks_and_direct_row_var_edits(checklist):
     assert (heroes.get(), empty.get()) == ("2", "0")
     assert _selected(widget) == {2}
     widget.load(_roster())
-    assert all(row["checkbox"].cget("state") == "disabled" for row in widget._rows.values())
+    assert all(group._busy and not int(group.cget("takefocus")) for group in widget._groups)
     widget.set_busy(False)
     _click(widget, 11)
     assert heroes.get() == "2,11"
@@ -235,10 +237,14 @@ def test_rebuild_and_destroy_remove_owned_traces(checklist, character_root):
     character_root.update()
 
 
-def test_long_names_fit_two_columns_at_minimum_content_width(checklist, character_root):
+def test_long_names_preserve_hover_labels_without_widening_portrait_tray(checklist, character_root):
     widget, heroes, empty = checklist
     widget.load({"heroes": [{"hero_id": 2, "hero_name": "A" * 150},
                              {"hero_id": 999, "hero_name": "B" * 150}]})
     character_root.update()
     assert widget.winfo_reqwidth() <= 540 * gui_theme.SCALE
-    assert all(row["checkbox"]._text.endswith("…") for row in widget._rows.values())
+    group = widget._groups[0]
+    assert [hero["name"] for hero in group._heroes] == ["A" * 150, "B" * 150]
+    assert len(group._cells) == 2
+    for x0, y0, x1, y1 in group._cells:
+        assert 0 <= x0 < x1 <= group.winfo_width()

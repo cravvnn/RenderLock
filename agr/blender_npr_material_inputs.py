@@ -12,9 +12,11 @@ def validate_material_inputs(material, transmissive, *, uv_name):
     ao=[n.inputs['Occlusion'] for n in nodes if n.type=='GROUP' and n.node_tree.name=='glTF Material Output' and 'Occlusion' in n.inputs]
     if len(bsdfs)!=1 or len(ao)!=1 or not ao[0].is_linked:raise ValueError('Unqualified converted material/AO graph')
     bsdf=bsdfs[0]
-    if bsdf.inputs['Alpha'].is_linked or bsdf.inputs['Alpha'].default_value!=1:raise ValueError('Opaque material required')
+    from .blender_material_alpha import validate_alpha
+    validate_alpha(material,bsdf)
     path=Path(transmissive['path'])
-    if hashlib.sha256(path.read_bytes()).hexdigest()!=transmissive['sha256']:raise ValueError('Transmissive texture changed')
+    from .asset_converter import sha
+    if sha(path)!=transmissive['sha256']:raise ValueError('Transmissive texture changed')
     return {'Albedo':bsdf.inputs['Base Color'],'Metallic':bsdf.inputs['Metallic'],'Roughness':bsdf.inputs['Roughness'],'Material AO':ao[0]}
 
 
@@ -31,8 +33,9 @@ def bind_material_inputs(material,target,transmissive,*,uv_name):
     for name in (*mapping,'Transmissive'):
         if name not in target.inputs:raise ValueError('Missing NPR material input: '+name)
     path=Path(transmissive['path'])
-    image=bpy.data.images.load(str(path),check_existing=False)
-    image.colorspace_settings.name='sRGB';image.alpha_mode='CHANNEL_PACKED';image.pack()
+    from .blender_images import load_packed_image
+    image=load_packed_image(path,expected_sha256=transmissive['sha256'])
+    image.colorspace_settings.name='sRGB';image.alpha_mode='CHANNEL_PACKED'
     for name,socket in mapping.items():
         if socket.is_linked:links.new(socket.links[0].from_socket,target.inputs[name])
         else:target.inputs[name].default_value=socket.default_value[:3] if name=='Albedo' else socket.default_value

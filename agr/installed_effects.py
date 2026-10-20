@@ -366,7 +366,8 @@ def prepare_installed_effects(segment_path, pack_dir, provider, decoder, log=pri
               'limitations': ['This adapter supports a subset of attachment-locked sprites/trails and recorded-control-point ring ribbons; counts show what was actually prepared.',
                 'Random draw order/seed, biased randomness, sprite roll, trail response and source bloom are approximated.',
                 'No generic substitute is created for unsupported operators, atlas packing, beam or collision effects.']}
-    models = {str(e['id']): e for e in segment['entities']}
+    from .model_tracks import logical_entities
+    models = logical_entities(segment['entities'])
     source_models = {}
     for p in provider.resources:
         if p.endswith('.vmdl_c'):
@@ -393,6 +394,8 @@ def prepare_installed_effects(segment_path, pack_dir, provider, decoder, log=pri
                 raise UnsupportedEffect('Attachment target is not an exported exact-serial hero')
         if entity_id not in models:
             raise UnsupportedEffect('Particle target is not an exported exact-serial hero')
+        if models[entity_id].get('model_tracks'):
+            raise UnsupportedEffect('Particle attachments across recorded model changes are not yet qualified')
         root_resource = instance.get('resource')
         if not root_resource:
             raise UnsupportedEffect('Particle resource ID unresolved')

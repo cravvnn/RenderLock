@@ -11,6 +11,8 @@ patches, in order:
 3. `vrf-create-on-model-bones.patch`
 4. `vrf-kv3-v5-unsigned-constants.patch`
 5. `vrf-bounded-model-extraction.patch`
+6. `vrf-set-child-control-points.patch`
+7. `vrf-per-child-control-point.patch`
 
 The patches are retained here so a clean CI checkout can resolve the same types
 as the helper sources. They do not broaden the application's supported particle
@@ -24,6 +26,27 @@ animation-export switch, enabled by default. RenderLock's cloth extractor disabl
 it and limits output to LOD0 render meshes and reconstructed proxies; ordinary
 upstream extraction retains its existing behavior. This does not add particle
 operators or expand qualified model sampling beyond the bone-only subset.
+
+The child-control patch supports position-only `C_OP_SetChildControlPoints` with
+literal first source zero. It writes matching direct children and all their
+descendants, retaining the native control-point and live-particle bounds.
+Orientation and expression-driven source variants remain diagnosed. The helper
+reports supplied, internally authored and unsupplied control-point accesses;
+a later authored write cannot erase an earlier missing input. This does not
+qualify named or wearable replay providers, model hitbox sampling, or whole
+particle trees containing other unsupported operators.
+
+The per-child patch supports `C_OP_SetPerChildControlPoint` with literal first
+source zero, increment +1 or -1, a fixed child count, and velocity-derived or
+disabled orientation. Each matching direct child receives one source particle's
+position and optional frame, recursively propagated to its descendants. Native
+particle frames are retained directly; a nonorthogonal frame is rejected where
+quaternion interpolation would lose information. Other source expressions,
+increments and orientation attributes remain diagnosed. Authored child controls
+use the `agr_authored_child_controls_v2` provenance policy and cannot replace an
+explicit external input or erase an earlier missing read. This does not qualify
+model hitbox initialization, bone lock, named-child acquisition, or adaptive rope
+rendering, which remain separate requirements for the original sprint tree.
 
 ## CodeQL build
 

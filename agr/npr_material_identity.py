@@ -17,13 +17,18 @@ def compiled_resource(value, extension):
     raise ValueError('Unexpected Source resource extension')
 
 
-def material_resource(material):
+def pbr_material_resource(material):
     vmat = material.get('vmat')
     if vmat is None or vmat.get('ShaderName') != 'pbr.vfx':
         raise ValueError('Expected retained pbr.vfx material metadata')
-    if vmat.get('IntParams', {}).get('F_USE_NPR_LIGHTING') != 1:
-        raise ValueError('Material does not declare NPR lighting')
     return compiled_resource(vmat.get('Name'), '.vmat')
+
+
+def material_resource(material):
+    resource=pbr_material_resource(material)
+    if material['vmat'].get('IntParams', {}).get('F_USE_NPR_LIGHTING') != 1:
+        raise ValueError('Material does not declare NPR lighting')
+    return resource
 
 
 def evidence_index(rows):

@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
-from agr.model_constraint_math import aim_look_rotation, aim_single, orient_single, tilt_twist, twist_angle, twist_history
+from agr.model_constraint_math import (aim_look_rotation, aim_single, orient_single,
+    orient_two_targets, quaternion_two_target_average, tilt_twist, twist_angle, twist_history)
 from agr.vendor.pose_math import rotate
 
 
@@ -28,6 +29,35 @@ def test_zero_total_weight_skips_without_mutation():
     result = orient_single(values,0,[1],[0,0,1,0],target_weight=0)
     np.testing.assert_array_equal(result,values)
     assert not np.shares_memory(result,values)
+
+
+@pytest.mark.parametrize('weights',[(0,0),(-.5,.5)])
+def test_cancelling_orientation_strength_leaves_original_pose(weights):
+    values=pose()
+    result=orient_two_targets(values,0,[1],[[0,0,1,0],[0,1,0,0]],weights)
+    np.testing.assert_array_equal(result,values)
+    assert not np.shares_memory(result,values)
+
+
+@pytest.mark.parametrize('sign',[-1,1])
+def test_opposite_quaternion_representations_keep_first_hemisphere(sign):
+    a=np.array([0,0,0,sign])
+    average,total=quaternion_two_target_average([a,-a],[.6,.4])
+    # Original float32 log/exp leaves this tiny +Z-axis half-turn residue.
+    expected=[0,0,-3.2584136988589307e-7,-1] if sign<0 else a
+    np.testing.assert_allclose(average,expected,atol=1e-8)
+    assert total==pytest.approx(1)
+
+
+@pytest.mark.parametrize('rotations,weights',[
+    ([[0,0,0,1]],[1]),([[0,0,0,1],[0,0,0,0]],[.5,.5]),
+    ([[0,0,0,1],[0,0,0,float('nan')]],[.5,.5]),
+    ([[0,0,0,1],[0,0,0,1]],[.5,float('inf')]),
+    ([[0,0,0,1],[0,0,0,1]],[3e38,3e38]),
+    ([[0,0,0,1.000006],[0,0,0,1.000006]],[-1e38,-1e38]),
+    ([[0,0,0,.999994],[0,0,0,.999994]],[-1e38,-1e38])])
+def test_invalid_or_overflowing_quaternion_average_is_refused(rotations,weights):
+    with pytest.raises(ValueError):quaternion_two_target_average(rotations,weights)
 
 
 @pytest.mark.parametrize('indices', [[0], [1,1], [-1], [2], [True]])

@@ -37,10 +37,11 @@ def test_beta_gui_keeps_lighting_preferences(tmp_path, monkeypatch):
         source2viewer=str(tmp_path / "Source2Viewer-CLI.exe"), game_install=str(tmp_path),
         output=str(tmp_path / "x.blend"), start="12000", end="12120", fps="64",
         map_enabled="1", source_lighting="1", source_hero_lighting="1", source_npr_lighting="1",
-        character_shader="missing.blend", mode="replay")
+        character_shader="missing.blend", mode="replay", shot_hero="15")
     # The lighting flag must reach validation instead of being silently
-    # stripped; the missing regional exporter then fails explicitly.
-    with pytest.raises(ValueError, match="WorldRegionProbe"):
+    # stripped. Character-only lighting needs no geometry exporter; the
+    # explicitly selected missing shader still fails before conversion.
+    with pytest.raises(ValueError, match="Elagrimm"):
         gui.build_convert_command(values)
     assert values["map_enabled"] == "1"  # Original preferences survive.
 

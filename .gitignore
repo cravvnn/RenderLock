@@ -1,29 +1,44 @@
-# Python
 .venv/
+.toolchains/
 __pycache__/
 *.py[cod]
 .pytest_cache/
-
-# Build outputs
+.pytest_tmp/
+/local-data/
 native/target/
 tools/launcher/target/
-bin/
-dist/
-build/
-releases/
-
-# Local artifacts and private assets
 research/runs/
-research/upstream/
 research/asset-cache/
-research/**/bin/
-research/**/obj/
-logs/
-Exports/
+research/upstream/
 *.blend
 *.blend1
-*.blend2
 *.agrscene/
+logs/
+Exports/
+releases/
+research/**/bin/
+research/**/obj/
+
+# Local-only development files
+/AGENTS.md
+/.codex/
+/.claude/
+/.t3/
+/research/*.md
+/research/audit_project_storage.py
+/research/storage-migration-20261018/
+/research/Enter-RenderLockDev.ps1
+/validation/
+
+# Generated binaries, private assets, and machine configuration
+/bin/
+/dist/
+/build/
+/exceptions.txt
+/release_manifest.json
+.env
+.env.*
+!.env.example
 *.dem
 *.vpk
 *.vpk_c
@@ -32,5 +47,4 @@ Exports/
 *.pdb
 *.glb
 *.gltf
-.env
-.env.*
+*.blend2

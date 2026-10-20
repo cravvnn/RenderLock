@@ -16,14 +16,32 @@ def register():
         aov = layer.aovs.add(); aov.name = name; aov.type = kind
 
 
-def attach(nodes, links, project, depths, rim, npr, total, *, base_socket=None):
+def attach(nodes, links, project, depths, rim, npr, total, *, base_socket=None, depth_policy=None):
     diagnostic = nodes.new('ShaderNodeCombineXYZ')
     links.new(project.outputs['Valid'], diagnostic.inputs['X'])
-    background = nodes.new('ShaderNodeMath'); background.operation = 'GREATER_THAN'
-    background.inputs[1].default_value = 1e8
-    links.new(depths.outputs['Sampled Depth'], background.inputs[0])
-    links.new(background.outputs[0], diagnostic.inputs['Y'])
-    links.new(rim.outputs['Factor'], diagnostic.inputs['Z'])
+    def math(op, *values):
+        node=nodes.new('ShaderNodeMath');node.operation=op
+        for socket,value in zip(node.inputs,values):
+            if hasattr(value,'node'):links.new(value,socket)
+            else:socket.default_value=value
+        return node.outputs[0]
+    if depth_policy is None:
+        links.new(math('GREATER_THAN',depths.outputs['Sampled Depth'],1e8),diagnostic.inputs['Y'])
+        links.new(rim.outputs['Factor'], diagnostic.inputs['Z'])
+    else:
+        from .rim_depth_manifest import CYCLES_BACKGROUND
+        if depth_policy['kind']!=CYCLES_BACKGROUND:
+            raise ValueError('Unsupported audited background reference')
+        near,far=depth_policy['camera_clip_source'];miss=depth_policy['background_source']
+        invalid=[]
+        for name in ('Current Depth','Sampled Depth'):
+            value=depths.outputs[name]
+            known=math('LESS_THAN',math('ABSOLUTE',math('SUBTRACT',value,miss)),abs(miss)*2e-7)
+            outside=math('MAXIMUM',math('LESS_THAN',value,near*(1-2e-6)),
+                         math('GREATER_THAN',value,far*(1+2e-6)))
+            invalid.append(math('MULTIPLY',outside,math('SUBTRACT',1,known)))
+            if name=='Sampled Depth':links.new(known,diagnostic.inputs['Z'])
+        links.new(math('MAXIMUM',*invalid),diagnostic.inputs['Y'])
     for name, socket in [('AGR rim diagnostics', diagnostic.outputs[0]),
                          ('AGR rim only', rim.outputs['Rim']),
                          ('AGR base lighting', npr.outputs['Total'] if base_socket is None else base_socket),
@@ -49,7 +67,7 @@ def compositor(out):
         group.links.new(render.outputs[name], dest.inputs[name])
 
 
-def verify(out, frame, width, height):
+def verify(out, frame, width, height, *, depth_policy=None):
     results = {}
     for name, _ in PASSES:
         paths = list(out.glob('*' + name + '*.exr'))
@@ -64,17 +82,21 @@ def verify(out, frame, width, height):
     invalid = np.maximum(coverage - diag[:, :, 0], 0)
     error = float(np.max(abs(results['AGR final lighting'][:, :, :3]
                             - results['AGR base lighting'][:, :, :3] - rim)))
-    background = int(np.sum(diag[:, :, 1] > 1e-6))
+    unexpected = int(np.sum(diag[:, :, 1] > 1e-6))
+    background = int(np.sum(diag[:, :, 2 if depth_policy is not None else 1] > 1e-6))
     covered = int(np.sum(coverage > 1e-6))
-    passed = finite and covered > 0 and invalid.max() < 1e-5 and background == 0 and error < 2e-6
+    passed = finite and covered > 0 and invalid.max() < 1e-5 and unexpected == 0 and error < 2e-6
     report = dict(status='PASS' if passed else 'FAIL', frame=frame,
         all_finite=finite, hero_covered_pixels=covered,
         invalid_projection_weight=float(invalid.sum()),
         max_invalid_projection_weight=float(invalid.max()),
         background_sample_pixels=background,
+        unexpected_depth_pixels=unexpected,depth_policy=depth_policy,
         positive_rim_pixels=int(np.sum(np.max(rim, axis=2) > 1e-6)),
         max_rim_rgb=float(rim.max()), max_linear_addition_error=error,
-        scope='Antialiased shader AOVs; background >1e8 Source units is a renderer sentinel classifier, not engine semantics')
+        scope=('Antialiased shader AOVs; authenticated Cycles no-hit reference, both depth lookups checked against camera clip range or exact no-hit class; no engine background parity'
+               if depth_policy is not None else
+               'Antialiased shader AOVs; background >1e8 Source units is a renderer sentinel classifier, not engine semantics'))
     (out/'rim-audit.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
     print(report)
     if not passed:

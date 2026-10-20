@@ -10,6 +10,7 @@ from pathlib import Path
 
 def capture_root_model_points(data, entity, objects, scene, instance, manifest_dir):
     """Complete root CP0/model history for an already qualified effect profile."""
+    from mathutils import Matrix
     from .simulated_effect_package import model_constraints_identity
     rig, root = objects['rig'], objects['root']
     model = entity.get('model_constraints')
@@ -17,6 +18,15 @@ def capture_root_model_points(data, entity, objects, scene, instance, manifest_d
         raise ValueError('Model particles require authored model constraints and baked pose history')
     if root.get('agr_entity_id') != entity['id']:
         raise ValueError('Particle root entity identity mismatch')
+    # The replay root carries recorded body angles. Fresh installed bindings
+    # declare the client's render-facing basis separately from the GLB import
+    # and pose-bake adapters. Do not infer it from an animated root bone or
+    # silently impose the installed basis on an authored prepared scene.
+    root_yaw = entity.get('render_root_yaw_degrees', 0)
+    if (type(root_yaw) not in (int, float)
+            or (type(root_yaw) is float and not math.isfinite(root_yaw))):
+        raise ValueError('Particle render-root yaw must be a finite number')
+    basis = Matrix.Rotation(math.radians(root_yaw % 360), 4, 'Z')
     pose_path = Path(entity['pose_file'])
     if not pose_path.is_absolute():
         pose_path = Path(manifest_dir) / pose_path
@@ -34,7 +44,7 @@ def capture_root_model_points(data, entity, objects, scene, instance, manifest_d
         for tick, bones in zip(captured['ticks'], captured['transforms']):
             frame = 1 + (int(tick)-data['start_tick'])*(scene.render.fps/scene.render.fps_base)/data['tick_rate']
             scene.frame_set(math.floor(frame), subframe=frame-math.floor(frame))
-            matrix = root.matrix_world
+            matrix = root.matrix_world @ basis
             linear = np.asarray(matrix, dtype=float)[:3, :3]
             if (not np.isfinite(np.asarray(matrix)).all()
                     or np.max(abs(linear.T @ linear-np.eye(3))) > 1e-5
@@ -51,6 +61,7 @@ def capture_root_model_points(data, entity, objects, scene, instance, manifest_d
         model_constraints_sha256=model_constraints_identity(model),
         start_tick=instance['created_tick'], end_tick=data['end_tick'],
         provider='selected_hero_root_model', control_point=0,
+        render_root_yaw_degrees=root_yaw,
         wearable_search='bypassed_by_unnamed_attachment')
     return points, provenance
 
@@ -72,7 +83,9 @@ def capture_model_bones(rig, model, scene, *, entity_id, start_tick, end_tick,
             or len(model['resource_sha256']) != 64
             or any(c not in '0123456789abcdef' for c in model['resource_sha256'])):
         raise ValueError('Particle model identity is incomplete')
-    solver = ModelConstraints(model['names'],model['parents'],model['definitions'])
+    solver = ModelConstraints(model['names'],model['parents'],model['definitions'],
+                              attachments=model.get('attachments'),
+                              binding_policy=model.get('binding_policy','strict'))
     if set(solver.names) != set(rig.data.bones.keys()):
         raise ValueError('Particle model bone identity mismatch')
     for name,parent in zip(solver.names,solver.parents):

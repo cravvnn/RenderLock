@@ -18,6 +18,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from . import __version__, gui_theme
 from .cli import default_asset_cache, discover_source2viewer
+from .gui_paths import normalize_gui_paths, resolve_gui_path
 
 
 PROGRAM_ROOT = Path(__file__).resolve().parents[1]
@@ -131,6 +132,7 @@ def migrate_scene_settings(values: dict[str, str]) -> dict[str, str]:
 def build_convert_command(values: dict[str, str], *, partial: bool = False,
                           overwrite: bool = False) -> list[str]:
     """Validate editable fields and build argv without shell interpretation."""
+    values = normalize_gui_paths(values)
     if values.get("heroes_empty", "0") == "1":
         raise ValueError("Select at least one character to export, or choose All.")
     source = values.get("input", "").strip()
@@ -165,8 +167,11 @@ def build_convert_command(values: dict[str, str], *, partial: bool = False,
         raise ValueError("Choose an output filename ending in .blend.")
     if Path(output).is_dir():
         raise ValueError("The output must be a file, not a folder.")
-    if Path(output).exists() and not overwrite:
-        raise ValueError("That output already exists. Choose a new name or explicitly enable overwrite.")
+    output_path = Path(output)
+    if not overwrite and any(path.exists() for path in
+                             (output_path, output_path.with_suffix(".agrscene"),
+                              output_path.with_suffix(".agr-report.json"))):
+        raise ValueError("That output or its companion package/report already exists. Choose a new name or explicitly enable overwrite.")
     if Path(output).resolve() == Path(source).resolve():
         raise ValueError("The output must differ from the input file.")
     try:
@@ -187,34 +192,39 @@ def build_convert_command(values: dict[str, str], *, partial: bool = False,
                *asset_args, "--blender", blender,
                "--start-tick", str(start), "--end-tick", str(end),
                "--fps", str(fps), "--output", output]
+    from .release_profile import character_beta
+    character_lighting=values.get('source_lighting','0')=='1' and (values.get('character_only','0')=='1' or character_beta())
     if values.get('source_lighting','0') == '1':
         if asset_mode != 'installed' or values.get('map_enabled','0') != '1':
             raise ValueError('Partial Source lighting requires installed assets and Prepare installed map region on Map. This reads lighting data; Characters only can omit map geometry from the scene.')
         from .source_region import regional_command
         lighting_probe=values.get('world_region_probe','').strip()
         lighting_dotnet=values.get('lighting_dotnet','').strip()
-        regional_command(lighting_probe,lighting_dotnet)
-        command += ['--source-lighting','--world-region-probe',lighting_probe,'--lighting-dotnet',lighting_dotnet]
+        if not character_lighting:
+            regional_command(lighting_probe,lighting_dotnet)
+        command += ['--source-lighting','--partial-lighting','--lighting-dotnet',lighting_dotnet]
+        if lighting_probe:command += ['--world-region-probe',lighting_probe]
     if values.get('source_npr_lighting','0') == '1':
-        if not partial or values.get('source_hero_lighting','0')!='1':
-            raise ValueError('NPR indirect requires partial conversion and Hero Source lighting.')
+        if values.get('source_hero_lighting','0')!='1':
+            raise ValueError('NPR indirect requires Hero Source lighting.')
         if not values.get('shot_hero','').strip():
-            raise ValueError('NPR indirect requires a Follow camera hero ID for perspective framing.')
+            raise ValueError('Choose a hero under Follow camera. Inspect the recording first; NPR indirect needs a follow target.')
         command += ['--source-npr-lighting']
     character_shader=values.get('character_shader','').strip()
     if character_shader:
-        if not partial or values.get('source_npr_lighting','0')!='1':
-            raise ValueError('Character shader requires partial conversion and NPR indirect lighting.')
+        if values.get('source_npr_lighting','0')!='1':
+            raise ValueError('Character shader requires NPR indirect lighting.')
         from .blender_character_shader import validate_character_shader_library
         command += ['--character-shader',str(validate_character_shader_library(character_shader))]
     if values.get('character_only','0')=='1':
         command += ['--character-only']
-    if values.get('source_hero_lighting','0') == '1':
+    if values.get('source_hero_lighting','0') == '1' or character_lighting:
         if values.get('source_lighting','0') != '1':raise ValueError('Hero lighting requires Partial static diffuse lighting.')
         from .source_hero_lighting import validate_hero_decoder_paths
         atlas=values.get('probe_atlas_decoder','').strip();cube=values.get('cubemap_decoder','').strip()
         validate_hero_decoder_paths(atlas,cube,values.get('lighting_dotnet','').strip())
-        command += ['--source-hero-lighting','--probe-atlas-decoder',atlas,'--cubemap-decoder',cube]
+        command += ['--probe-atlas-decoder',atlas,'--cubemap-decoder',cube]
+        if values.get('source_hero_lighting','0')=='1':command += ['--source-hero-lighting']
     if asset_mode == "installed":
         if values.get("map_enabled", "0") == "1":
             from .game_assets import safe_resource_path
@@ -229,9 +239,7 @@ def build_convert_command(values: dict[str, str], *, partial: bool = False,
             if not math.isfinite(margin) or not 0 < margin <= 1000:
                 raise ValueError("Map margin must be greater than 0 and at most 1000 metres.")
             command += ["--include-map", "--map-name", map_name, "--map-margin", str(margin)]
-        if values.get("effects_enabled", "1") != "1":
-            command.append("--no-effects")
-        elif values.get('simulate_effects', '0') == '1':
+        if values.get("effects_enabled", "1") == "1" and values.get('simulate_effects', '0') == '1':
             probe = values.get('particle_probe', '').strip()
             dotnet = values.get('particle_dotnet', '').strip()
             from .particle_runtime import particle_command
@@ -251,8 +259,10 @@ def build_convert_command(values: dict[str, str], *, partial: bool = False,
             command.append("--secondary-motion")
         if values.get("material_repairs", "0") == "1":
             command.append("--material-repairs")
-        if values.get('model_constraints', '0') == '1':
-            command.append('--model-constraints')
+    if values.get("effects_enabled", "1") != "1":
+        command.append("--no-effects")
+    if values.get('model_constraints', '0') == '1':
+        command.append('--model-constraints')
     heroes = values.get("heroes", "").strip()
     if heroes:
         try:
@@ -314,12 +324,12 @@ class AGRApp:
         self.overwrite = tk.BooleanVar(value=False)
         self.status = tk.StringVar(value="Ready")
         self.mutable_widgets: list[ttk.Widget] = []
+        self.discovery_note = ""
         self._load_settings()
         if not self.values["assets"].get().strip():
             self.values["assets"].set(discover_assets())
         if not self.values["blender"].get().strip():
             self.values["blender"].set(discover_blender())
-        self.discovery_note = ""
         if not self.values["game_install"].get().strip():
             try:
                 from .game_assets import discover_installations
@@ -327,9 +337,9 @@ class AGRApp:
                 if len(installations) == 1:
                     self.values["game_install"].set(str(installations[0]))
                 elif len(installations) > 1:
-                    self.discovery_note = "Several Deadlock installations were found. Choose the folder to use.\n"
+                    self.discovery_note += "Several Deadlock installations were found. Choose the folder to use.\n"
             except (OSError, ValueError) as exc:
-                self.discovery_note = f"Automatic game discovery was unavailable: {exc}. Choose the game folder manually.\n"
+                self.discovery_note += f"Automatic game discovery was unavailable: {exc}. Choose the game folder manually.\n"
         if not self.values["source2viewer"].get().strip():
             self.values["source2viewer"].set(str(discover_source2viewer() or ""))
         if not self.values["asset_cache"].get().strip():
@@ -359,11 +369,12 @@ class AGRApp:
 
     def _input_identity(self):
         """Bind an inspected roster to both the selected path and its file bytes' revision."""
-        path = Path(self.values["input"].get().strip()).expanduser().resolve()
         try:
+            path = resolve_gui_path(self.values["input"].get())
             stat = path.stat()
             revision = (stat.st_size, stat.st_mtime_ns)
-        except OSError:
+        except (OSError, RuntimeError, ValueError):
+            path = self.values["input"].get().strip()
             revision = None
         return self.values["mode"].get(), os.path.normcase(str(path)), revision
 
@@ -371,6 +382,8 @@ class AGRApp:
         self._roster_source = None
         self._roster_complete = False
         self.character_picker.clear(reset_selection=True)
+        if hasattr(self, 'follow_picker'):
+            self.follow_picker.clear(reset_selection=True)
         self.input_summary.set("Inspect to read this recording's information and characters.")
 
     def _asset_source_changed(self, event=None) -> None:
@@ -378,6 +391,8 @@ class AGRApp:
         self.values["asset_source"].set("installed" if installed else "prepared")
         (self.installed_fields if installed else self.prepared_fields).grid()
         (self.prepared_fields if installed else self.installed_fields).grid_remove()
+        from .gui_layout import refresh_asset_source_controls
+        refresh_asset_source_controls(self)
 
     def _browse_input(self) -> None:
         is_replay = self.values["mode"].get() == "replay"
@@ -472,6 +487,8 @@ class AGRApp:
                 # Keep the explicit filter and stale identity until inspection
                 # succeeds; a second Export click must not turn a subset into All.
                 self.character_picker.clear(reset_selection=False)
+                if hasattr(self, 'follow_picker'):
+                    self.follow_picker.clear(reset_selection=False)
                 raise ValueError("The input file changed since inspection. Inspect it again before exporting.")
             shot = self.values["shot_hero"].get().strip()
             try:
@@ -479,24 +496,25 @@ class AGRApp:
             except ValueError:
                 shot_id = None  # The command builder explains invalid camera input.
             if self._roster_complete and shot_id is not None and shot_id > 0 and shot_id not in self.character_picker.hero_ids:
-                raise ValueError("The follow camera hero is not listed in this recording. Choose a listed hero or leave the camera field empty.")
+                raise ValueError("The follow camera hero is not listed in this recording. Choose a listed hero or Overview.")
             command = build_convert_command(self._current_values(), partial=self.partial.get(),
                                             overwrite=self.overwrite.get())
-        except ValueError as exc:
+        except (OSError, RuntimeError, ValueError) as exc:
             messagebox.showerror("Check conversion settings", str(exc), parent=self.root)
             return
         self._save_settings()
-        report_path = Path(self.values["output"].get().strip()).expanduser().with_suffix(".agr-report.json")
-        if not report_path.is_absolute():
-            report_path = PROGRAM_ROOT / report_path
+        report_path = resolve_gui_path(self.values["output"].get()).with_suffix(".agr-report.json")
         self._start(command, "convert", report_path)
 
     def _inspect(self) -> None:
         if self.busy:
             return
-        path = Path(self.values["input"].get().strip())
-        if not path.is_file():
-            messagebox.showerror("Choose an input", "Choose an existing replay or package first.", parent=self.root)
+        try:
+            path = resolve_gui_path(self.values["input"].get())
+            if not path.is_file():
+                raise ValueError("Choose an existing replay or package first.")
+        except (OSError, RuntimeError, ValueError) as exc:
+            messagebox.showerror("Choose an input", str(exc), parent=self.root)
             return
         if self.values["mode"].get() == "segment":
             # Inspect in a cancellable child; large sample arrays must not block Tk.
@@ -504,11 +522,12 @@ class AGRApp:
                 "import json,sys\n"
                 "from pathlib import Path\n"
                 "from agr.scene_package import read_scene\n"
+                "from agr.model_tracks import logical_entities\n"
                 "data=read_scene(Path(sys.argv[1]))\n"
                 "summary={key:data.get(key) for key in ('schema_version','start_tick','end_tick','tick_rate')}\n"
                 "summary['roster']=[{'id':e['id'],'hero_id':e.get('hero_id'),'hero_name':e.get('hero_name'),"
                 "'samples':len(e['samples'])} "
-                "for e in data['entities']]\n"
+                "for e in logical_entities(data['entities']).values()]\n"
                 "summary['roster_source']='saved_package_tracks'\n"
                 "print(json.dumps(summary,indent=2))\n"
             )
@@ -531,7 +550,11 @@ class AGRApp:
             widget.configure(state="disabled" if busy else "normal")
         self.asset_source_combo.configure(state="disabled" if busy else "readonly")
         self.character_picker.set_busy(busy)
+        if hasattr(self, 'follow_picker'):
+            self.follow_picker.set_busy(busy)
         self.cancel_button.configure(state="normal" if busy else "disabled")
+        from .gui_layout import refresh_asset_source_controls
+        refresh_asset_source_controls(self)
         self._status_tint("busy" if busy else "ready")
         if busy:
             self.progress.grid()
@@ -636,21 +659,32 @@ class AGRApp:
     def _apply_metadata(self, metadata: dict[str, object]) -> None:
         if hasattr(self, "character_picker"):
             self.character_picker.load(metadata)
+            if hasattr(self, 'follow_picker'):
+                self.follow_picker.load(metadata)
             self._roster_source = self._input_identity()
             self._roster_complete = self.character_picker.has_roster and not metadata.get("roster_warning")
             for page in getattr(self, "page_layouts", {}).values():
                 page._schedule()
         first_tick = metadata.get("start_tick", metadata.get("first_tick", 0))
         last_tick = metadata.get("end_tick", metadata.get("last_tick", metadata.get("total_ticks")))
-        if not self.values["start"].get().strip() and isinstance(first_tick, (int, float)):
-            self.values["start"].set(str(int(first_tick)))
-        if not self.values["end"].get().strip() and isinstance(last_tick, (int, float)):
-            # Inspect suggests a preview, never a whole-match bake.
+        if (isinstance(first_tick, (int, float)) and math.isfinite(first_tick)
+                and isinstance(last_tick, (int, float)) and math.isfinite(last_tick)
+                and 0 <= first_tick <= last_tick):
+            first, last = int(first_tick), int(last_tick)
             try:
                 start = int(self.values["start"].get())
             except ValueError:
-                start = int(first_tick or 0)
-            self.values["end"].set(str(min(int(last_tick), start + 120)))
+                start = first
+            if not first <= start <= last:
+                start = first
+            self.values["start"].set(str(start))
+            try:
+                end = int(self.values["end"].get())
+            except ValueError:
+                end = None
+            if end is None or not start <= end <= last:
+                # Replace a previous recording's invalid range with a preview.
+                self.values["end"].set(str(min(last, start + 120)))
         if hasattr(self, "input_summary"):
             ticks = f"Ticks {first_tick}–{last_tick}" if last_tick is not None else "Input inspected"
             roster = metadata.get("roster")
@@ -684,6 +718,8 @@ class AGRApp:
                             current = self._input_identity()
                             if self._inspect_source != current:
                                 self.character_picker.clear(reset_selection=False)
+                                if hasattr(self, 'follow_picker'):
+                                    self.follow_picker.clear(reset_selection=False)
                                 if self._inspect_source[:2] == current[:2]:
                                     self._roster_source = self._inspect_source
                                 self.status.set("Input changed; inspect the selected recording again.")
@@ -718,16 +754,16 @@ class AGRApp:
         if not value:
             messagebox.showinfo("Choose an output", "Choose an output filename first.", parent=self.root)
             return
-        path = Path(value).expanduser().resolve().parent
-        if not path.is_dir():
-            messagebox.showinfo("Folder unavailable", f"This output folder does not exist yet:\n{path}", parent=self.root)
-            return
         try:
+            path = resolve_gui_path(value).parent
+            if not path.is_dir():
+                messagebox.showinfo("Folder unavailable", f"This output folder does not exist yet:\n{path}", parent=self.root)
+                return
             if sys.platform == "win32":
                 os.startfile(path)
             else:
                 subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", str(path)])
-        except OSError as exc:
+        except (OSError, RuntimeError, ValueError) as exc:
             messagebox.showerror("Could not open folder", str(exc), parent=self.root)
 
     def _load_settings(self) -> None:
@@ -735,14 +771,18 @@ class AGRApp:
             saved = json.loads(settings_path().read_text(encoding="utf-8"))
             if not isinstance(saved, dict):
                 return
-            saved = migrate_scene_settings(saved)
+            saved = normalize_gui_paths(migrate_scene_settings(saved))
+            from .tool_paths import reconcile_saved_tools
+            saved, notices = reconcile_saved_tools(saved, PROGRAM_ROOT)
+            if notices:
+                self.discovery_note = getattr(self, "discovery_note", "") + "\n".join(notices) + "\n"
             for key, variable in self.values.items():
                 if isinstance(saved.get(key), str):
                     variable.set(saved[key])
             if self.values["mode"].get() not in {"replay", "segment"}:
                 self.values["mode"].set("replay")
             self.values["asset_source"].set(asset_source_mode(saved))
-        except (OSError, ValueError):
+        except (OSError, RuntimeError, ValueError):
             pass
 
     def _save_settings(self) -> None:
@@ -750,16 +790,18 @@ class AGRApp:
             path = settings_path()
             path.parent.mkdir(parents=True, exist_ok=True)
             temporary = path.with_name(path.name + ".tmp")
-            saved = self._current_values()
+            saved = normalize_gui_paths(self._current_values())
             saved["map_workflow_revision"] = MAP_WORKFLOW_REVISION
+            from .tool_paths import PROGRAM_ROOT_SETTING
+            saved[PROGRAM_ROOT_SETTING] = str(PROGRAM_ROOT.resolve())
             temporary.write_text(json.dumps(saved, indent=2), encoding="utf-8")
             temporary.replace(path)
-        except OSError as exc:
+        except (OSError, RuntimeError, ValueError) as exc:
             self._append_log(f"Could not remember settings: {exc}\n")
 
     def _close(self) -> None:
         if self.busy:
-            if not messagebox.askyesno("Stop current job?", "Cancel the running job and close AGR?", parent=self.root):
+            if not messagebox.askyesno("Stop current job?", "Cancel the running job and close RenderLock?", parent=self.root):
                 return
             self.close_when_done = True
             self._cancel()
@@ -771,6 +813,8 @@ class AGRApp:
 
 
 def main() -> int:
+    from .console import configure_stdio
+    configure_stdio()
     gui_theme.enable_dpi_awareness()  # before the first window, so text is sharp on scaled displays
     try:
         root = tk.Tk()

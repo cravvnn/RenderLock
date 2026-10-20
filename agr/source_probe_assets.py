@@ -113,8 +113,49 @@ def probe_regions(p,world_sha256=WORLD_SHA256):
     return rows
 
 
-def plan_probe_assets(provider,decoder,source_bounds,*,max_decoded_bytes=256*1024*1024):
+def selection_regions(source_bounds, regions):
+    """Bind a sparse actor-region union to the outer installed-map selection."""
+    outer=bounds_array(source_bounds)
+    if regions is None:return None
+    if not isinstance(regions,list) or not 1<=len(regions)<=4096:
+        raise ConversionError('Invalid sparse hero lighting selection')
+    result=[];seen=set()
+    for row in regions:
+        identity=row.get('entity_id') if isinstance(row,dict) else None
+        if not isinstance(identity,str) or not identity or identity in seen:
+            raise ConversionError('Invalid sparse hero actor identity')
+        seen.add(identity);bounds=bounds_array(row.get('bounds'))
+        if np.any(bounds[:,0]<outer[:,0]) or np.any(bounds[:,1]>outer[:,1]):
+            raise ConversionError('Sparse hero region exceeds the installed-map selection')
+        result.append(dict(entity_id=identity,bounds=bounds.tolist()))
+    return result
+
+
+def atlas_decode_batches(probes, world_sha256, *, max_decoded_bytes=MAX_ATLAS_BYTES):
+    """Partition exact regions, retaining the existing native allocation bounds."""
+    if type(max_decoded_bytes) is not int or not 0<max_decoded_bytes<=MAX_ATLAS_BYTES:
+        raise ConversionError('Invalid atlas batch byte budget')
+    batches=[];names=[];identities=[];size=0
+    for probe in probes:
+        identity=str(probe['hammeruniqueid'])
+        for region in probe_regions(probe,world_sha256):
+            count=int(np.prod(region['size']))*16
+            if count>min(128*1024*1024,max_decoded_bytes):
+                raise LightingRegionError('One probe atlas region exceeds the bounded native decoder allocation.',
+                    selected_probe_count=len(probes),region=region['name'],region_bytes=count)
+            if names and (size+count>max_decoded_bytes or identity not in identities and len(identities)>=MAX_SELECTED_PROBES):
+                batches.append(dict(region_names=names,probe_ids=identities,atlas_bytes=size))
+                names=[];identities=[];size=0
+            names.append(region['name']);size+=count
+            if identity not in identities:identities.append(identity)
+    if names:batches.append(dict(region_names=names,probe_ids=identities,atlas_bytes=size))
+    if not batches:validate_probe_budget(0,0)
+    return batches
+
+
+def plan_probe_assets(provider,decoder,source_bounds,*,max_decoded_bytes=MAX_ATLAS_BYTES,source_regions=None):
     bounds=bounds_array(source_bounds)
+    sparse=selection_regions(bounds,source_regions)
     name=selected_world(provider);identity=provider.resource_identity(name)
     probe_layout(identity['sha256'])
     shader=provider.resource_identity(SHADER_RESOURCE)
@@ -131,7 +172,7 @@ def plan_probe_assets(provider,decoder,source_bounds,*,max_decoded_bytes=256*102
             p=_entity_properties(entity)
             if p.get('classname') not in ('env_light_probe_volume','env_combined_light_probe_volume'):continue
             inventory+=1
-            if intersects_bounds(p,bounds):selected.append(p)
+            if any(intersects_bounds(p,b) for b in ([r['bounds'] for r in sparse] if sparse else [bounds])):selected.append(p)
     if len({str(p['hammeruniqueid']) for p in selected})!=len(selected) or len({p['array_index'] for p in selected})!=len(selected):
         raise ConversionError('Duplicate selected probe identity/index')
     selected.sort(key=lambda p:(-p['indoor_outdoor_level'],p['array_index']))
@@ -139,19 +180,44 @@ def plan_probe_assets(provider,decoder,source_bounds,*,max_decoded_bytes=256*102
     total=sum(int(np.prod(r['size']))*16 for r in regions)
     if type(max_decoded_bytes) is not int or max_decoded_bytes<=0:
         raise ConversionError('Invalid explicit probe storage budget')
-    validate_probe_budget(len(selected), total, max_decoded_bytes=max_decoded_bytes)
+    if sparse is None:
+        validate_probe_budget(len(selected), total, max_decoded_bytes=max_decoded_bytes)
+        batches=None
+    else:
+        batches=atlas_decode_batches(selected,identity['sha256'],max_decoded_bytes=max_decoded_bytes)
     resources={r['resource'] for r in regions}|{compiled(p['cubemaptexture']) for p in selected}
     for resource in sorted(resources):inputs[resource]=provider.resource_identity(resource)
-    return dict(schema_version=1,status='planned_not_applied',world_sha256=identity['sha256'],shader_sha256=SHADER_SHA256,
+    plan=dict(schema_version=1,status='planned_not_applied',world_sha256=identity['sha256'],shader_sha256=SHADER_SHA256,
         source_bounds=bounds.tolist(),inputs=inputs,inventory_count=inventory,probes=selected,regions=regions,
         decoded_atlas_bytes=total,limits=['Conservative volume selection only; evaluated surface coverage must be verified before shading.',
         'Rigid authored transforms/priority are viewer mappings; runtime state and engine intensity constants unverified.'])
+    if sparse is not None:
+        plan.update(source_regions=sparse,atlas_batch_limit_bytes=max_decoded_bytes,atlas_decode_batches=batches)
+    return plan
 
 
 def prepare_probe_atlas(provider,decoder,plan,*,probe,dotnet):
     """Decode a fresh validated plan into the normal immutable derived cache."""
-    fresh=plan_probe_assets(provider,decoder,plan['source_bounds'])
+    fresh=plan_probe_assets(provider,decoder,plan['source_bounds'],source_regions=plan.get('source_regions'),
+                             max_decoded_bytes=plan.get('atlas_batch_limit_bytes',MAX_ATLAS_BYTES))
     if plan!=fresh:raise ConversionError('Probe plan differs from current installed evidence')
+    batches=plan.get('atlas_decode_batches')
+    if batches is None:
+        return _prepare_probe_atlas_batch(provider,decoder,plan,probe=probe,dotnet=dotnet)
+    rows=[]
+    regions={row['name']:row for row in plan['regions']}
+    for batch in batches:
+        subset=dict(plan,regions=[regions[name] for name in batch['region_names']])
+        prepared=_prepare_probe_atlas_batch(provider,decoder,subset,probe=probe,dotnet=dotnet)
+        rows.extend(prepared['regions'])
+    if len(rows)!=len(regions) or {row['name'] for row in rows}!=set(regions):
+        raise ConversionError('Batched probe atlas inventory differs from the qualified plan')
+    return dict(schema_version=1,status='decoded_not_applied',plan=plan,regions=rows,
+                limits=plan['limits']+['Exact sparse actor regions decoded in bounded batches; evaluated surface coverage remains required.'])
+
+
+def _prepare_probe_atlas_batch(provider,decoder,plan,*,probe,dotnet):
+    """Private worker for regions whose whole installed plan was verified above."""
     probe=Path(probe).resolve();dotnet=Path(dotnet).resolve()
     if probe.name!='ProbeAtlasDecode.dll' or not dotnet.is_file():raise ConversionError('Explicit atlas helper and .NET required')
     qualified_probe_helpers(probe,ATLAS_HELPER_HASHES)
