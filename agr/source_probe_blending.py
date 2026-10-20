@@ -6,6 +6,19 @@ not captured engine constants. Irradiance color/scale is deliberately separate.
 import numpy as np
 from agr.source_probe_assets import vector, rotation
 
+HIDDEN_MODEL_TRACK = 'hidden_model_track'
+
+
+def hidden_model_track_row(actor):
+    """A model form outside its recorded interval has no surface at this frame.
+
+    Split model runs keep one actor identity per form, so a form that is hidden
+    still has to stay in the reviewed actor set. It contributes no bounds.
+    """
+    return (actor.get('visibility') == HIDDEN_MODEL_TRACK
+            and set(actor) == {'entity_id', 'visibility', 'surface_checks'}
+            and actor.get('surface_checks') == 0)
+
 
 def contributing_actor_probes(probes, coverage):
     """Keep every possible contributor over each verified actor trajectory.
@@ -34,6 +47,12 @@ def contributing_actor_probes(probes, coverage):
             if not isinstance(identity,str) or not identity or identity in seen:
                 raise ValueError('Distinct actor coverage required')
             seen.add(identity);keep=selected.setdefault(identity,set())
+            if actor.get('visibility')==HIDDEN_MODEL_TRACK:
+                if not hidden_model_track_row(actor):
+                    raise ValueError('Invalid hidden model-track coverage row')
+                continue
+            if 'low' not in actor or 'high' not in actor:
+                raise ValueError('Incomplete actor coverage bounds')
             bounds=bounds_array(np.column_stack((actor['low'],actor['high'])))
             corners=np.array(list(product(*bounds)));covered=False
             for prop in ordered:
@@ -48,6 +67,9 @@ def contributing_actor_probes(probes, coverage):
         if not seen or (expected is not None and seen!=expected):
             raise ValueError('Actor coverage differs between frames')
         expected=seen
+    never_visible=sorted(identity for identity,keep in selected.items() if not keep)
+    if never_visible:
+        raise ValueError('No visible surface for probe selection: '+', '.join(never_visible))
     return {identity:[p for p in ordered if str(p['hammeruniqueid']) in keep]
             for identity,keep in selected.items()}
 

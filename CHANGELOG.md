@@ -1,3 +1,9 @@
+# 0.3.0b9 - Transformation lighting fix and export diagnostics
+
+- Fix a failed Blender scene build after a recorded character transformation when Source hero lighting or NPR materials were enabled; each form now keeps its own visible surface and probe selection instead of aborting the export. Strict and explicit partial rules are unchanged.
+- Reuse the surface coverage already verified in the same scene build when applying NPR, instead of scanning every exported frame twice; saved-scene validation still verifies from scratch.
+- Keep the Blender scene-build log beside the retained diagnostic files so a failed export includes the exact error, and copy its tail into failure.json.
+
 # 0.3.0b8 - Character transformations and UI polish
 
 - Integrate Kara's portrait-based character selection, recorded-team trays, accessible follow-camera placement, wrapping notes, copy controls and matching update/recovery artwork; retain all replay heroes and existing strict/partial export controls.

@@ -55,3 +55,55 @@ def test_unproven_or_incomplete_coverage_cannot_prune(mutation):
     if mutation=='missing_full':data['frames'][1]['actors'][0]['high']=[11]*3
     if mutation=='duplicate_frame':data['frames'][1]['frame']=1
     with pytest.raises(ValueError):contributing_actor_probes(probes,data)
+
+
+def hidden(identity):return dict(entity_id=identity,visibility='hidden_model_track',surface_checks=0)
+
+
+def test_hidden_model_track_form_keeps_identity_and_visible_probe_union():
+    # A split transformation keeps one actor identity per form. The form that is
+    # hidden at a frame has no surface bounds but must stay in the actor set.
+    first=actor('77:961',[1]*3,[2]*3)
+    second=actor('77:961@model:80366',[3]*3,[4]*3)
+    data=coverage([first,hidden('77:961@model:80366')],[hidden('77:961'),second])
+    data['actor_count']=2
+    probes=[probe(1,[0]*3,[2.5]*3),probe(2,[2.5]*3,[10]*3)]
+    selected=contributing_actor_probes(probes,data)
+    assert [p['hammeruniqueid'] for p in selected['77:961']]==['1']
+    assert [p['hammeruniqueid'] for p in selected['77:961@model:80366']]==['2']
+
+
+@pytest.mark.parametrize('mutation',['missing_count','extra_field','bad_count','never_visible'])
+def test_invalid_or_unused_hidden_model_track_rows_are_rejected(mutation):
+    data=coverage([actor('a',[1]*3,[2]*3),hidden('b')])
+    data['actor_count']=2
+    if mutation=='missing_count':data['frames'][0]['actors'][1].pop('surface_checks')
+    if mutation=='extra_field':data['frames'][0]['actors'][1]['low']=[0]*3
+    if mutation=='bad_count':data['frames'][0]['actors'][1]['surface_checks']=1
+    if mutation=='never_visible':
+        data['frames'][0]['actors']=[hidden('a')]
+        data['frames'].append(dict(frame=2,actors=[hidden('a')]))
+    with pytest.raises(ValueError):contributing_actor_probes([probe(1,[-10]*3,[10]*3)],data)
+
+
+class _Mesh:
+    type='MESH'
+    def get(self,key,default=None):return default
+
+
+class _Root:
+    def __init__(self,identity):
+        self.identity=identity;self.children_recursive=[_Mesh()]
+    def get(self,key,default=None):
+        return self.identity if key=='agr_entity_id' else default
+
+
+def test_reused_coverage_requires_the_same_builder_actors():
+    from agr.blender_hero_lighting import reuse_surface_coverage
+    roots=[_Root('a')]
+    data=coverage([actor('a',[1]*3,[2]*3)]);data['actor_count']=1
+    assert reuse_surface_coverage(data,roots) is data
+    with pytest.raises(ValueError):reuse_surface_coverage(data,[_Root('a'),_Root('b')])
+    with pytest.raises(ValueError):reuse_surface_coverage(data,[_Root('b')])
+    broken=copy.deepcopy(data);broken.pop('actor_count')
+    with pytest.raises(ValueError):reuse_surface_coverage(broken,roots)

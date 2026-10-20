@@ -783,6 +783,11 @@ def convert(args):
         details = getattr(exc, "details", None)
         if isinstance(details, dict) and details:
             failure["details"] = details
+        blender_log = work / "scene.blender.log"
+        if stage == "build_blender_scene" and blender_log.is_file():
+            failure["blender_log"] = str(blender_log)
+            failure["blender_log_tail"] = blender_log.read_text(
+                encoding="utf-8", errors="replace")[-4000:]
         (work / "failure.json").write_text(json.dumps(failure, indent=2), encoding="utf-8")
         log(f"Diagnostic files retained at: {work}")
         raise

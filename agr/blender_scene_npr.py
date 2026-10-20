@@ -17,21 +17,22 @@ def validate_npr_runtime(data, *, allow_partial):
     return runtime
 
 
-def apply_scene_npr(scene, roots, data, *, manifest_dir, coordinates, allow_partial=False):
+def apply_scene_npr(scene, roots, data, *, manifest_dir, coordinates, allow_partial=False, coverage=None):
     runtime=validate_npr_runtime(data,allow_partial=allow_partial)
     if runtime is None:raise ValueError('NPR runtime not selected')
     from .blender_npr_selection import select_npr_actor_materials,actor_material_rows
     from .source_material_routes import material_route,NPR_ROUTE
     from .blender_npr_primary import camera_primary_track,bind_primary_track
     from .blender_prepare_npr_package import prepare_material_package
-    from .blender_hero_lighting import verify_surface_coverage
+    from .blender_hero_lighting import verify_surface_coverage,reuse_surface_coverage
     actors=select_npr_actor_materials(data['npr_materials'],data['entities'],roots,manifest_dir=manifest_dir)
     materials=[m for actor in actors for m in actor['materials']]
     objects=[o for actor in actors for o in actor['objects']]
     if any(m.node_tree.animation_data is not None for m in materials):
         raise ValueError('NPR preparation requires unanimated converted material trees')
     track=camera_primary_track(scene,coordinates,assume_camera_forward=True)
-    coverage=verify_surface_coverage(scene,roots,data['hero_lighting'],coordinates)
+    coverage=(verify_surface_coverage(scene,roots,data['hero_lighting'],coordinates)
+              if coverage is None else reuse_surface_coverage(coverage,roots))
     from .source_probe_blending import contributing_actor_probes
     subsets=contributing_actor_probes(data['hero_lighting']['plan']['probes'],coverage)
     prepared=[]

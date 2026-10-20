@@ -9,6 +9,7 @@ from .source_hero_lighting_package import validate_hero_lighting_package
 def verify_surface_coverage(scene,roots,package,coordinates):
     """Bound every render-visible evaluated mesh at each integer export frame."""
     from .blender_npr_selection import actor_meshes
+    from .source_probe_blending import HIDDEN_MODEL_TRACK
     actors=[]
     for root in roots:
         identity=root.get('agr_entity_id')
@@ -49,7 +50,7 @@ def verify_surface_coverage(scene,roots,package,coordinates):
                 if not np.isfinite([low,high]).all():
                     root=next(r for r in roots if r.get('agr_entity_id')==identity)
                     if root.get('agr_model_track') and all(getattr(o,'hide_render',False) for o in objects):
-                        frame_actors.append(dict(entity_id=identity,visibility='hidden_model_track',surface_checks=0))
+                        frame_actors.append(dict(entity_id=identity,visibility=HIDDEN_MODEL_TRACK,surface_checks=0))
                         continue
                     raise ValueError(f'Missing finite hero surface for {identity}')
                 low-=.01;high+=.01
@@ -68,6 +69,30 @@ def verify_surface_coverage(scene,roots,package,coordinates):
     finally:scene.frame_set(original,subframe=subframe)
     return dict(status='verified_integer_frame_bounds',scope='per_actor_convex_bounds',actor_count=len(actors),mesh_count=len(meshes),visible_mesh_frame_checks=visible_checks,vertex_checks=count,frames=rows,
         limits=['Evaluated render-visible hero AABBs include triangle interiors at integer frames; each newly visible mesh is checked at that frame. Fractional frames and runtime probe state remain unverified.'])
+
+
+def reuse_surface_coverage(coverage,roots):
+    """Accept the coverage already verified in this builder run for the same roots.
+
+    Material-only lighting stages do not change evaluated geometry or object
+    visibility, so repeating the full per-frame vertex scan would only duplicate
+    identical evidence. Saved-scene validation still re-verifies from scratch.
+    """
+    from .blender_npr_selection import actor_meshes
+    if (not isinstance(coverage,dict) or coverage.get('status')!='verified_integer_frame_bounds'
+            or coverage.get('scope')!='per_actor_convex_bounds' or not coverage.get('frames')):
+        raise ValueError('Verified per-actor surface coverage required')
+    identities=[]
+    for root in roots:
+        identity=root.get('agr_entity_id')
+        if not isinstance(identity,str) or not identity or not actor_meshes(root):
+            raise ValueError('Hero lighting requires distinct actor identities and evaluated meshes')
+        identities.append(identity)
+    if (len(set(identities))!=len(identities) or coverage.get('actor_count')!=len(roots)
+            or any({actor.get('entity_id') for actor in frame['actors']}!=set(identities)
+                   for frame in coverage['frames'])):
+        raise ValueError('Reused coverage does not match the current actors')
+    return coverage
 
 
 def apply_hero_lighting(scene,roots,package,world_sha256,manifest_dir,coordinates,*,components=None):

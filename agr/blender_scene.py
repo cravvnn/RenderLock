@@ -18,6 +18,48 @@ import re
 import sys
 
 
+class _SplitOutput:
+    """Mirror Blender's Python console output to the caller and a retained log."""
+
+    def __init__(self, primary, log):
+        self.primary, self.log = primary, log
+
+    def write(self, text):
+        self.log.write(text)
+        self.log.flush()
+        return self.primary.write(text)
+
+    def flush(self):
+        self.log.flush()
+        self.primary.flush()
+
+    def __getattr__(self, name):
+        return getattr(self.primary, name)
+
+
+def attach_blender_log(output):
+    """Keep Blender-stage diagnostics beside the temporary scene.
+
+    A failed scene build otherwise only leaves the subprocess exit status, which
+    is not enough to diagnose a long export after the console is gone.
+    """
+    path = Path(output).with_suffix('.blender.log')
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        stream = path.open('w', encoding='utf-8', errors='replace')
+    except OSError:
+        return None
+    sys.stdout = _SplitOutput(sys.stdout, stream)
+    sys.stderr = _SplitOutput(sys.stderr, stream)
+    try:
+        import bpy
+        stream.write('RenderLock Blender scene log\nBlender ' + bpy.app.version_string + '\n\n')
+    except Exception:
+        stream.write('RenderLock Blender scene log\n\n')
+    stream.flush()
+    return path
+
+
 def tick_frame(tick, start_tick, tick_rate, fps):
     return 1.0 + (float(tick) - float(start_tick)) * float(fps) / float(tick_rate)
 
@@ -901,7 +943,8 @@ def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime
     if data.get('npr_runtime') is not None:
         from agr.blender_scene_npr import apply_scene_npr
         report['npr_lighting']=apply_scene_npr(scene,lighting_roots,data,manifest_dir=segment.parent,
-            coordinates=coordinates,allow_partial=partial_lighting)
+            coordinates=coordinates,allow_partial=partial_lighting,
+            coverage=report.get('hero_lighting',{}).get('coverage'))
         report['warnings'].append('NPR indirect is partial; direct lighting and frame-dependent rim remain incomplete. See npr_lighting coverage.')
     if character_shader is not None:
         from agr.blender_character_shader import apply_character_shader
@@ -988,6 +1031,7 @@ def main(argv=None):
     parser.add_argument('--character-shader',type=Path)
     parser.add_argument('--character-only',action='store_true')
     args = parser.parse_args(argv)
+    attach_blender_log(args.output)
     return build_scene(args.segment, args.assets, args.output, args.fps, args.partial,args.particle_runtime,
                        args.shot_hero,args.character_shader,args.character_only,args.partial_lighting)
 

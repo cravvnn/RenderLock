@@ -77,6 +77,25 @@ class BlenderSceneContractTests(unittest.TestCase):
         entity = {"spawn_tick": 102, "despawn_tick": 108, "observed_intervals": [{"start_tick": 99, "end_tick_exclusive": 112}]}
         self.assertEqual(visibility_changes(entity, [{"tick": 99, "present": True}], data, 64), [(1, True), (3, False), (9, True)])
 
+    def test_blender_stage_output_is_retained_beside_the_scene(self):
+        import io
+        import sys
+        from agr.blender_scene import attach_blender_log
+        stdout, stderr = sys.stdout, sys.stderr
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                path = attach_blender_log(Path(directory) / "scene.blend")
+                print("blender stage diagnostics")
+                sys.stdout.flush()
+                sys.stdout.log.close()
+                sys.stdout, sys.stderr = stdout, stderr
+                self.assertEqual(path.name, "scene.blender.log")
+                text = path.read_text(encoding="utf-8")
+                self.assertIn("blender stage diagnostics", text)
+                self.assertIn("RenderLock Blender scene log", text)
+        finally:
+            sys.stdout, sys.stderr = stdout, stderr
+
 
 if __name__ == "__main__":
     unittest.main()
