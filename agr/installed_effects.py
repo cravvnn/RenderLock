@@ -416,7 +416,7 @@ def prepare_installed_effects(segment_path, pack_dir, provider, decoder, log=pri
         attachment_key = f'{entity_id}/{index}'
         report['attachments'][attachment_key] = {'entity_id': entity_id, 'index': index,
                                                    'source_model': model, 'definition': entry}
-        return entity_id, index, entry, model
+        return entity_id, attachment_key
 
     age_bounds, expired_resources, retained_instances = {}, {}, []
     prepared = []
@@ -452,7 +452,7 @@ def prepare_installed_effects(segment_path, pack_dir, provider, decoder, log=pri
                     prepare_binding(instance, binding)
                 continue
             binding = attachment_binding(instance)
-            entity_id, index, entry, model = prepare_binding(instance, binding)
+            entity_id, attachment_key = prepare_binding(instance, binding)
             root_resource = instance.get('resource')
             queue, seen = [(root_resource, 0)], set()
             while queue:

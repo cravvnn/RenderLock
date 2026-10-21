@@ -886,6 +886,8 @@ def _build_advanced(app, page):
           pady=(SECTION_GAP, 0))
 
     body, row = _card(app, page, row, "Output policy")
+    _check(app, body, "Keep supported cloth if some cloth is unavailable", app.partial_cloth, True, False,
+           pady=(0, CHECK_GAP), info="Explicitly accept omitted or failed cloth with a coverage warning. Character models and animation stay strict.")
     _check(app, body, "Allow partial export / movement placeholders", app.partial, True, False, pady=(0, CHECK_GAP))
     _check(app, body, "Overwrite existing scene and companion package", app.overwrite, True, False, pady=(0, 0))
     return row

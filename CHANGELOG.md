@@ -1,3 +1,9 @@
+# 0.3.0b12 - Export recovery and support ZIPs
+
+- Save a bounded, verified failed-export support ZIP beside the normal logs, including early and final-save errors. Show its location in a branded recovery window with specific, user-selected retry choices.
+- Add separate consent to keep supported approximate cloth and report unavailable or failed cloth while character models and animation remain strict. Recognized optional-feature failures suggest relevant settings; partial character animation remains an explicit choice.
+- Fix the undefined attachment key that could interrupt otherwise supported particle-layer preparation. Existing unsupported cloth operations and particle limitations remain reported.
+
 # 0.3.0b11 - Faster update checks and export timing
 
 - Add a read-only installed-game check (`agr compat`) that reports the game build, probe atlas/cubemap layout, and whether character, NPR and static-map lighting resources match the qualified identities. Character-only readiness is reported separately from static map lighting, so a later map-content update does not look like a character export failure.

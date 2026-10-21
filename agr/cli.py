@@ -167,7 +167,7 @@ def animation_mode(data, motion_only=False, saved_package=False, partial=False):
 
 
 def read_blender_completion(path, *, segment, output, data, fps, partial=False,
-                            requested_stages=(), shot_hero=None):
+                            requested_stages=(), shot_hero=None, partial_cloth=False):
     """A scene file alone cannot establish which stages Blender completed."""
     try:
         report = json.loads(Path(path).read_text(encoding='utf-8'))
@@ -252,7 +252,7 @@ def read_blender_completion(path, *, segment, output, data, fps, partial=False,
             if not isinstance(motion,dict) or motion.get('status') not in ('baked_partial','baked','failed'):
                 raise RuntimeError(f"{row['id']}: Blender completion report lacks requested cloth outcome; the scene was not published.")
             if motion['status']=='failed':
-                if not partial:raise RuntimeError(f"{row['id']}: requested cloth failed: {motion.get('error','no completed bake')}")
+                if not (partial or partial_cloth):raise RuntimeError(f"{row['id']}: requested cloth failed: {motion.get('error','no completed bake')}")
                 warnings.append(f"{row['id']}: requested cloth failed: {motion.get('error','no completed bake')}")
     stages=set(requested_stages)
     for key,stage in [('hero_lighting','hero_lighting'),('npr_runtime','npr_lighting'),('effects','effects')]:
@@ -454,6 +454,16 @@ def publish_package(manifest, destination, overwrite=False):
 
 
 def convert(args):
+    from .export_diagnostics import ExportDiagnostics
+    diagnostics = ExportDiagnostics(args, log)
+    try:
+        return _convert(args, diagnostics)
+    except BaseException as exc:
+        diagnostics.finalize(exc)
+        raise
+
+
+def _convert(args, diagnostics):
     from .release_profile import validate_conversion
     validate_conversion(args)
     started = time.monotonic()
@@ -556,6 +566,7 @@ def convert(args):
         "Hero selection: explicit IDs " + ", ".join(map(str, heroes)))
     output.parent.mkdir(parents=True, exist_ok=True)
     work = Path(tempfile.mkdtemp(prefix="agr-", dir=output.parent))
+    diagnostics.work = work
     success = False
     saved_package = False
     stage = "read_segment"
@@ -647,7 +658,7 @@ def convert(args):
         data.setdefault("metadata", {})["application_version"] = __version__
         if args.secondary_motion:
             stage='validate_cloth_preparation'
-            validate_cloth_preparation(data,partial=args.partial)
+            validate_cloth_preparation(data,partial=args.partial or getattr(args,'partial_cloth',False))
             stage='model_coverage'
         models = record_model_coverage(data, assets, segment.parent, heroes)
         save_scene(data, segment)
@@ -738,7 +749,8 @@ def convert(args):
         if particle_probe:requested_stages.add('effects')
         blender_report = read_blender_completion(scene_output.with_suffix('.scene.json'),
             segment=segment, output=scene_output, data=generated, fps=args.fps, partial=args.partial,
-            requested_stages=requested_stages,shot_hero=getattr(args,'shot_hero',None))
+            requested_stages=requested_stages,shot_hero=getattr(args,'shot_hero',None),
+            partial_cloth=bool(getattr(args,'partial_cloth',False)))
         save_scene(generated, segment)
         log("[4/4] Saving the scene package and coverage report...")
         set_stage("publish_scene")
@@ -746,6 +758,8 @@ def convert(args):
         report = {"application": "RenderLock", "version": __version__, "status": "converted", "output": str(output), "scene_package": str(package / "manifest.json"), "start_tick": generated["start_tick"], "end_tick": generated["end_tick"], "tick_rate": generated["tick_rate"], "export_fps": args.fps, "entities": len(generated["entities"]), "coverage": generated.get("coverage", {}), "seconds": round(time.monotonic() - started, 3), "scene_extras": generated.get("coverage", {}).get("scene_extras", {}), "ragdoll": "outside_current_scope", "death_workflow": "user_authored_animation",
                   "map_workflow": "installed_region" if args.include_map else "external_blend", "backward_dash_facing": "not_validated"}
         report['blender_runtime'] = blender_capabilities
+        report['export_policy'] = {'partial_animation': bool(args.partial),
+                                   'partial_cloth': bool(getattr(args,'partial_cloth',False))}
         report["particles"] = report["scene_extras"].get("particles", {"status": "not_requested"})
         report["map"] = report["scene_extras"].get("map", {"status": "not_requested"})
         report['hero_lighting'] = report['scene_extras'].get('hero_lighting',{'status':'not_requested'})
@@ -792,19 +806,9 @@ def convert(args):
             log("Completed with coverage warnings. Open the coverage report or AGR_README in Blender for missing/approximate features.")
         return report
     except BaseException as exc:
-        failure = {"error": str(exc), "type": type(exc).__name__, "stage": stage,
-                   "stage_seconds": round(time.monotonic() - stage_started, 3),
-                   "timings": timings}
-        details = getattr(exc, "details", None)
-        if isinstance(details, dict) and details:
-            failure["details"] = details
-        blender_log = work / "scene.blender.log"
-        if stage == "build_blender_scene" and blender_log.is_file():
-            failure["blender_log"] = str(blender_log)
-            failure["blender_log_tail"] = blender_log.read_text(
-                encoding="utf-8", errors="replace")[-4000:]
-        (work / "failure.json").write_text(json.dumps(failure, indent=2), encoding="utf-8")
-        log(f"Diagnostic files retained at: {work}")
+        diagnostics.context = {"stage": stage,
+                               "stage_seconds": round(time.monotonic() - stage_started, 3),
+                               "timings": timings}
         raise
     finally:
         if success and not args.keep_work:
@@ -871,6 +875,8 @@ def parser():
     cv.add_argument("--blender")
     cv.add_argument("--blender-python", help=argparse.SUPPRESS)
     cv.add_argument("--partial", action="store_true", help="Allow unsupported animation/models with explicit coverage diagnostics")
+    cv.add_argument('--partial-cloth',action='store_true',
+                    help='Keep supported cloth and report omitted/failed cloth; character models and animation remain strict')
     cv.add_argument('--partial-lighting',action='store_true',help='Accept artistic/reference lighting limits while keeping character models and animation strict')
     cv.add_argument("--motion-only", action="store_true", help="Explicitly export movement without skeletal evaluation")
     cv.add_argument("--overwrite", action="store_true")

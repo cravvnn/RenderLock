@@ -130,7 +130,7 @@ def migrate_scene_settings(values: dict[str, str]) -> dict[str, str]:
 
 
 def build_convert_command(values: dict[str, str], *, partial: bool = False,
-                          overwrite: bool = False) -> list[str]:
+                          overwrite: bool = False, partial_cloth: bool = False) -> list[str]:
     """Validate editable fields and build argv without shell interpretation."""
     values = normalize_gui_paths(values)
     if values.get("heroes_empty", "0") == "1":
@@ -274,6 +274,8 @@ def build_convert_command(values: dict[str, str], *, partial: bool = False,
         command += ["--heroes", ",".join(str(hero_id) for hero_id in dict.fromkeys(ids))]
     if partial:
         command.append("--partial")
+    if partial_cloth:
+        command.append('--partial-cloth')
     shot = values.get('shot_hero', '').strip()
     if shot:
         try:
@@ -321,6 +323,7 @@ class AGRApp:
             "simulate_effects": "0", "particle_probe": "", "particle_dotnet": "", "shot_hero": "", "particle_history_ticks": "0",
         }.items()}
         self.partial = tk.BooleanVar(value=False)
+        self.partial_cloth = tk.BooleanVar(value=False)
         self.overwrite = tk.BooleanVar(value=False)
         self.status = tk.StringVar(value="Ready")
         self.mutable_widgets: list[ttk.Widget] = []
@@ -498,7 +501,8 @@ class AGRApp:
             if self._roster_complete and shot_id is not None and shot_id > 0 and shot_id not in self.character_picker.hero_ids:
                 raise ValueError("The follow camera hero is not listed in this recording. Choose a listed hero or Overview.")
             command = build_convert_command(self._current_values(), partial=self.partial.get(),
-                                            overwrite=self.overwrite.get())
+                                            overwrite=self.overwrite.get(),
+                                            partial_cloth=getattr(self,'partial_cloth',None) is not None and self.partial_cloth.get())
         except (OSError, RuntimeError, ValueError) as exc:
             messagebox.showerror("Check conversion settings", str(exc), parent=self.root)
             return
@@ -566,6 +570,9 @@ class AGRApp:
     def _start(self, command: list[str], operation: str, report_path: Path | None = None) -> None:
         if operation == "inspect":
             self._inspect_source = self._input_identity()
+        else:
+            self._conversion_command = list(command)
+            self._conversion_identity = self._input_identity()
         self.cancel_requested.clear()
         self.termination_done.set()
         self._set_busy(True)
@@ -575,6 +582,7 @@ class AGRApp:
 
     def _run(self, command: list[str], operation: str, report_path: Path | None = None) -> None:
         output: list[str] = []
+        conversion_log = ""
         code = -1
         try:
             env = os.environ.copy()
@@ -596,7 +604,11 @@ class AGRApp:
                 self.events.put(("log", line))
                 if operation == "inspect":
                     output.append(line)
+                else:
+                    conversion_log = (conversion_log + line)[-65536:]
             code = process.wait()
+            if operation == 'convert' and code != 0:
+                output.append(conversion_log)
             if operation == "convert" and code == 0 and report_path is not None:
                 # Read the result off the Tk thread. A successful export can
                 # still have a failed map stage or explicitly partial effects.
@@ -607,7 +619,10 @@ class AGRApp:
                 except (OSError, ValueError, TypeError, AttributeError):
                     self.events.put(("log", "Could not read the completion summary; see the coverage report.\n"))
         except Exception as exc:
-            self.events.put(("log", f"Could not run the program: {exc}\n"))
+            detail = f"Could not run the program: {exc}\n"
+            self.events.put(("log", detail))
+            if operation == 'convert':
+                output.append(conversion_log + detail)
         finally:
             if self.cancel_requested.is_set():
                 self.termination_done.wait(timeout=20)
@@ -710,6 +725,8 @@ class AGRApp:
                         set_log_visible(self, True)
                         self.status.set(f"{operation.capitalize()} failed (exit {code}); see the log for details.")
                         self._status_tint("error")
+                        if operation == 'convert' and not self.close_when_done:
+                            self._show_conversion_failure(output)
                     elif operation == "inspect":
                         try:
                             metadata = json.loads(output)
@@ -736,6 +753,48 @@ class AGRApp:
         except queue.Empty:
             pass
         self.root.after(100, self._poll)
+
+    def _show_conversion_failure(self, output: str) -> None:
+        from .gui_export_recovery import show_failure
+        choice = show_failure(self, getattr(self, '_conversion_command', []), output)
+        if choice is not None:
+            self.root.after(0, lambda: self._retry_conversion(choice))
+
+    def _retry_conversion(self, choice) -> None:
+        """Apply only the explicitly selected compromise to this exact job."""
+        if self.busy:
+            return
+        try:
+            from .cli import parser
+            cli_parser = parser()
+
+            def same_command(left, right):
+                return (left[:3] == right[:3] and
+                        vars(cli_parser.parse_args(left[3:])) == vars(cli_parser.parse_args(right[3:])))
+
+            current = build_convert_command(self._current_values(), partial=self.partial.get(),
+                overwrite=self.overwrite.get(), partial_cloth=self.partial_cloth.get())
+            if (not same_command(current, self._conversion_command) or
+                    self._input_identity() != self._conversion_identity):
+                raise ValueError('The input or settings changed. Review them and press Export to start a new job.')
+            command = list(choice.command)
+            for key, value in choice.values_overrides:
+                if key in self.values:
+                    self.values[key].set(value)
+            self.partial.set('--partial' in command)
+            self.partial_cloth.set('--partial-cloth' in command)
+            rebuilt = build_convert_command(self._current_values(), partial=self.partial.get(),
+                overwrite=self.overwrite.get(), partial_cloth=self.partial_cloth.get())
+            if not same_command(rebuilt, command):
+                raise ValueError('Review the suggested settings and press Export to start the next job.')
+        except (OSError, RuntimeError, ValueError) as exc:
+            self._append_log(str(exc) + '\n')
+            self.status.set(str(exc))
+            return
+        self._append_log('Selected recovery: ' + choice.title + '\n' + choice.description + '\n')
+        self._save_settings()
+        report = resolve_gui_path(self.values['output'].get()).with_suffix('.agr-report.json')
+        self._start(command, 'convert', report)
 
     def _append_log(self, text: str) -> None:
         # The Windows launcher captures stdout, including conversion diagnostics.

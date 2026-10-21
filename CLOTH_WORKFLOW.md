@@ -2,6 +2,8 @@
 
 Enable **Cloth / secondary motion (experimental)** with **Installed game**. Map conversion can remain off.
 
+If some cloth is unavailable, the recovery window offers an explicit retry with supported cloth or with cloth disabled. **Advanced → Output policy → Keep supported cloth if some cloth is unavailable** (`--partial-cloth`) retains supported approximate cloth and reports omitted or failed cloth. Character models and skeletal animation remain strict. The broader partial-export control is a separate choice.
+
 RenderLock first checks the version-matched definitions in the selected asset cache (`prepared-cloth-v1`). On a cache miss, the bundled model extractor reconstructs supported painted proxies automatically from the installed model. No separate proxy download or developer cache is required for those layouts. RenderLock binds the FE-weighted garment in the rest pose and stores its approximate motion as shape keys. The coverage report lists which entities were baked and which remain unsupported.
 
 ## Coverage and limits

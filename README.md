@@ -40,12 +40,20 @@ Install Blender separately. The candidate is checked with Blender 5.2.1 LTS. Ren
 1. In **Setup**, select Blender and your Deadlock folder. The bundled Source 2 Viewer CLI and asset cache are filled in automatically; choose an asset cache outside the game folder if you prefer another location.
 2. In **Export**, browse to a `.dem`. RenderLock inspects it and fills the **Characters** checklist. If you type a path, select **Inspect replay**.
 3. Tick the characters to export, using **All** or **None** to start your selection. Review the start and end ticks; inspection suggests a short preview rather than the full match. Each choice includes all matching character tracks. The recording's roster does not guarantee availability or animation compatibility in every clip. Manual hero IDs remain in **Advanced** if the roster cannot be read.
-4. Choose a new `.blend` path and export. Keep partial export off unless you explicitly accept missing animation/models or movement placeholders (or use the Lighting lab).
+4. Choose a new `.blend` path and export. Keep partial export off unless you explicitly accept missing animation/models or movement placeholders. Cloth-only and lighting consent have separate controls.
 5. Read the completion message and coverage report, then open the scene in Blender.
 
 The output includes a `.blend`, a companion `.agrscene` package and an `.agr-report.json` report. Keep the companions for validation or reuse. Packed textures make the `.blend` independent of the temporary conversion folder.
 
 The launcher writes its startup log under `%LOCALAPPDATA%/RenderLock/logs`. Preferences are stored under `%APPDATA%/RenderLock`.
+
+### Recovering a stopped export
+
+For recognized failures, the recovery window explains what cannot be included and offers specific retry choices. You can keep supported approximate cloth, omit cloth or effects, or turn off incompatible Source lighting. Each choice describes what will be missing. A retry may repeat preparation and scene creation while reusing verified cached assets.
+
+**Advanced → Output policy → Keep supported cloth if some cloth is unavailable** accepts omitted or failed cloth and keeps character models and animation strict. CLI users can select `--partial-cloth`. Missing character animation or models requires the separate, explicit **Allow partial export / movement placeholders** choice (`--partial`); rig identities, replay identities and data validation remain checked.
+
+Failed exports try to save a small `renderlock-support-*.zip` beside the startup log. The recovery window shows its exact path and provides **Open diagnostics** and **Copy path**. The ZIP contains the error, options, available logs and bounded reports. Raw work files remain in the retained export folder for deeper investigation. If the ZIP cannot be written, the log explains that failure; forced process termination can prevent diagnostic finalization. Paths and replay filenames may remain in diagnostics, so review them before sharing.
 
 ### Reusing models and textures
 
@@ -118,4 +126,3 @@ Windows portable builds from 0.3.0b4 include an **Updates** page. Review release
 notes, download an update, then click **Install and restart** when your work is
 finished. Startup checks fetch metadata only and can be disabled. Older versions
 need one manual upgrade to receive this feature. See [Updating RenderLock](UPDATING.md).
-
