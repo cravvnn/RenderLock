@@ -1,3 +1,11 @@
+# 0.3.0b11 - Faster update checks and export timing
+
+- Add a read-only installed-game check (`agr compat`) that reports the game build, probe atlas/cubemap layout, and whether character, NPR and static-map lighting resources match the qualified identities. Character-only readiness is reported separately from static map lighting, so a later map-content update does not look like a character export failure.
+
+- Run the installed-game compatibility check before model conversion when character lighting or NPR is requested. A changed shader or texture layout now stops with the exact resource reason before a long model/animation job instead of failing later.
+
+- Record per-stage timings in the export log, the saved report and `failure.json`, and in the Blender scene report. This makes it clear whether preparation, pose baking, lighting, NPR, cloth or effects is the long pole.
+
 # 0.3.0b10 - October game update: light probes and NPR
 
 - Read the installed light-probe atlas and cubemap layout from their VTEX headers instead of pinning the map/world hash, so a map-content update no longer stops hero Source lighting with "World probe layout requires requalification". Six-face atlas depth, cubemap depth, format, region bounds and resource identities are still checked. Legacy packages keep their recorded layouts.

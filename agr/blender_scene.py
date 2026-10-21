@@ -16,6 +16,7 @@ import math
 from pathlib import Path
 import re
 import sys
+import time
 
 
 class _SplitOutput:
@@ -740,6 +741,15 @@ def _review_setup(scene, positions):
 def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime=None, shot_hero=None,
                 character_shader=None, character_only=False, allow_partial_lighting=False):
     _init_blender()
+    started = time.monotonic()
+    timings = []
+
+    def mark(name):
+        row = {"stage": name, "seconds": round(time.monotonic() - started, 3)}
+        timings.append(row)
+        print("AGR timing:", name, f"{row['seconds']:.1f}s", flush=True)
+        return row
+
     segment, output = Path(segment).resolve(), Path(output).resolve()
     data = json.loads(segment.read_text(encoding="utf-8"))
     from agr.blender_scene_npr import validate_npr_runtime
@@ -887,6 +897,7 @@ def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime
                 report["warnings"].append(name + ": secondary motion was withheld: " + str(exc))
         report["entities"].append(entry)
         print("AGR scene:", name, entry["model_status"], entry["pose"]["status"], flush=True)
+    mark("entities")
     for identity, actor in logical.items():
         if actor.get('model_tracks'):
             # A single rig is not a valid attachment provider for the whole
@@ -922,6 +933,7 @@ def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime
         except Exception as exc:
             report["map"] = {"status": "failed", "stage": "rendering", "error": str(exc)}
             report["warnings"].append("Map import failed: " + str(exc))
+    mark("map")
     report["camera"] = _review_setup(scene, all_positions)
     if shot_hero is not None:
         selected = [root for root in roots if root.get('hero_id') == str(shot_hero)]
@@ -934,23 +946,27 @@ def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime
         scene['agr_preview_lighting'] = json.dumps(report['preview_lighting'])
         if report['camera']['minimum_sampled_visibility'] < 1:
             report['warnings'].append('Hero shot has sampled obstructions; inspect framing in Blender.')
+    mark("camera")
     if data.get('hero_lighting') is not None:
         from agr.blender_hero_lighting import apply_hero_lighting
         report['hero_lighting'] = apply_hero_lighting(scene, lighting_roots, data['hero_lighting'],
             data.get('map', {}).get('source_world_sha256'), segment.parent, coordinates,
             components=data.get('hero_lighting_components',['diffuse','reflections']))
         report['warnings'].append('Hero Source lighting is explicitly partial with reference assumptions; see hero lighting coverage and limits.')
+    mark("hero_lighting")
     if data.get('npr_runtime') is not None:
         from agr.blender_scene_npr import apply_scene_npr
         report['npr_lighting']=apply_scene_npr(scene,lighting_roots,data,manifest_dir=segment.parent,
             coordinates=coordinates,allow_partial=partial_lighting,
             coverage=report.get('hero_lighting',{}).get('coverage'))
         report['warnings'].append('NPR indirect is partial; direct lighting and frame-dependent rim remain incomplete. See npr_lighting coverage.')
+    mark("npr_lighting")
     if character_shader is not None:
         from agr.blender_character_shader import apply_character_shader
         report['character_shader']=apply_character_shader(scene,lighting_roots,data,character_shader,
             manifest_dir=segment.parent,allow_partial=partial_lighting)
         report['warnings'].append('Character shader uses an artistic Source-lighting bridge and Fresnel rim; Source emissive/status/outline and depth-aware rim remain incomplete.')
+    mark("character_shader")
     if data.get("effects") or particle_runtime:
         try:
             if particle_runtime:
@@ -963,6 +979,8 @@ def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime
         except Exception as exc:
             report["effects"] = {"status": "failed", "stage": "rendering", "error": str(exc)}
             report["warnings"].append("Particle rendering was incomplete: " + str(exc))
+    mark("effects")
+    report["timings"] = timings
     for marker in data.get("markers", []):
         tick = marker.get("tick")
         if tick is not None and data["start_tick"] <= tick <= data["end_tick"]:
@@ -1013,6 +1031,7 @@ def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime
     finalize_packed_image_paths()
     output.parent.mkdir(parents=True, exist_ok=True)
     bpy.ops.wm.save_as_mainfile(filepath=str(output), compress=True)
+    mark("save")
     output.with_suffix(".scene.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({"output": str(output), "scene_report": str(output.with_suffix(".scene.json")), "entities": len(roots), "warnings": report["warnings"]}), flush=True)
     return report

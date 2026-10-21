@@ -149,6 +149,28 @@ def prepare_installed_assets(segment_path: Path, work_dir: Path, install_path: P
     provider = GameAssetProvider(install_path, cache_dir,
                                  map_name=map_name if not include_map else None)
     decoder = AssetConverter(converter, cache_dir, log=log)
+    if include_map and (source_lighting or source_hero_lighting or source_npr_lighting):
+        from .compatibility import installed_compatibility
+        mounted = GameAssetProvider(install_path, cache_dir, map_name=map_name)
+        compat = installed_compatibility(mounted)
+        build = compat.get('game', {}).get('ClientVersion', 'unknown')
+        log(f"Game compatibility: build {build}; character lighting "
+            f"{compat['character_lighting']['status']}; static map lighting "
+            f"{compat['static_map_lighting']['status']}.")
+        layout = compat.get('probe_layout')
+        if isinstance(layout, dict) and layout.get('schema_version') == 1:
+            dims = layout['dimensions']
+            log(f"Probe layout: {dims[0]}x{dims[1]}x{dims[2]} with {layout['cube_depth']} cubemap array entries.")
+        need_hero = bool(source_hero_lighting or (source_lighting and character_only))
+        if need_hero and compat['hero_lighting']['status'] != 'ready':
+            raise ValueError('Installed game compatibility check failed for hero lighting before asset preparation: '
+                             + '; '.join(compat['hero_lighting']['reasons']))
+        if source_npr_lighting and compat['npr_lighting']['status'] != 'ready':
+            raise ValueError('Installed game compatibility check failed for NPR lighting before asset preparation: '
+                             + '; '.join(compat['npr_lighting']['reasons']))
+        if source_lighting and not character_only and compat['static_map_lighting']['status'] != 'ready':
+            raise ValueError('Installed game compatibility check failed for static map lighting before asset preparation: '
+                             + '; '.join(compat['static_map_lighting']['reasons']))
     bindings, failures = bind_models(segment, provider.resources)
     report = {'status': 'preparing', 'source': 'installed_game',
               'demo_build': segment.get('metadata', {}).get('build'),

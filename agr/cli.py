@@ -559,6 +559,16 @@ def convert(args):
     success = False
     saved_package = False
     stage = "read_segment"
+    stage_started = time.monotonic()
+    timings = []
+
+    def set_stage(name):
+        nonlocal stage, stage_started
+        now = time.monotonic()
+        timings.append({"stage": stage, "seconds": round(now - stage_started, 3)})
+        stage = name
+        stage_started = now
+
     try:
         if args.demo:
             if args.start_tick is None or args.end_tick is None:
@@ -600,7 +610,7 @@ def convert(args):
             save_scene(selected, segment)
         if assets is None:
             from .installed_assets import prepare_installed_assets
-            stage = "prepare_installed_assets"
+            set_stage("prepare_installed_assets")
             selected = read_scene(segment)
             has_cached_poses = any(bool(e.get("pose_file") and e.get("skeleton_file"))
                                    for e in selected["entities"])
@@ -632,7 +642,7 @@ def convert(args):
             assets = Path(assets).resolve()
             if not assets.is_dir():
                 raise RuntimeError("Installed asset preparation finished without producing an asset folder.")
-        stage = "model_coverage"
+        set_stage("model_coverage")
         data = read_scene(segment)
         data.setdefault("metadata", {})["application_version"] = __version__
         if args.secondary_motion:
@@ -673,7 +683,7 @@ def convert(args):
                 data["metadata"]["source_coordinate_system"] = legacy
             data["metadata"]["coordinate_system"] = {"unit_scale": 0.0254, "origin": [0, 0, 0], "world_yaw_degrees": 0, "model_yaw_degrees": 180}
         mode = animation_mode(data, args.motion_only, saved_package, args.partial)
-        stage = "evaluate_animation"
+        set_stage("evaluate_animation")
         save_scene(data, segment)
         if mode == "motion":
             log("[2/4] Explicit movement-only export; skeletal evaluation skipped.")
@@ -689,7 +699,7 @@ def convert(args):
             segment = save_scene(data, work / 'output_segment.json')
             log(f"Recovered particle motion from tick {data['particle_history']['start_tick']}; output starts at {args.start_tick}.")
         log("[3/4] Creating a fresh Blender scene...")
-        stage = "build_blender_scene"
+        set_stage("build_blender_scene")
         script = Path(__file__).with_name("blender_scene.py").resolve()
         scene_output = work / "scene.blend"
         command = [engine, str(script)] if args.blender_python else [engine, "--background", "--factory-startup", "--python-exit-code", "1", "--python", str(script), "--"]
@@ -716,7 +726,7 @@ def convert(args):
         subprocess.run(command, check=True)
         if not scene_output.is_file() or scene_output.stat().st_size == 0:
             raise RuntimeError("Blender finished without producing a scene.")
-        stage = "validate_blender_completion"
+        set_stage("validate_blender_completion")
         generated = read_scene(segment)
         requested_stages=set()
         character_only=getattr(args,'character_only',False)
@@ -731,7 +741,7 @@ def convert(args):
             requested_stages=requested_stages,shot_hero=getattr(args,'shot_hero',None))
         save_scene(generated, segment)
         log("[4/4] Saving the scene package and coverage report...")
-        stage = "publish_scene"
+        set_stage("publish_scene")
         generated = read_scene(segment)
         report = {"application": "RenderLock", "version": __version__, "status": "converted", "output": str(output), "scene_package": str(package / "manifest.json"), "start_tick": generated["start_tick"], "end_tick": generated["end_tick"], "tick_rate": generated["tick_rate"], "export_fps": args.fps, "entities": len(generated["entities"]), "coverage": generated.get("coverage", {}), "seconds": round(time.monotonic() - started, 3), "scene_extras": generated.get("coverage", {}).get("scene_extras", {}), "ragdoll": "outside_current_scope", "death_workflow": "user_authored_animation",
                   "map_workflow": "installed_region" if args.include_map else "external_blend", "backward_dash_facing": "not_validated"}
@@ -764,12 +774,15 @@ def convert(args):
         if report["warnings"]:
             report["status"] = "converted_with_warnings"
         report["summary"] = scene_completion_message(report)
+        report["timings"] = list(timings)
         # Input replay/asset files are never written by the job.
         from .export_publish import publish_export
         publish_export(scene_output, segment, output, report, overwrite=args.overwrite,
                        stage_package=publish_package)
         success = True
+        set_stage("complete")
         log(f"Saved: {output}")
+        log("Stage timings: " + ", ".join(f"{row['stage']} {row['seconds']:.1f}s" for row in timings))
         log(f"Range: {generated['start_tick']}â€“{generated['end_tick']} inclusive; {len(generated['entities'])} entity tracks")
         log(f"Coverage: {report_path}")
         log(report["summary"])
@@ -779,7 +792,9 @@ def convert(args):
             log("Completed with coverage warnings. Open the coverage report or AGR_README in Blender for missing/approximate features.")
         return report
     except BaseException as exc:
-        failure = {"error": str(exc), "type": type(exc).__name__, "stage": stage}
+        failure = {"error": str(exc), "type": type(exc).__name__, "stage": stage,
+                   "stage_seconds": round(time.monotonic() - stage_started, 3),
+                   "timings": timings}
         details = getattr(exc, "details", None)
         if isinstance(details, dict) and details:
             failure["details"] = details
@@ -808,6 +823,10 @@ def parser():
     inspect.add_argument("--demo", type=Path, required=True)
     doctor = sub.add_parser("doctor", help="Show available dependencies")
     doctor.add_argument("--blender")
+    compat = sub.add_parser("compat", help="Check installed game resources against qualified identities")
+    compat.add_argument("--game-install", type=Path, required=True)
+    compat.add_argument("--map-name")
+    compat.add_argument("--asset-cache", type=Path)
     cv = sub.add_parser("convert", help="Build a new scene from a replay or saved scene package")
     source = cv.add_mutually_exclusive_group(required=True)
     source.add_argument("--demo", type=Path)
@@ -883,6 +902,11 @@ def main(argv=None):
             native = find_native_extractor()
             state = {"version": __version__, "python": sys.version, "modules": {m: importlib.util.find_spec(m) is not None for m in ["numpy", "boon", "polars", "snappy", "tkinter"]}, "native_extractor": str(native) if native else None, "blender": args.blender or shutil.which("blender")}
             print(json.dumps(state, indent=2))
+        elif args.command == "compat":
+            from .compatibility import check_game_install
+            report = check_game_install(args.game_install, args.asset_cache, args.map_name)
+            print(json.dumps(report, indent=2))
+            return 0
         elif args.command == 'render-npr':
             from .npr_render_sequence import render_sequence
             render_sequence(args.blender,args.scene,args.segment,args.output,args.frames,allow_partial=args.partial)
