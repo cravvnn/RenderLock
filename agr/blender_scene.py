@@ -268,7 +268,8 @@ def _import_asset(spec, collection, root, name):
     else:
         raise ValueError("Supported model formats are GLB, glTF and explicit .blend asset hierarchies: " + str(model))
     _clear_animation(objects)
-    model_root = _empty(name + " | model basis", collection)
+    from agr.blender_object_names import bounded_name
+    model_root = _empty(bounded_name(name + " | model basis"), collection)
     model_root.parent = root
     model_root.rotation_euler.z = math.radians(float(spec.get("model_yaw_degrees", 0)))
     model_root.scale = (float(spec.get("model_scale", 1)),) * 3
@@ -290,9 +291,10 @@ def _import_asset(spec, collection, root, name):
 
 
 def _placeholder(root, collection, name):
+    from agr.blender_object_names import bounded_name
     bpy.ops.mesh.primitive_uv_sphere_add(segments=16, ring_count=8, radius=1)
     obj = bpy.context.object
-    obj.name = name + " | missing asset marker"
+    obj.name = bounded_name(name + " | missing asset marker")
     for old in list(obj.users_collection):
         old.objects.unlink(obj)
     collection.objects.link(obj)
@@ -794,18 +796,20 @@ def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime
     poses_requested = data.get("coverage", {}).get("animation") != "not_requested"
     roots, lighting_roots, all_positions, entity_objects = [], [], [], {}
     from agr.model_tracks import actor_id, logical_entities
+    from agr.blender_object_names import (actor_label, bounded_name,
+        rename_imported_objects, refresh_secondary_motion_names)
     logical = logical_entities(data['entities'])
     shared_roots = {}
     for entity in data["entities"]:
         if not entity.get("samples"):
             report["warnings"].append("Entity " + str(entity["id"]) + " has no movement samples and was skipped")
             continue
-        name = str(entity.get("hero_name") or entity.get("hero_id") or "Entity") + " [" + str(entity["id"]) + "]"
-        collection = bpy.data.collections.new(name)
+        name = actor_label(entity)
+        collection = bpy.data.collections.new(bounded_name(name))
         scene.collection.children.link(collection)
         identity = actor_id(entity)
         if identity not in shared_roots:
-            root = _empty(name + " | replay root", collection)
+            root = _empty(bounded_name(actor_label(logical[identity]) + " | replay root"), collection)
             root["agr_entity_id"], root["hero_id"] = str(identity), str(entity.get("hero_id", ""))
             shared_roots[identity] = root
             roots.append(root)
@@ -895,6 +899,13 @@ def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime
                 if getattr(exc, "diagnostics", None):
                     entry["secondary_motion"]["diagnostics"] = exc.diagnostics
                 report["warnings"].append(name + ": secondary motion was withheld: " + str(exc))
+        if entry["model_status"] == "imported":
+            # rig_object selection, source mesh checks and cloth suffix lookups
+            # must finish before cosmetic names replace converter object names.
+            renamed = rename_imported_objects(objects, name, (obj.name for obj in bpy.data.objects))
+            if 'rig' in entry:
+                entry['rig'] = renamed.get(entry['rig'], entry['rig'])
+            refresh_secondary_motion_names(entry.get('secondary_motion'), renamed)
         report["entities"].append(entry)
         print("AGR scene:", name, entry["model_status"], entry["pose"]["status"], flush=True)
     mark("entities")

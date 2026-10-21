@@ -869,7 +869,9 @@ def _build_advanced(app, page):
             ("Model bone rules (experimental)", "model_constraints", CHECK_GAP,
              "Applies supported model rules for how bones aim at, follow or twist with other bones. "
              "This can refine the recorded pose. It does not simulate cloth or physics."),
-            ("Material repairs / approximate glass (experimental)", "material_repairs", 0, "")):
+            ("Emission and glass repairs (experimental)", "material_repairs", 0,
+             "Applies supported static emission and unlit corrections, plus an artistic glass approximation. "
+             "This does not recover every glow, animated mask or game shader behavior.")):
         _check(app, body, text, app.values[key], pady=(0, gap), installed_only=key != "model_constraints", info=info)
 
     body, row = _card(app, page, row, "Particle simulation", label_column=WIDE_LABEL_COLUMN,
@@ -894,7 +896,7 @@ def _build_advanced(app, page):
 
 
 # --------------------------------------------------------------------------
-# Development-only lighting page.
+# Experimental lighting page.
 
 
 def _development_lighting(app, page):
@@ -911,6 +913,14 @@ def _development_lighting(app, page):
          lambda: app._browse_hero_decoder("cubemap_decoder", "CubemapDecode.dll")),
         ("Elagrimm shader .blend", "character_shader", app._browse_character_shader)):
         _path_row(app, body, label, key, command)
+    _note(body, "Elagrimm requires a separate download. Select its .blend above; an empty field keeps converted game materials. "
+                "Appended materials are saved inside your export, without a separate shader file beside it.", pady=(0, CHECK_GAP))
+    shader_download = RoundedButton(body, text="Get supported Elagrimm shader", style="quiet",
+        command=app._open_character_shader_download, theme=gui_theme.palette())
+    shader_download.grid(row=_next_row(body), column=0, columnspan=3, sticky="w", pady=_pad((0, SECTION_GAP)))
+    app.mutable_widgets.append(shader_download)
+    _note(body, "Elagrimm requires all three lighting options above, Prepare installed map region on Map, "
+                "and a selected follow hero on Export.", pady=(0, CHECK_GAP))
     _note(body, "Source/NPR lighting reads the installed map's lighting data; an external map .blend is not enough. "
                 "These options accept artistic lighting limits and keep character animation strict. "
                 "Enable Prepare installed map region on Map; this runs with the export. "

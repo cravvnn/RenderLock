@@ -1,3 +1,9 @@
+# 0.3.0b13 - Character names and material setup
+
+- Give actor collections, replay roots and imported meshes, armatures and empties canonical hero names with actor IDs and separate model-track labels. Preserve original object names, bone/material identities, rig selection and the shared root across character transformations. Generated cloth helpers retain their utility names.
+- Explain the separate qualified Elagrimm library download, required lighting/follow-camera settings and embedded material/node-group output inside Lighting lab. Add a matching RenderLock-styled button to the supported library revision.
+- Clarify the existing optional static emission and glass repair setting and its limits. This release does not change emission defaults, shader-append behavior or normal-map pixels; the reported normal-shading discrepancy remains under investigation.
+
 # 0.3.0b12 - Export recovery and support ZIPs
 
 - Save a bounded, verified failed-export support ZIP beside the normal logs, including early and final-save errors. Show its location in a branded recovery window with specific, user-selected retry choices.

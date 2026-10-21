@@ -465,6 +465,17 @@ class AGRApp:
             filetypes=[('Blender shader library','*.blend'),('All files','*')])
         if path:self.values['character_shader'].set(path)
 
+    def _open_character_shader_download(self) -> None:
+        import webbrowser
+        from .blender_character_shader import LIBRARY_DOWNLOAD_URL
+        try:
+            if webbrowser.open(LIBRARY_DOWNLOAD_URL):
+                return
+        except (webbrowser.Error, OSError):
+            pass
+        self._append_log('Open this link to get the supported Elagrimm shader:\n'
+                         + LIBRARY_DOWNLOAD_URL + '\n')
+
     def _browse_blender(self) -> None:
         path = filedialog.askopenfilename(parent=self.root, title="Choose Blender executable",
                                          filetypes=[("Blender executable", "blender.exe"), ("All files", "*")]

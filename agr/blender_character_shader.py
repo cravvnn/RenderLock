@@ -10,6 +10,7 @@ from pathlib import Path
 LIBRARY_SHA256='018bb08347dcd9cf48da317f5b4c2bcee9e0dcc4fecd4f32c3be3a3225ec1891'
 LIBRARY_COMMIT='e18af8b1c9c1d34b4af72002fb1f4136aa159515'
 LIBRARY_URL='https://github.com/Elagrimm/BLENDER-Deadlock-Shader'
+LIBRARY_DOWNLOAD_URL=f'{LIBRARY_URL}/blob/{LIBRARY_COMMIT}/BLENDER-Deadlock-Shader.blend'
 MATERIAL_NAME='Deadlock'
 NODE_NAME='D2B character shader'
 
