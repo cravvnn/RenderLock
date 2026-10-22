@@ -15,6 +15,7 @@ from .source_brdf_assets import RESOURCE as BRDF_RESOURCE, SOURCE_SHA256 as BRDF
 from .source_lightmap import SHADER_RESOURCE as DEFERRED_SHADER, SHADER_SHA256 as DEFERRED_SHA256
 from .source_npr_package import SHADER_RESOURCE as NPR_SHADER, QUALIFIED_SHADER_SHA256
 from .source_probe_layout import derive_probe_layout, read_texture_layout
+from .material_expressions import expression_module_status
 
 
 def _steam_build(install_path):
@@ -99,6 +100,8 @@ def installed_compatibility(provider):
             return False, label + ': ' + str(exc)
 
     npr_ok, npr_reason = shader(NPR_SHADER, QUALIFIED_SHADER_SHA256, 'npr_pbr_shader')
+    evaluator=expression_module_status(provider)
+    report['material_expression_evaluator']=evaluator
     brdf_ok, brdf_reason = shader(BRDF_RESOURCE, BRDF_SHA256, 'brdf_lut')
     deferred_ok, deferred_reason = shader(DEFERRED_SHADER, DEFERRED_SHA256, 'static_lightmap_shader')
     if npr_reason:
@@ -118,14 +121,24 @@ def installed_compatibility(provider):
         'reasons': hero_reasons,
     }
     report['npr_lighting'] = {
-        'status': 'ready' if hero_ok and npr_ok else 'requalification_required',
-        'scope': 'Hero lighting plus installed NPR material inputs',
+        'status': 'selected_material_check_required' if hero_ok and npr_ok else 'requalification_required',
+        'resource_status': 'ready' if hero_ok and npr_ok else 'requalification_required',
+        'scope': 'NPR resource prerequisites; selected material routes and constant expressions require export preflight',
         'reasons': npr_reasons,
     }
     report['character_lighting'] = {
-        'status': 'ready' if hero_ok and npr_ok else 'requalification_required',
-        'scope': 'Installed hero probes, NPR material inputs and BRDF for character-only exports',
+        'status': 'selected_material_check_required' if hero_ok and npr_ok else 'requalification_required',
+        'resource_status': 'ready' if hero_ok and npr_ok else 'requalification_required',
+        'scope': 'Installed character lighting resources; selected-material and animation validation remains required',
         'reasons': npr_reasons,
+    }
+    report['selected_materials'] = {
+        'status':'not_checked',
+        'scope':'Selected NPR models/materials are checked before animation and scene-extension preparation.',
+        'conditional_evaluator_required':True,
+        'evaluator_status':evaluator['status'],
+        'reasons':([] if evaluator['status']=='ready' else
+                   ['Selected constant-color expressions require evaluator qualification: '+evaluator.get('reason','unknown module')]),
     }
     report['static_map_lighting'] = {
         'status': 'ready' if deferred_ok and brdf_ok else 'requalification_required',
@@ -134,11 +147,10 @@ def installed_compatibility(provider):
     }
     reasons.extend(character_reasons)
     reasons.extend(static_reasons)
+    reasons.extend(report['selected_materials']['reasons'])
     report['reasons'] = list(dict.fromkeys(reasons))
-    report['status'] = ('ready' if report['character_lighting']['status'] == 'ready'
+    report['status'] = ('selected_material_check_required' if hero_ok and npr_ok
                         else 'requalification_required')
-    if report['status'] == 'ready' and report['static_map_lighting']['status'] != 'ready':
-        report['status'] = 'character_ready_static_map_requalification'
     return report
 
 

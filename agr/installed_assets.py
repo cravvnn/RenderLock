@@ -165,7 +165,7 @@ def prepare_installed_assets(segment_path: Path, work_dir: Path, install_path: P
         if need_hero and compat['hero_lighting']['status'] != 'ready':
             raise ValueError('Installed game compatibility check failed for hero lighting before asset preparation: '
                              + '; '.join(compat['hero_lighting']['reasons']))
-        if source_npr_lighting and compat['npr_lighting']['status'] != 'ready':
+        if source_npr_lighting and compat['npr_lighting'].get('resource_status',compat['npr_lighting']['status']) != 'ready':
             raise ValueError('Installed game compatibility check failed for NPR lighting before asset preparation: '
                              + '; '.join(compat['npr_lighting']['reasons']))
         if source_lighting and not character_only and compat['static_map_lighting']['status'] != 'ready':
@@ -176,6 +176,7 @@ def prepare_installed_assets(segment_path: Path, work_dir: Path, install_path: P
               'demo_build': segment.get('metadata', {}).get('build'),
               'demo_sha256': segment.get('metadata', {}).get('demo_sha256'),
               'bindings': bindings, 'diagnostics': failures, 'models': [],
+              'npr_material_preflight': {'status': 'not_requested'},
               'converter': decoder.identity,
               'model_cache': {'root': str(decoder.root), 'reused': 0, 'converted': 0,
                               'material_repairs_reused': 0, 'material_repairs_built': 0,
@@ -265,6 +266,27 @@ def prepare_installed_assets(segment_path: Path, work_dir: Path, install_path: P
         # Save model identities before evaluation so the existing pipeline imports
         # the exact model for each entity, even when hero identities repeat.
         _write(segment_path, segment)
+        npr_material_plan=None
+        if source_npr_lighting:
+            from .source_npr_scene import plan_scene_npr_materials
+            log('Checking selected NPR material inputs before animation and scene preparation...')
+            try:
+                npr_material_plan=plan_scene_npr_materials(segment,provider,decoder,
+                    manifest_dir=segment_path.parent,allow_partial=True)
+            except Exception as exc:
+                details=getattr(exc,'details',None)
+                details=dict(details) if isinstance(details,dict) else {}
+                details.setdefault('code','selected_npr_material_preflight_failed')
+                details['stage']='selected_npr_material_preflight'
+                exc.details=details
+                report['npr_material_preflight']=dict(status='failed',stage=details['stage'],
+                    error=str(exc)[:2000],error_type=type(exc).__name__,details=details)
+                raise
+            report['npr_material_preflight']=dict(status='planned_requires_decode',
+                stage='selected_npr_material_preflight',
+                content_sha256=npr_material_plan['content_sha256'],
+                entity_count=len(npr_material_plan['entities']),model_count=len(npr_material_plan['models']),
+                scope='Selected material inputs only; decoding, shader application and coverage remain separate.')
         if need_animation:
             report['animation'] = prepare_animation_assets(segment_path, pack, provider, decoder,
                                                            demo=demo, strict=strict, log=log)
@@ -283,6 +305,7 @@ def prepare_installed_assets(segment_path: Path, work_dir: Path, install_path: P
                 source_lighting=source_lighting, lighting_probe=lighting_probe, lighting_dotnet=lighting_dotnet,
                 source_hero_lighting=source_hero_lighting,atlas_probe=atlas_probe,cube_probe=cube_probe,
                 prepare_npr_materials=source_npr_lighting,apply_npr_indirect=source_npr_lighting,
+                npr_material_plan=npr_material_plan,
                 character_only=character_only,
                 secondary_motion=secondary_motion, log=log,simulate_effects=simulate_effects)
             segment = json.loads(segment_path.read_text(encoding='utf-8'))
@@ -304,6 +327,9 @@ def prepare_installed_assets(segment_path: Path, work_dir: Path, install_path: P
         log(f"Model cache: {report['model_cache']['reused']} reused, "
             f"{report['model_cache']['converted']} converted; textures stay in the shared cache.")
         return pack
-    except BaseException:
-        checkpoint('failed')
+    except BaseException as error:
+        try:
+            checkpoint('failed')
+        except Exception as checkpoint_error:
+            error.add_note('Installed asset failure checkpoint could not be saved: '+str(checkpoint_error)[:500])
         raise

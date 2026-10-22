@@ -134,6 +134,7 @@ def test_equals_lighting_values_are_removed_without_losing_map_or_other_helpers(
 
 @pytest.mark.parametrize('error', [
     'Installed game compatibility check failed for NPR lighting before asset preparation: npr_pbr_shader changed',
+    'Material expression evaluator module requires requalification',
     'NPR shader requires requalification',
     'NPR texture decoder requires requalification',
     'Combined NPR/unlit permutation requires qualification',

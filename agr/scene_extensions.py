@@ -22,7 +22,7 @@ def prepare_scene_extensions(segment_path, pack, provider, decoder, bindings, *,
                              simulate_effects=False, source_lighting=False,
                              lighting_probe=None, lighting_dotnet=None, source_hero_lighting=False,
                              atlas_probe=None, cube_probe=None, prepare_npr_materials=False, apply_npr_indirect=False,
-                             character_only=False):
+                             character_only=False, npr_material_plan=None):
     if apply_npr_indirect and not prepare_npr_materials:
         raise ValueError('NPR application requires material preparation')
     if prepare_npr_materials and not source_hero_lighting:
@@ -165,7 +165,7 @@ def prepare_scene_extensions(segment_path, pack, provider, decoder, bindings, *,
         try:
             selected=_read(segment_path)
             package=prepare_scene_npr_materials(selected,provider,decoder,
-                manifest_dir=Path(segment_path).parent,allow_partial=True)
+                manifest_dir=Path(segment_path).parent,allow_partial=True,plan=npr_material_plan)
             selected['npr_materials']=package
             if apply_npr_indirect:
                 selected['npr_runtime']=dict(mode='partial_indirect_reference',assume_camera_forward=True,assume_white_instance_color=True)

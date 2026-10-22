@@ -168,9 +168,14 @@ def plan_npr_material_assets(document,provider,decoder):
         flags={r['m_name']:r['m_nValue'] for r in source.get('m_intParams',[])}
         contract=source_material_contract(source,resolve_constants=True)
         expression=contract.get('expression_evaluation')
+        expression_module=None
         if expression and expression['vector_overrides']:
             from .material_expressions import verify_expression_module
-            verify_expression_module(provider)
+            try:
+                expression_module=verify_expression_module(provider)
+            except ConversionError as exc:
+                exc.details=dict(getattr(exc,'details',{}),material=resource,material_index=index)
+                raise
         if (vmat.get('ShaderName')!='pbr.vfx' or any(vmat.get('IntParams',{}).get(key,0)!=flags.get(key,0)
                 for key in set(flags)|set(vmat.get('IntParams',{})) if key.startswith('F_'))):
             raise ConversionError('Converted material feature metadata differs from installed material')
@@ -188,6 +193,7 @@ def plan_npr_material_assets(document,provider,decoder):
             selected[parameter]=dict(resource=texture,source_sha256=payload.sha256,path=str(payload.local_path))
         row=dict(material=resource,material_index=index,source_sha256=resolved.sha256,
                  textures=selected,authored=source,**contract)
+        if expression_module is not None:row['expression_module']=expression_module
         vectors={item['m_name']:item['m_value'] for item in source.get('m_vectorParams',[])}
         if expression:vectors.update(expression['vector_overrides'])
         csb=vectors.get('g_vAlbedoContrastSaturationBrightness1',[1,1,1,0])

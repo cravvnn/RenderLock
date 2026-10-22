@@ -1,8 +1,11 @@
-# 0.3.0b14 - Clearer lighting setup and matching dialogs
+# 0.3.0b14 - Lighting compatibility and clearer setup
+
+- Qualify the current game build 6813 material-expression evaluator for the existing bounded constant-color subset. Retain the original qualified evaluator and reject unknown modules, malformed programs, runtime attributes and unsupported functions. Record the observed module separately from the original semantic reference in prepared material packages.
+- Check the exact selected NPR material set before animation, effects and probe preparation. Reuse the bound plan with source/model/material-group validation before decoding. Compatibility reports distinguish installed resource readiness from selected-material validation; evaluator refusals include the actual identity and triggering material, with an explicit option to continue without NPR and its dependent shader.
 
 - Choose Standard materials, Source lighting, Elagrimm + Source or Custom inside the existing Lighting lab. Source presets prepare their linked lighting-data settings together, without requiring a separate Map preparation checkbox. Full character animation remains strict unless partial export is explicitly selected.
 - Show the Elagrimm library picker beside the selected Elagrimm look. Hide library and helper fields for Standard materials; keep bundled decoder and .NET paths under Advanced tool overrides. Preserve saved library/tool locations when switching looks and preserve the active look for unrelated recovery choices.
-- Require separate, unsaved acceptance of partial lighting limits for each configured export. Relevant input or setting changes reset that acceptance. Existing game-resource and material-evaluator qualification checks remain strict; this release does not repair the current game-update refusal affecting some Source/NPR material paths or qualify a standalone Elagrimm look.
+- Require separate, unsaved acceptance of partial lighting limits for each configured export. Relevant input or setting changes reset that acceptance. Existing game-resource and material-evaluator qualification checks remain strict. Lighting is still a partial artistic reference; a standalone Elagrimm look is not qualified.
 - Use RenderLock's existing theme, logo, title bar and controls for settings, information and confirmation dialogs. Keep dialogs within the parent's monitor work area and make closing a confirmation decline the action.
 
 # 0.3.0b13 - Character names and material setup

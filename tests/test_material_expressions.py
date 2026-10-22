@@ -55,3 +55,51 @@ def test_attribute_color_binding_remains_explicit_and_generic_consumers_are_not_
 def test_evaluator_module_must_match_current_qualified_instructions(tmp_path):
     path=tmp_path/'game/bin/win64/materialsystem2.dll';path.parent.mkdir(parents=True);path.write_bytes(b'updated module')
     with pytest.raises(ValueError,match='requalification'):verify_expression_module(SimpleNamespace(install_path=tmp_path))
+
+
+def test_unqualified_module_reports_actual_identity_without_accepting_it(tmp_path):
+    import hashlib
+    from agr.material_expressions import expression_module_status,QUALIFIED_MODULE_SHA256
+    path=tmp_path/'game/bin/win64/materialsystem2.dll';path.parent.mkdir(parents=True)
+    path.write_bytes(b'future unqualified instructions')
+    provider=SimpleNamespace(install_path=tmp_path)
+    status=expression_module_status(provider)
+    assert status['status']=='requalification_required'
+    assert status['sha256']==hashlib.sha256(path.read_bytes()).hexdigest()
+    assert set(status['qualified_sha256'])==QUALIFIED_MODULE_SHA256
+    with pytest.raises(ValueError,match='requalification') as error:verify_expression_module(provider)
+    assert error.value.details['code']=='material_expression_evaluator_unqualified'
+    assert error.value.details['sha256']==status['sha256']
+
+
+@pytest.mark.parametrize('module',[
+    '4c96327f70565633b421bfe799cd540241327e98c343fd9ff129011ed6936557',
+    '26a029e4e33db12801ebab80ea2ad65536e6d1e19889c810edc59637edd78e74',
+])
+def test_only_qualified_module_identities_share_original_constant_profile(monkeypatch,module):
+    from agr import asset_converter,material_expressions as expressions
+    monkeypatch.setattr(asset_converter,'sha',lambda path:module)
+    identity=expressions.verify_expression_module(SimpleNamespace(install_path='fixture-install'))
+    assert identity==dict(resource=expressions.MODULE_RESOURCE,sha256=module,semantics_sha256=expressions.MODULE_SHA256)
+    expressions.validate_expression_module_identity(identity)
+    assert expressions.expression_contract(authored(vector(1,2,3)))['module_sha256']==expressions.MODULE_SHA256
+
+
+@pytest.mark.parametrize('install',[None,'missing-install'])
+def test_absent_module_is_a_reported_unavailable_capability(install):
+    from agr.material_expressions import expression_module_status
+    provider=SimpleNamespace(install_path=install)
+    status=expression_module_status(provider)
+    assert status['status']=='requalification_required' and status['sha256'] is None
+    with pytest.raises(ValueError,match='requalification'):verify_expression_module(provider)
+
+
+@pytest.mark.parametrize('mutation',[
+    {'sha256':'f'*64},{'sha256':[]},{'resource':'other.dll'},
+    {'semantics_sha256':'f'*64},{'extra':True},
+])
+def test_retained_evaluator_provenance_rejects_unknown_or_malformed_identity(mutation):
+    from agr import material_expressions as expressions
+    identity=dict(resource=expressions.MODULE_RESOURCE,sha256=expressions.MODULE_SHA256,semantics_sha256=expressions.MODULE_SHA256)
+    identity.update(mutation)
+    with pytest.raises(ValueError,match='provenance'):expressions.validate_expression_module_identity(identity)

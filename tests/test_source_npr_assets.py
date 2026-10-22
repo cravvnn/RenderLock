@@ -51,3 +51,35 @@ def test_unqualified_material_rejected(monkeypatch,failure):
     if failure=='shader':source['m_shaderName']='other.vfx'
     if failure=='texture':doc['materials'][0]['extras']['vmat']['TextureParams']['g_tNprTransmissiveColor']='wrong.vtex'
     with pytest.raises(ConversionError):assets.plan_npr_material_assets(doc,provider,None)
+
+
+def test_evaluator_required_only_for_selected_constant_color_overrides(monkeypatch):
+    from agr import material_expressions as expressions
+    from test_material_expressions import vector
+    doc,source,provider=setup(monkeypatch)
+    source['m_dynamicParams']=[dict(m_name='g_vColorTint1',m_value=list(vector(1,1,1)))]
+    calls=[]
+    identity=dict(resource=expressions.MODULE_RESOURCE,sha256=expressions.MODULE_SHA256,semantics_sha256=expressions.MODULE_SHA256)
+    monkeypatch.setattr(expressions,'verify_expression_module',lambda p:calls.append(p) or identity)
+    row=assets.plan_npr_material_assets(doc,provider,None)['materials'][0]
+    assert calls==[provider] and row['expression_module']==identity
+    source['m_dynamicParams']=[dict(m_name='g_vColorTint1',m_value=[25,1,0])]
+    calls.clear()
+    row=assets.plan_npr_material_assets(doc,provider,None)['materials'][0]
+    assert calls==[] and 'expression_module' not in row
+
+
+def test_evaluator_refusal_identifies_triggering_material(monkeypatch):
+    from agr import material_expressions as expressions
+    from test_material_expressions import vector
+    doc,source,provider=setup(monkeypatch)
+    source['m_dynamicParams']=[dict(m_name='g_vColorTint1',m_value=list(vector(1,1,1)))]
+    def refuse(p):
+        error=ConversionError('Material expression evaluator module requires requalification')
+        error.details=dict(code='material_expression_evaluator_unqualified',sha256='f'*64)
+        raise error
+    monkeypatch.setattr(expressions,'verify_expression_module',refuse)
+    with pytest.raises(ConversionError) as error:assets.plan_npr_material_assets(doc,provider,None)
+    assert error.value.details['material']=='models/a.vmat_c'
+    assert error.value.details['material_index']==0
+    assert error.value.details['sha256']=='f'*64

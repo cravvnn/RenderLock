@@ -135,6 +135,7 @@ def _problem(failure, log_text):
         return 'strict', error
     if stage in _OPTIONAL_STAGES:
         if error.startswith(('Installed game compatibility check failed for NPR lighting before asset preparation: ',
+                             'Material expression evaluator module requires requalification',
                              'NPR shader requires requalification',
                              'NPR texture decoder requires requalification',
                              'Unsupported bounded NPR texture resource header',

@@ -55,10 +55,7 @@ def validate_scene_npr_selection(package, entities, *, manifest_dir):
     return {identity:models[material_set_key(row)] for identity,row in selected.items()}
 
 
-def prepare_scene_npr_materials(segment, provider, decoder, *, manifest_dir,
-                                allow_partial=False):
-    if allow_partial is not True:
-        raise ConversionError('Explicit partial NPR material preparation required')
+def _scene_material_selection(segment, *, manifest_dir):
     entities=segment.get('entities',[])
     if not entities:raise ConversionError('NPR preparation requires selected entities')
     identities=set();models={};selections=[]
@@ -89,14 +86,105 @@ def prepare_scene_npr_materials(segment, provider, decoder, *, manifest_dir,
         if key!=digest:row['material_set_sha256']=key
         if contract is not None:row['material_group_sha256']=contract['content_sha256']
         selections.append(row)
-    # Resolve every selected model before decoding any texture. A later
-    # unsupported material cannot leave a partially successful scene package.
-    plans={digest:plan_npr_material_assets(document,provider,decoder)
-           for digest,(_,document) in models.items()}
+    return selections,models
+
+
+def _planning_failure(error, key, document, selections):
+    """Add bounded selection evidence without replacing the original failure."""
+    used={primitive.get('material') for mesh in document.get('meshes',[]) if isinstance(mesh,dict)
+          for primitive in mesh.get('primitives',[]) if isinstance(primitive,dict)
+          and type(primitive.get('material')) is int}
+    materials=[]
+    for index,material in enumerate(document.get('materials',[])):
+        if index not in used or not isinstance(material,dict):continue
+        extras=material.get('extras');vmat=extras.get('vmat') if isinstance(extras,dict) else None
+        if isinstance(vmat,dict):materials.append(str(vmat.get('Name',''))[:256])
+    materials=sorted(set(materials))
+    entities=[row['entity_id'][:256] for row in selections if material_set_key(row)==key]
+    existing=getattr(error,'details',None)
+    details=dict(existing) if isinstance(existing,dict) else {}
+    details.setdefault('code','selected_npr_material_preflight_failed')
+    details['stage']='selected_npr_material_preflight'
+    details['npr_selection']=dict(material_set_sha256=key,entity_count=len(entities),
+        entity_ids=entities[:8],material_count=len(materials),materials=materials[:8])
+    error.details=details
+
+
+def plan_scene_npr_materials(segment, provider, decoder, *, manifest_dir,
+                             allow_partial=False):
+    """Resolve the exact selected material union without decoding any texture."""
+    if allow_partial is not True:
+        raise ConversionError('Explicit partial NPR material preparation required')
+    selections,models=_scene_material_selection(segment,manifest_dir=manifest_dir)
+    plans={}
+    for key,(_,document) in models.items():
+        try:
+            plans[key]=plan_npr_material_assets(document,provider,decoder)
+        except Exception as error:
+            _planning_failure(error,key,document,selections)
+            raise
+    result=dict(schema_version=1,status='planned_requires_decode',allow_partial=True,
+                entities=selections,models=plans,
+                document_sha256={key:canonical_sha(document) for key,(_,document) in models.items()})
+    result['content_sha256']=canonical_sha(result)
+    return result
+
+
+def _validate_reusable_plan(plan, segment, provider, *, manifest_dir):
+    if (not isinstance(plan,dict) or type(plan.get('schema_version')) is not int
+            or plan['schema_version']!=1 or plan.get('status')!='planned_requires_decode'
+            or plan.get('allow_partial') is not True
+            or plan.get('content_sha256')!=canonical_sha({k:v for k,v in plan.items() if k!='content_sha256'})):
+        raise ConversionError('Unsupported or changed scene NPR material plan')
+    selections,models=_scene_material_selection(segment,manifest_dir=manifest_dir)
+    def identities(rows):
+        result={}
+        for row in rows:
+            identity=row['entity_id']
+            if not isinstance(identity,str) or not identity or identity in result:
+                raise ConversionError('Duplicate or invalid planned entity identity')
+            result[identity]={k:v for k,v in row.items() if k!='model_file'}
+        return result
+    if identities(plan['entities'])!=identities(selections):
+        raise ConversionError('Planned/current NPR entity or material-group identity differs')
+    if (set(plan['models'])!=set(models) or plan.get('document_sha256')!={
+            key:canonical_sha(document) for key,(_,document) in models.items()}):
+        raise ConversionError('Planned/current NPR selected material union differs')
+    # Recheck ALL installed material inputs before the first texture decode.
+    # Package construction still enforces current evaluator and texture guards.
+    from .model_material_groups import used_materials
+    for key,material_plan in plan['models'].items():
+        rows=material_plan.get('materials')
+        if not isinstance(rows,list) or not 1<=len(rows)<=64:
+            raise ConversionError('Expected bounded planned NPR material sources')
+        if (len({row['material'] for row in rows})!=len(rows)
+                or {row['material'] for row in rows}!=set(used_materials(models[key][1]))):
+            raise ConversionError('Planned/current NPR material source coverage differs')
+        try:
+            for row in rows:
+                if provider.resolve(row['material']).sha256!=row['source_sha256']:
+                    raise ConversionError('NPR material source changed since planning')
+        except Exception as error:
+            _planning_failure(error,key,models[key][1],selections)
+            raise
+    return selections
+
+
+def prepare_scene_npr_materials(segment, provider, decoder, *, manifest_dir,
+                                allow_partial=False, plan=None):
+    if allow_partial is not True:
+        raise ConversionError('Explicit partial NPR material preparation required')
+    if plan is None:
+        plan=plan_scene_npr_materials(segment,provider,decoder,
+                                      manifest_dir=manifest_dir,allow_partial=True)
+        selections=plan['entities']
+    else:
+        selections=_validate_reusable_plan(plan,segment,provider,manifest_dir=manifest_dir)
+    # Every selected model has been planned before decoding any texture.
     packages={}
-    for digest,plan in plans.items():
-        decoded=decode_npr_material_assets(plan,provider,decoder)
-        packages[digest]=build_npr_material_package(plan,decoded,provider,allow_partial=True)
+    for digest,material_plan in plan['models'].items():
+        decoded=decode_npr_material_assets(material_plan,provider,decoder)
+        packages[digest]=build_npr_material_package(material_plan,decoded,provider,allow_partial=True)
     return dict(schema_version=1,status='prepared_requires_blender_validation',
                 allow_partial=True,entities=selections,models=packages,
                 limits=['Material inputs only; no shader application or coverage claim.',

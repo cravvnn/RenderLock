@@ -74,3 +74,45 @@ def test_schema3_mixed_contract_keeps_generic_empty_and_cannot_drop_runtime_stat
     package.pop('content_sha256');package['content_sha256']=canonical_sha(package)
     with pytest.raises(ConversionError,match='route/runtime contract'):
         validate_npr_material_package(package)
+
+
+def constant_inputs(tmp_path,monkeypatch):
+    from agr import material_expressions as expressions
+    from agr.source_material_routes import source_material_contract
+    from test_material_expressions import vector
+    plan,decoded,provider,_=inputs(tmp_path)
+    plan['schema_version']=3
+    row=plan['materials'][0]
+    row['authored']=dict(m_shaderName='pbr.vfx',m_intParams=[dict(m_name='F_USE_NPR_LIGHTING',m_nValue=1)],
+        m_dynamicParams=[dict(m_name='g_vColorTint1',m_value=list(vector(1,1,1)))])
+    row.update(source_material_contract(row['authored'],resolve_constants=True))
+    identity=dict(resource=expressions.MODULE_RESOURCE,sha256=expressions.MODULE_SHA256,semantics_sha256=expressions.MODULE_SHA256)
+    row['expression_module']=identity.copy()
+    monkeypatch.setattr(expressions,'verify_expression_module',lambda p:identity.copy())
+    return plan,decoded,provider,identity
+
+
+def test_constant_package_keeps_actual_module_provenance_and_reads_legacy_package(tmp_path,monkeypatch):
+    from agr.source_hero_lighting_package import canonical_sha
+    plan,decoded,provider,identity=constant_inputs(tmp_path,monkeypatch)
+    package=build_npr_material_package(plan,decoded,provider,allow_partial=True)
+    assert validate_npr_material_package(package)['a.vmat_c']['expression_module']==identity
+    package['materials'][0].pop('expression_module')
+    package.pop('content_sha256');package['content_sha256']=canonical_sha(package)
+    assert validate_npr_material_package(package)['a.vmat_c']['expression_evaluation']['vector_overrides']
+
+
+def test_constant_module_change_after_planning_rejected_even_if_both_are_qualified(tmp_path,monkeypatch):
+    plan,decoded,provider,identity=constant_inputs(tmp_path,monkeypatch)
+    identity['sha256']='26a029e4e33db12801ebab80ea2ad65536e6d1e19889c810edc59637edd78e74'
+    with pytest.raises(ConversionError,match='changed since planning'):
+        build_npr_material_package(plan,decoded,provider,allow_partial=True)
+
+
+def test_rehashed_package_cannot_claim_unknown_evaluator_identity(tmp_path,monkeypatch):
+    from agr.source_hero_lighting_package import canonical_sha
+    plan,decoded,provider,_=constant_inputs(tmp_path,monkeypatch)
+    package=build_npr_material_package(plan,decoded,provider,allow_partial=True)
+    package['materials'][0]['expression_module']['sha256']='f'*64
+    package.pop('content_sha256');package['content_sha256']=canonical_sha(package)
+    with pytest.raises(ConversionError,match='provenance'):validate_npr_material_package(package)

@@ -1,4 +1,6 @@
 import json
+import copy
+from types import SimpleNamespace
 import pytest
 from agr import source_npr_scene as stage
 
@@ -68,3 +70,73 @@ def test_scene_selection_uses_current_identical_model_location(tmp_path,monkeypa
     segment['entities'][0]['model_file']='relocated.glb'
     result=stage.validate_scene_npr_selection(package,segment['entities'],manifest_dir=tmp_path)
     assert set(result)=={'a','b'}
+
+
+def reusable_scene(tmp_path,monkeypatch):
+    paths=[];documents={};hashes={};calls=[]
+    for name in ('a','b'):
+        path=tmp_path/(name+'.glb');path.write_bytes(name.encode());paths.append(path)
+        resource='materials/'+name+'.vmat_c';hashes[resource]=name*64
+        documents[path.name]=dict(materials=[dict(extras=dict(vmat=dict(Name=resource[:-2])))],
+                                   meshes=[dict(primitives=[dict(material=0)])])
+    monkeypatch.setattr(stage,'read_glb',lambda path:copy.deepcopy(documents[path.name]))
+    def plan(document,*args):
+        calls.append('plan')
+        name=document['materials'][0]['extras']['vmat']['Name']+'_c'
+        return dict(status='sources_resolved_not_decoded',materials=[dict(material=name,source_sha256=hashes[name])])
+    monkeypatch.setattr(stage,'plan_npr_material_assets',plan)
+    monkeypatch.setattr(stage,'decode_npr_material_assets',lambda *a:calls.append('decode') or {})
+    monkeypatch.setattr(stage,'build_npr_material_package',lambda *a,**kw:calls.append('package') or {})
+    provider=SimpleNamespace(resolve=lambda name:SimpleNamespace(sha256=hashes[name]))
+    segment=dict(entities=[dict(id=name,model_file=path.name) for name,path in zip(('a','b'),paths)])
+    return segment,provider,hashes,documents,calls
+
+
+def test_plan_can_be_reused_without_replanning_and_all_models_plan_before_decode(tmp_path,monkeypatch):
+    segment,provider,_,_,calls=reusable_scene(tmp_path,monkeypatch)
+    plan=stage.plan_scene_npr_materials(segment,provider,None,manifest_dir=tmp_path,allow_partial=True)
+    assert calls==['plan','plan'] and plan['status']=='planned_requires_decode'
+    result=stage.prepare_scene_npr_materials(segment,provider,None,manifest_dir=tmp_path,
+                                             allow_partial=True,plan=plan)
+    assert calls==['plan','plan','decode','package','decode','package']
+    assert result['entities']==plan['entities']
+
+
+@pytest.mark.parametrize('mutation',['model','actor','duplicate_actor','missing_plan','changed_plan','source_coverage','document','consent'])
+def test_reused_plan_rejects_changed_selection_or_material_union_before_any_decode(tmp_path,monkeypatch,mutation):
+    segment,provider,_,documents,calls=reusable_scene(tmp_path,monkeypatch)
+    plan=stage.plan_scene_npr_materials(segment,provider,None,manifest_dir=tmp_path,allow_partial=True)
+    if mutation=='model':(tmp_path/'b.glb').write_bytes(b'changed')
+    elif mutation=='actor':segment['entities'][0]['id']='other'
+    elif mutation=='duplicate_actor':segment['entities'].append(copy.deepcopy(segment['entities'][0]))
+    elif mutation=='missing_plan':plan['models'].pop(next(iter(plan['models'])))
+    elif mutation=='changed_plan':next(iter(plan['models'].values()))['materials'][0]['source_sha256']='f'*64
+    elif mutation=='source_coverage':
+        next(iter(plan['models'].values()))['materials']*=2
+        plan['content_sha256']=stage.canonical_sha({k:v for k,v in plan.items() if k!='content_sha256'})
+    elif mutation=='document':documents['b.glb']['materials'][0]['extras']['vmat']['Name']='materials/other.vmat'
+    with pytest.raises(ValueError):
+        stage.prepare_scene_npr_materials(segment,provider,None,manifest_dir=tmp_path,
+                                          allow_partial=mutation!='consent',plan=plan)
+    assert calls==['plan','plan']
+
+
+def test_reused_plan_checks_later_installed_material_before_decoding_first_model(tmp_path,monkeypatch):
+    segment,provider,hashes,_,calls=reusable_scene(tmp_path,monkeypatch)
+    plan=stage.plan_scene_npr_materials(segment,provider,None,manifest_dir=tmp_path,allow_partial=True)
+    hashes['materials/b.vmat_c']='f'*64
+    with pytest.raises(ValueError,match='source changed') as caught:
+        stage.prepare_scene_npr_materials(segment,provider,None,manifest_dir=tmp_path,allow_partial=True,plan=plan)
+    assert calls==['plan','plan']
+    assert caught.value.details['stage']=='selected_npr_material_preflight'
+    assert caught.value.details['npr_selection']['materials']==['materials/b.vmat']
+
+
+def test_reused_plan_allows_identical_model_relocation(tmp_path,monkeypatch):
+    segment,provider,_,documents,calls=reusable_scene(tmp_path,monkeypatch)
+    plan=stage.plan_scene_npr_materials(segment,provider,None,manifest_dir=tmp_path,allow_partial=True)
+    (tmp_path/'relocated.glb').write_bytes(b'a');documents['relocated.glb']=documents['a.glb']
+    segment['entities'][0]['model_file']='relocated.glb'
+    result=stage.prepare_scene_npr_materials(segment,provider,None,manifest_dir=tmp_path,allow_partial=True,plan=plan)
+    assert result['entities'][0]['model_file']==str((tmp_path/'relocated.glb').resolve())
+    assert calls.count('plan')==2

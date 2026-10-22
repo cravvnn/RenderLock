@@ -59,7 +59,10 @@ def build_npr_material_package(plan,decoded,provider,*,allow_partial=False):
         if contract is not None:material.update(copy.deepcopy(contract))
         if contract and contract.get('expression_evaluation',{}).get('vector_overrides'):
             from .material_expressions import verify_expression_module
-            verify_expression_module(provider)
+            current=verify_expression_module(provider)
+            if source.get('expression_module',current)!=current:
+                raise ConversionError('Material expression evaluator changed since planning')
+            material['expression_module']=current
         if 'albedo_average' in source:
             from .source_texture_average import validate_texture_average
             average=source['albedo_average'];validate_texture_average(average)
@@ -92,6 +95,11 @@ def validate_npr_material_package(package):
             contract=source_material_contract(row['authored'],resolve_constants='expression_evaluation' in row)
             if any(row.get(key)!=value for key,value in contract.items()):
                 raise ConversionError('Material route/runtime contract changed')
+            if 'expression_module' in row:
+                from .material_expressions import validate_expression_module_identity
+                validate_expression_module_identity(row['expression_module'])
+                if not contract.get('expression_evaluation',{}).get('vector_overrides'):
+                    raise ConversionError('Unexpected material expression evaluator provenance')
         if 'albedo_average' in row:
             from .source_texture_average import validate_texture_average
             validate_texture_average(row['albedo_average'])

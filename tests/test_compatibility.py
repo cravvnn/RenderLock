@@ -53,19 +53,20 @@ def test_character_lighting_ready_and_static_map_separately_qualified(tmp_path, 
     assert report['probe_layout']['dimensions'] == [244, 236, 236]
     assert report['probe_layout']['cube_depth'] == 171
     assert report['hero_lighting']['status'] == 'ready'
-    assert report['npr_lighting']['status'] == 'ready'
-    assert report['character_lighting']['status'] == 'ready'
+    assert report['npr_lighting']['status'] == 'selected_material_check_required'
+    assert report['npr_lighting']['resource_status'] == 'ready'
+    assert report['character_lighting']['status'] == 'selected_material_check_required'
     assert report['static_map_lighting']['status'] == 'ready'
-    assert report['status'] == 'ready'
+    assert report['status'] == 'selected_material_check_required'
 
 
 def test_character_ready_while_static_map_requires_requalification(tmp_path, monkeypatch):
     monkeypatch.setattr(compatibility, 'selected_world', lambda p: 'maps/m/world.vwrld_c')
     report = compatibility.installed_compatibility(provider(tmp_path, deferred='f' * 64))
     assert report['hero_lighting']['status'] == 'ready'
-    assert report['character_lighting']['status'] == 'ready'
+    assert report['character_lighting']['status'] == 'selected_material_check_required'
     assert report['static_map_lighting']['status'] == 'requalification_required'
-    assert report['status'] == 'character_ready_static_map_requalification'
+    assert report['status'] == 'selected_material_check_required'
 
 
 def test_changed_npr_shader_blocks_npr_but_not_hero_lighting(tmp_path, monkeypatch):
@@ -84,3 +85,24 @@ def test_unsupported_probe_texture_layout_is_reported(tmp_path, monkeypatch):
     assert report['character_lighting']['status'] == 'requalification_required'
     assert report['probe_layout']['status'] == 'failed'
     assert any('six face' in reason for reason in report['reasons'])
+
+
+def test_evaluator_capability_is_conditional_and_never_full_selected_look_readiness(tmp_path,monkeypatch):
+    monkeypatch.setattr(compatibility,'selected_world',lambda p:'maps/m/world.vwrld_c')
+    installed=provider(tmp_path)
+    report=compatibility.installed_compatibility(installed)
+    assert report['material_expression_evaluator']['status']=='requalification_required'
+    assert report['material_expression_evaluator']['sha256'] is None
+    assert report['selected_materials']['status']=='not_checked'
+    assert report['npr_lighting']['resource_status']=='ready'
+    assert report['hero_lighting']['status']=='ready'
+    assert report['status']=='selected_material_check_required'
+
+
+def test_qualified_evaluator_still_requires_selected_material_check(tmp_path,monkeypatch):
+    monkeypatch.setattr(compatibility,'selected_world',lambda p:'maps/m/world.vwrld_c')
+    monkeypatch.setattr(compatibility,'expression_module_status',lambda p:dict(status='ready',sha256='qualified-fixture'))
+    report=compatibility.installed_compatibility(provider(tmp_path))
+    assert report['material_expression_evaluator']['status']=='ready'
+    assert report['selected_materials']['status']=='not_checked'
+    assert report['character_lighting']['status']=='selected_material_check_required'

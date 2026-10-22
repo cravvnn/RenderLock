@@ -9,6 +9,14 @@ import struct
 from pathlib import Path
 
 MODULE_SHA256='4c96327f70565633b421bfe799cd540241327e98c343fd9ff129011ed6936557'
+# The original hash remains the semantic profile recorded in saved contracts.
+# Both exact modules were checked against the same bounded native constant VM;
+# this does not qualify runtime attributes, time, or other functions/opcodes.
+QUALIFIED_MODULE_SHA256=frozenset({
+    MODULE_SHA256,
+    '26a029e4e33db12801ebab80ea2ad65536e6d1e19889c810edc59637edd78e74',
+})
+MODULE_RESOURCE='game/bin/win64/materialsystem2.dll'
 COLOR_PARAMETERS={'g_vAlbedoContrastSaturationBrightness1','g_vColorTint1'}
 
 
@@ -72,11 +80,46 @@ def expression_contract(authored,*,allowed_colors=COLOR_PARAMETERS):
                 programs=rows,vector_overrides=overrides)
 
 
-def verify_expression_module(provider):
-    from .asset_converter import sha,ConversionError
+def expression_module_status(provider):
+    """Report an exact module capability, independently of selected materials."""
+    from .asset_converter import sha
     install=getattr(provider,'install_path',None)
-    if install is None or sha(Path(install)/'game/bin/win64/materialsystem2.dll')!=MODULE_SHA256:
-        raise ConversionError('Material expression evaluator module requires requalification')
+    result=dict(resource=MODULE_RESOURCE,sha256=None,semantics_sha256=MODULE_SHA256,
+                qualified_sha256=sorted(QUALIFIED_MODULE_SHA256),status='requalification_required',
+                scope='Bounded constant colors only; selected material requirements remain unchecked.')
+    if install is None:
+        result['reason']='Installed game path is unavailable'
+        return result
+    try:
+        result['sha256']=sha(Path(install)/MODULE_RESOURCE)
+    except OSError as exc:
+        result['reason']='Material expression evaluator module could not be read: '+type(exc).__name__
+        return result
+    if result['sha256'] in QUALIFIED_MODULE_SHA256:
+        result['status']='ready'
+    else:
+        result['reason']='Material expression evaluator module requires requalification'
+    return result
+
+
+def verify_expression_module(provider):
+    from .asset_converter import ConversionError
+    identity=expression_module_status(provider)
+    if identity['status']!='ready':
+        error=ConversionError('Material expression evaluator module requires requalification')
+        error.details=dict(code='material_expression_evaluator_unqualified',**identity)
+        raise error
+    return {key:identity[key] for key in ('resource','sha256','semantics_sha256')}
+
+
+def validate_expression_module_identity(identity):
+    """Validate retained provenance without opening a local game installation."""
+    from .asset_converter import ConversionError
+    if (not isinstance(identity,dict) or set(identity)!={'resource','sha256','semantics_sha256'}
+            or identity['resource']!=MODULE_RESOURCE or not isinstance(identity['sha256'],str)
+            or identity['sha256'] not in QUALIFIED_MODULE_SHA256
+            or identity['semantics_sha256']!=MODULE_SHA256):
+        raise ConversionError('Unqualified material expression evaluator provenance')
 
 
 def apply_vector_overrides(parameters,contract):
