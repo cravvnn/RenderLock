@@ -148,6 +148,10 @@ def prepare_installed_assets(segment_path: Path, work_dir: Path, install_path: P
     # Preserve the older explicit mount-only CLI behavior when no import is requested.
     provider = GameAssetProvider(install_path, cache_dir,
                                  map_name=map_name if not include_map else None)
+    snapshot = getattr(provider, 'snapshot', None)
+    ignored = snapshot.get('ignored_search_paths', []) if isinstance(snapshot, dict) else []
+    if ignored:
+        log(f'Using base game assets; ignoring {len(ignored)} custom addon/mod search paths. See the asset report for details.')
     decoder = AssetConverter(converter, cache_dir, log=log)
     if include_map and (source_lighting or source_hero_lighting or source_npr_lighting):
         from .compatibility import installed_compatibility

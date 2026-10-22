@@ -404,6 +404,8 @@ class GameAssetProvider:
                 raise MissingResourceError(f"Selected map archive is not installed: {selected_map}")
             archives.append(selected_map)
         search_paths = []
+        ignored_search_paths = []
+        stock_roots = {(game / name).resolve() for name in ('citadel', 'core')}
         gameinfo = game / "citadel/gameinfo.gi"
         if gameinfo.is_file():
             for block in _pairs_named(_keyvalues(gameinfo.read_text(encoding="utf-8-sig")), "SearchPaths"):
@@ -425,6 +427,17 @@ class GameAssetProvider:
                     directory = directory.resolve()
                     if directory != game and game not in directory.parents:
                         self.warnings.append(f"External game search path is not mounted: {value}")
+                        continue
+                    # Installed exports use the base Citadel/Core archive layout.
+                    # A user gameinfo can place addon or renamed mod folders ahead
+                    # of these roots; following it would replace recorded models
+                    # with unrelated payloads despite valid archive CRCs.
+                    stock_archive = (directory.suffix.lower() == '.vpk'
+                                     and directory.name.lower().endswith('_dir.vpk')
+                                     and directory.parent in stock_roots)
+                    if directory not in stock_roots and not stock_archive:
+                        ignored_search_paths.append({'path': value, 'reason': 'custom_search_path'})
+                        self.warnings.append(f"Custom game search path is not mounted for stock exports: {value}")
                         continue
                     search_paths.append(directory)
         # Stock fallbacks are explicit in metadata. Missing optional Core is
@@ -457,6 +470,8 @@ class GameAssetProvider:
                     self.resources[resource] = entry
         self.snapshot = {"schema_version": 1, "install_path": str(self.install_path),
                          "map_name": map_name, "mount_precedence": "first mount wins",
+                         "mount_policy": "base_game_archives_and_selected_map_v1",
+                         "ignored_search_paths": ignored_search_paths,
                          "archives": [{"path": str(a.path), "version": a.version,
                                        "size": a.signature[0], "mtime_ns": a.signature[1],
                                        "directory_sha256": a.directory_sha256,
@@ -472,7 +487,8 @@ class GameAssetProvider:
                                                    "text": data.decode("utf-8-sig", errors="replace")}
         self.snapshot["note"] = ("Steam build/client metadata is not the demo build. Directory hashes identify mount trees; "
                                  "requested payloads receive independent CRC32 and SHA-256 validation. "
-                                 "Loose files, addons, and live runtime search paths are not mounted.")
+                                 "Only the base Citadel/Core archive layout and the explicitly selected map are mounted. "
+                                 "Loose files, custom search paths and addon folders are excluded; archive paths do not prove unmodified game content.")
         self.snapshot["snapshot_id"] = _digest(_json_bytes(self.snapshot))
 
     def lookup(self, resource_path: str) -> VPKEntry | None:

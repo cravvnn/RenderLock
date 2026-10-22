@@ -1,3 +1,8 @@
+# 0.3.0b15 - Keep local addons out of installed exports
+
+- Exclude custom addon/mod search paths before opening archives for installed exports. A modded game configuration can no longer override the base character model through a separate addon folder and introduce missing dependencies such as Dynamo's backup model. Keep exact recorded model IDs, configured precedence among base mounts, selected-map priority and all payload/animation checks.
+- Record ignored custom search paths and the base-archive policy in the asset report, and explain skipped paths in the preparation log. Installed addon files and game configuration are not changed. Files modified directly inside the base archives still require a valid installation.
+
 # 0.3.0b14 - Lighting compatibility and clearer setup
 
 - Qualify the current game build 6813 material-expression evaluator for the existing bounded constant-color subset. Retain the original qualified evaluator and reject unknown modules, malformed programs, runtime attributes and unsupported functions. Record the observed module separately from the original semantic reference in prepared material packages.

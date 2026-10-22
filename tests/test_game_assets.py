@@ -171,6 +171,78 @@ def test_configured_mount_order_and_explicit_map(tmp_path):
         GameAssetProvider(root, tmp_path / "cache", map_name="start")
 
 
+@pytest.mark.parametrize('mount_key', ['Game', 'Mod'])
+@pytest.mark.parametrize('addon_mount', ['citadel/addons', 'citadel/addons/pak01_dir.vpk',
+                                        'custom_theme', 'custom_theme/pak01_dir.vpk',
+                                        'citadel/dmm_localization_default', 'core/addons'])
+def test_addon_search_path_cannot_replace_recorded_stock_model(tmp_path, addon_mount, mount_key):
+    model = 'models/heroes_wip/dynamo/dynamo.vmdl_c'
+    material = 'materials/dynamo.vmat_c'
+    stock_model = compiled('materials/dynamo.vmat')
+    root = installation(tmp_path, {model: stock_model, material: compiled()})
+    mount = root / 'game' / addon_mount
+    addon = mount if mount.suffix == '.vpk' else mount / 'pak01_dir.vpk'
+    write_vpk(addon, {model: compiled('models/heroes_wip/dynamo/dynamo_backup.vmdl'),
+                      material: compiled('materials/missing_mod_texture.vtex'),
+                      'materials/addon_only.vmat_c': compiled()})
+    original_addon = addon.read_bytes()
+    gameinfo = root / 'game/citadel/gameinfo.gi'
+    configuration = ('"GameInfo" { "FileSystem" { "SearchPaths" { ' + mount_key + ' "' + addon_mount
+                     + '" Mod citadel Game citadel Mod core Game core } } }')
+    gameinfo.write_text(configuration)
+    provider = GameAssetProvider(root, tmp_path / 'cache')
+    resolved = provider.resolve(model)
+    assert resolved.archive == root / 'game/citadel/pak01_dir.vpk'
+    assert resolved.sha256 == hashlib.sha256(stock_model).hexdigest()
+    closure = provider.materialize_closure([model])
+    assert closure['status'] == 'complete'
+    assert set(closure['resources']) == {model, material}
+    assert str(addon) not in {row['path'] for row in provider.snapshot['archives']}
+    assert any('not mounted' in warning and addon_mount in warning for warning in provider.warnings)
+    assert provider.snapshot['ignored_search_paths'] == [{'path': addon_mount, 'reason': 'custom_search_path'}]
+    with pytest.raises(MissingResourceError):
+        provider.resolve('materials/addon_only.vmat')
+    assert addon.read_bytes() == original_addon
+    assert gameinfo.read_text() == configuration
+
+
+def test_invalid_addon_archive_is_never_opened(tmp_path):
+    root = installation(tmp_path, {'models/test.vmdl_c': compiled()})
+    addon = root / 'game/citadel/addons/pak01_dir.vpk'
+    addon.parent.mkdir()
+    addon.write_bytes(b'not a VPK archive')
+    (root / 'game/citadel/gameinfo.gi').write_text(
+        'GameInfo { FileSystem { SearchPaths { Game citadel/addons Game citadel } } }')
+    provider = GameAssetProvider(root, tmp_path / 'cache')
+    assert provider.resolve('models/test.vmdl').archive == root / 'game/citadel/pak01_dir.vpk'
+
+
+@pytest.mark.parametrize('mount', ['|gameinfo_path|.', '|all_source_engine_paths|citadel',
+                                  'citadel/pak01_dir.vpk', '|all_source_engine_paths|citadel/pak01_dir.vpk'])
+def test_stock_search_path_forms_are_retained(tmp_path, mount):
+    root = installation(tmp_path, {'models/test.vmdl_c': compiled('materials/core.vmat')})
+    write_vpk(root / 'game/core/pak01_dir.vpk', {'materials/core.vmat_c': compiled()})
+    (root / 'game/citadel/gameinfo.gi').write_text(
+        'GameInfo { FileSystem { SearchPaths { Game "'+mount+'" Game core } } }')
+    provider = GameAssetProvider(root, tmp_path / 'cache')
+    assert provider.materialize_closure(['models/test.vmdl'])['status'] == 'complete'
+    assert provider.snapshot['ignored_search_paths'] == []
+    assert provider.shadowed_resources == 0
+
+
+def test_corrupt_winning_stock_archive_does_not_fall_back(tmp_path):
+    resource = 'models/test.vmdl_c'
+    root = installation(tmp_path, {resource: compiled()}, external=True)
+    write_vpk(root / 'game/core/pak01_dir.vpk', {resource: compiled()})
+    chunk = root / 'game/citadel/pak01_000.vpk'
+    damaged = bytearray(chunk.read_bytes())
+    damaged[-1] ^= 1
+    chunk.write_bytes(damaged)
+    provider = GameAssetProvider(root, tmp_path / 'cache')
+    with pytest.raises(GameAssetError, match='CRC32 mismatch'):
+        provider.resolve(resource)
+
+
 def test_cache_verification_update_retains_old_content_and_no_hardlinks(tmp_path):
     root = installation(tmp_path, {"models/test.vmdl_c": compiled()})
     provider = GameAssetProvider(root, tmp_path / "cache")

@@ -4,6 +4,8 @@ RenderLock turns a selected section of a Deadlock replay into an animated Blende
 
 RenderLock reads local replay and installed game files. It does not launch or attach to Deadlock. Blender scenes retain the original world coordinates so a separate map can be added later.
 
+Installed exports use the base Citadel/Core archive layout and any explicitly selected map. Custom addon/mod search paths in `gameinfo.gi` are excluded from export, including renamed mod folders and directly listed addon VPKs. This prevents a local replacement model from introducing missing dependencies into a base character export. The preparation log reports skipped paths, and the asset report retains their details. RenderLock leaves installed mods and game configuration in place. This path policy does not certify files changed directly inside the base archives; missing or corrupt required base resources still fail validation.
+
 ## Character beta
 
 - Character models, packed textures, recorded movement and skeletal animation.
