@@ -326,6 +326,34 @@ def refresh_asset_source_controls(app):
     state = "normal" if installed and not getattr(app, "busy", False) else "disabled"
     for widget in getattr(app, "installed_only_widgets", ()):
         widget.configure(state=state)
+    refresh_character_look(app)
+
+
+def refresh_character_look(app, *, changed=False):
+    """Describe the selected bundle within the existing Lighting lab card."""
+    if not hasattr(app, 'look_description'):
+        return
+    mode = app.values['character_look'].get()
+    source = mode in {'source', 'elagrimm_source'}
+    custom = mode == 'custom'
+    if changed:
+        app.lighting_consent.set(False)
+    app.look_custom_fields.grid() if custom else app.look_custom_fields.grid_remove()
+    app.look_consent_fields.grid() if source or custom else app.look_consent_fields.grid_remove()
+    descriptions = {
+        'standard': 'Converted game materials. Source lighting is off; saved shader and tool locations are kept.',
+        'source': 'Prepares character diffuse and probe reflections together, including installed-map lighting data. No separate Map checkbox is needed.',
+        'elagrimm_source': 'Prepares Source lighting, probes and NPR inputs together. Select the supported shader below and a follow hero on Export. No separate Map checkbox is needed.',
+        'custom': 'Manual lighting options are shown below for existing or advanced settings. Their individual requirements still apply.',
+    }
+    text = descriptions.get(mode, 'Choose a supported character look.')
+    if source and app.values['asset_source'].get() != 'installed':
+        text = 'This look needs Installed game on Setup. Standard materials can use prepared assets without new Source lighting.'
+    app.look_description.set(text)
+    if hasattr(app, 'map_prepare_check'):
+        app.map_prepare_check.grid_remove() if source else app.map_prepare_check.grid()
+        app.map_look_note.set('Lighting data is prepared automatically by the selected character look in Lighting lab.' if source else
+                              'Prepare a region manually only for custom lighting or supported map work.')
 
 
 # --------------------------------------------------------------------------
@@ -902,10 +930,29 @@ def _build_advanced(app, page):
 def _development_lighting(app, page):
     body, row = _card(app, page, 0, "Lighting lab", label_column=WIDE_LABEL_COLUMN,
                       info="Experimental character look. Partial and artistic by design; the coverage report lists what was and was not applied.")
+    _label(body, 'Character look', color=gui_theme.TEXT).grid(
+        row=_next_row(body), column=0, columnspan=3, sticky='w', pady=_pad((0, ROW_GAP)))
+    app.look_switch = SegmentedControl(body,
+        options=(("Standard materials", "standard"), ("Source lighting", "source"),
+                 ("Elagrimm + Source", "elagrimm_source"), ("Custom", "custom")),
+        variable=app.values['character_look'], theme=gui_theme.palette())
+    app.look_switch.grid(row=_next_row(body), column=0, columnspan=3, sticky='w', pady=_pad((0, ROW_GAP)))
+    app.mutable_widgets.append(app.look_switch)
+    app.look_description = tk.StringVar()
+    wrap_to_width(_label(body, '', textvariable=app.look_description, justify='left', anchor='w', wraplength=px(TEXT_WRAP))).grid(
+        row=_next_row(body), column=0, columnspan=3, sticky='ew', pady=_pad((0, SECTION_GAP)))
+    app.look_custom_fields = custom = tk.Frame(body, background=gui_theme.CARD)
+    custom.grid(row=_next_row(body), column=0, columnspan=3, sticky='ew')
     for text, key in ((("Partial Source character diffuse lighting" if character_beta() else "Partial static diffuse lighting"), "source_lighting"),
                       ("Partial hero probe lighting / reflections", "source_hero_lighting"),
                       ("Partial NPR indirect (requires follow camera)", "source_npr_lighting")):
-        _check(app, body, text, app.values[key], pady=(0, CHECK_GAP), installed_only=True)
+        _check(app, custom, text, app.values[key], pady=(0, CHECK_GAP), installed_only=True)
+    app.look_consent_fields = consent = tk.Frame(body, background=gui_theme.CARD)
+    consent.grid(row=_next_row(body), column=0, columnspan=3, sticky='ew')
+    _note(consent, 'Source lighting is a partial, artistic approximation. Exposure, material response and reflections may differ from the game.', pady=(0, ROW_GAP))
+    _check(app, consent, 'Accept partial lighting limits for this export', app.lighting_consent, True, False,
+           pady=(0, SECTION_GAP))
+    body, row = _card(app, page, row, 'Lighting tools and shader library', label_column=WIDE_LABEL_COLUMN)
     for label, key, command in (
         ("Probe atlas decoder", "probe_atlas_decoder",
          lambda: app._browse_hero_decoder("probe_atlas_decoder", "ProbeAtlasDecode.dll")),
@@ -913,20 +960,21 @@ def _development_lighting(app, page):
          lambda: app._browse_hero_decoder("cubemap_decoder", "CubemapDecode.dll")),
         ("Elagrimm shader .blend", "character_shader", app._browse_character_shader)):
         _path_row(app, body, label, key, command)
-    _note(body, "Elagrimm requires a separate download. Select its .blend above; an empty field keeps converted game materials. "
-                "Appended materials are saved inside your export, without a separate shader file beside it.", pady=(0, CHECK_GAP))
+    _note(body, "Download the supported Elagrimm library separately and select its .blend here. "
+                "When Elagrimm + Source is chosen, appended materials are saved inside your export, without a separate shader file beside it.", pady=(0, CHECK_GAP))
     shader_download = RoundedButton(body, text="Get supported Elagrimm shader", style="quiet",
         command=app._open_character_shader_download, theme=gui_theme.palette())
     shader_download.grid(row=_next_row(body), column=0, columnspan=3, sticky="w", pady=_pad((0, SECTION_GAP)))
     app.mutable_widgets.append(shader_download)
-    _note(body, "Elagrimm requires all three lighting options above, Prepare installed map region on Map, "
-                "and a selected follow hero on Export.", pady=(0, CHECK_GAP))
-    _note(body, "Source/NPR lighting reads the installed map's lighting data; an external map .blend is not enough. "
-                "These options accept artistic lighting limits and keep character animation strict. "
-                "Enable Prepare installed map region on Map; this runs with the export. "
-                "Start with one selected character and a short tick range. A follow camera does not limit character selection. The optional "
-                "Elagrimm's BLENDER-Deadlock-Shader.blend uses Eevee, a partial bridge and artistic rim. "
-                "Other shader libraries are not supported.")
+    _note(body, "A saved shader location does not enable it. Choose Elagrimm + Source above to use the library; that look prepares its lighting dependencies together.", pady=(0, CHECK_GAP))
+    _note(body, "Source lighting reads the installed map's lighting data; an external map .blend does not supply it. Character-only exports omit map geometry. "
+                "The supported Elagrimm library uses Eevee with an artistic rim. A standalone Studio shader path is not implemented in this review branch.")
+    app.values['character_look'].trace_add('write', lambda *_: refresh_character_look(app, changed=True))
+    for key in ('character_shader', 'shot_hero', 'map_name', 'map_margin', 'input', 'mode',
+                'start', 'end', 'fps', 'heroes', 'asset_source', 'game_install',
+                'source_lighting', 'source_hero_lighting', 'source_npr_lighting'):
+        app.values[key].trace_add('write', lambda *_: app.lighting_consent.set(False))
+    refresh_character_look(app)
     return row
 
 
@@ -1242,8 +1290,11 @@ def _build_map(app, page):
                            "Prepared regions are cached by map content and export bounds. "
                            + ("This character beta omits map geometry from the Blender scene." if character_beta()
                               else "Map geometry can be omitted from the Blender scene."))
-    _check(app, body, "Prepare installed map region", app.values["map_enabled"], pady=(0, CHECK_GAP),
+    app.map_prepare_check = _check(app, body, "Prepare installed map region", app.values["map_enabled"], pady=(0, CHECK_GAP),
            installed_only=True)
+    app.map_look_note = tk.StringVar()
+    wrap_to_width(_label(body, '', textvariable=app.map_look_note, justify='left', anchor='w', wraplength=px(TEXT_WRAP))).grid(
+        row=_next_row(body), column=0, columnspan=3, sticky='ew', pady=_pad((0, ROW_GAP)))
     _path_row(app, body, "Installed map", "map_name", None, button=False)
     _path_row(app, body, "Extra margin (metres)", "map_margin", None, button=False)
     _path_row(app, body, "Regional exporter", "world_region_probe", app._browse_world_region_probe)
@@ -1256,6 +1307,7 @@ def _build_map(app, page):
                 "that lighting data so you can add your own map separately in Blender. Preparing lighting "
                 "does not require importing map geometry into your final scene. "
                 "New map and lighting preparation uses Installed game on Setup.", pady=(SECTION_GAP, 0))
+    refresh_character_look(app)
     return row
 
 

@@ -15,8 +15,9 @@ import sys
 import threading
 import traceback
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, ttk
 from . import __version__, gui_theme
+from . import gui_dialogs as messagebox
 from .cli import default_asset_cache, discover_source2viewer
 from .gui_paths import normalize_gui_paths, resolve_gui_path
 
@@ -126,11 +127,13 @@ def migrate_scene_settings(values: dict[str, str]) -> dict[str, str]:
     if migrated.get("map_workflow_revision") != MAP_WORKFLOW_REVISION:
         migrated["map_enabled"] = "0"
     migrated["map_workflow_revision"] = MAP_WORKFLOW_REVISION
-    return migrated
+    from .gui_look import migrate_look_settings
+    return migrate_look_settings(migrated)
 
 
 def build_convert_command(values: dict[str, str], *, partial: bool = False,
-                          overwrite: bool = False, partial_cloth: bool = False) -> list[str]:
+                          overwrite: bool = False, partial_cloth: bool = False,
+                          lighting_consent: bool = False) -> list[str]:
     """Validate editable fields and build argv without shell interpretation."""
     values = normalize_gui_paths(values)
     if values.get("heroes_empty", "0") == "1":
@@ -193,6 +196,14 @@ def build_convert_command(values: dict[str, str], *, partial: bool = False,
                "--start-tick", str(start), "--end-tick", str(end),
                "--fps", str(fps), "--output", output]
     from .release_profile import character_beta
+    if values.get('character_look'):
+        from .gui_look import resolve_look_settings
+        values = resolve_look_settings(values, character_only=character_beta() or values.get('character_only') == '1')
+        if values.get('source_lighting') == '1':
+            if asset_mode != 'installed':
+                raise ValueError('This character look needs Installed game on Setup. Choose Standard materials to use prepared assets without new Source lighting.')
+            if lighting_consent is not True:
+                raise ValueError('Review the partial lighting limits in Lighting lab and accept them for this export, or choose Standard materials. Character animation remains strict.')
     character_lighting=values.get('source_lighting','0')=='1' and (values.get('character_only','0')=='1' or character_beta())
     if values.get('source_lighting','0') == '1':
         if asset_mode != 'installed' or values.get('map_enabled','0') != '1':
@@ -317,6 +328,7 @@ class AGRApp:
             "source_lighting": "0", "world_region_probe": "", "lighting_dotnet": "",
             "source_hero_lighting": "0", "source_npr_lighting": "0", "probe_atlas_decoder": "", "cubemap_decoder": "",
             "character_shader": "", "character_only": "0",
+            "character_look": "standard",
             "map_workflow_revision": MAP_WORKFLOW_REVISION,
             "effects_enabled": "1", "cloth_enabled": "1", "material_repairs": "0", "model_constraints": "0",
             "check_updates": "1",
@@ -324,6 +336,7 @@ class AGRApp:
         }.items()}
         self.partial = tk.BooleanVar(value=False)
         self.partial_cloth = tk.BooleanVar(value=False)
+        self.lighting_consent = tk.BooleanVar(value=False)
         self.overwrite = tk.BooleanVar(value=False)
         self.status = tk.StringVar(value="Ready")
         self.mutable_widgets: list[ttk.Widget] = []
@@ -513,7 +526,8 @@ class AGRApp:
                 raise ValueError("The follow camera hero is not listed in this recording. Choose a listed hero or Overview.")
             command = build_convert_command(self._current_values(), partial=self.partial.get(),
                                             overwrite=self.overwrite.get(),
-                                            partial_cloth=getattr(self,'partial_cloth',None) is not None and self.partial_cloth.get())
+                                            partial_cloth=getattr(self,'partial_cloth',None) is not None and self.partial_cloth.get(),
+                                            lighting_consent=getattr(self,'lighting_consent',None) is not None and self.lighting_consent.get())
         except (OSError, RuntimeError, ValueError) as exc:
             messagebox.showerror("Check conversion settings", str(exc), parent=self.root)
             return
@@ -784,18 +798,51 @@ class AGRApp:
                         vars(cli_parser.parse_args(left[3:])) == vars(cli_parser.parse_args(right[3:])))
 
             current = build_convert_command(self._current_values(), partial=self.partial.get(),
-                overwrite=self.overwrite.get(), partial_cloth=self.partial_cloth.get())
+                overwrite=self.overwrite.get(), partial_cloth=self.partial_cloth.get(),
+                lighting_consent=getattr(self,'lighting_consent',None) is not None and self.lighting_consent.get())
             if (not same_command(current, self._conversion_command) or
                     self._input_identity() != self._conversion_identity):
                 raise ValueError('The input or settings changed. Review them and press Export to start a new job.')
             command = list(choice.command)
+            accepted_lighting = getattr(self, 'lighting_consent', None) is not None and self.lighting_consent.get()
             for key, value in choice.values_overrides:
                 if key in self.values:
                     self.values[key].set(value)
+            if 'character_look' in self.values:
+                # Recovery owns the exact flag changes; a preset must not add
+                # its dependencies back after the user explicitly omitted them.
+                previous = cli_parser.parse_args(current[3:])
+                selected = cli_parser.parse_args(command[3:])
+                lighting_keys = ('source_lighting', 'source_hero_lighting', 'source_npr_lighting',
+                                 'include_map', 'character_shader')
+                if any(getattr(previous, key) != getattr(selected, key) for key in lighting_keys):
+                    for key, enabled in (('source_lighting', selected.source_lighting),
+                                         ('source_hero_lighting', selected.source_hero_lighting),
+                                         ('source_npr_lighting', selected.source_npr_lighting),
+                                         ('map_enabled', selected.include_map)):
+                        self.values[key].set('1' if enabled else '0')
+                    if not any((selected.source_lighting, selected.source_hero_lighting, selected.source_npr_lighting)):
+                        from .release_profile import character_beta
+                        # A legacy recovery may deliberately retain map preparation.
+                        # Standard prunes it for character-only jobs, so retain the
+                        # exact selected recovery as Custom in that case.
+                        look = 'custom' if selected.include_map and (selected.character_only or character_beta()) else 'standard'
+                    elif selected.source_lighting and selected.source_hero_lighting and not selected.source_npr_lighting:
+                        look = 'source'
+                    elif selected.character_shader:
+                        look = 'elagrimm_source'
+                    else:
+                        look = 'custom'
+                    if selected.character_shader or look == 'custom':
+                        self.values['character_shader'].set(str(selected.character_shader or ''))
+                    self.values['character_look'].set(look)
+                if hasattr(self, 'lighting_consent'):
+                    self.lighting_consent.set(accepted_lighting and '--partial-lighting' in command)
             self.partial.set('--partial' in command)
             self.partial_cloth.set('--partial-cloth' in command)
             rebuilt = build_convert_command(self._current_values(), partial=self.partial.get(),
-                overwrite=self.overwrite.get(), partial_cloth=self.partial_cloth.get())
+                overwrite=self.overwrite.get(), partial_cloth=self.partial_cloth.get(),
+                lighting_consent=getattr(self,'lighting_consent',None) is not None and self.lighting_consent.get())
             if not same_command(rebuilt, command):
                 raise ValueError('Review the suggested settings and press Export to start the next job.')
         except (OSError, RuntimeError, ValueError) as exc:
