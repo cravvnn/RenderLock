@@ -190,7 +190,7 @@ def prepare_worker(root, work):
     package = work / "agr"
     package.mkdir(exist_ok=True)
     for name in ("__init__.py", "updater.py", "update_worker.py", "update_window.py",
-                 "gui_theme.py", "gui_assets.py", "gui_widgets.py", "gui_chrome.py"):
+                 "gui_theme.py", "gui_assets.py", "gui_widgets.py", "gui_chrome.py", "gui_fonts.py"):
         shutil.copyfile(root / "agr" / name, package / name)
     script = work / "worker.py"
     script.write_text("from agr.update_worker import main\nraise SystemExit(main())\n", encoding="utf-8")

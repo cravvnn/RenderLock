@@ -521,6 +521,7 @@ class TitleBar(tk.Canvas):
         self._names = tuple(buttons)
         self._links_on = links
         self._title, self._title_icon = title, icon
+        self._title_icon_fit = self._title_icon_fit_key = None
         self._height = px(height)
         self._button_w = px(BUTTON_WIDTH)
         self._hover = self._pressed = None
@@ -608,12 +609,67 @@ class TitleBar(tk.Canvas):
         self.delete("caption")
         cy = (self._height - hairline()) / 2.0
         x = px(12)
+        right = self.winfo_width() - len(self._names) * self._button_w - px(12)
+        if right <= x:
+            return
         if self._title_icon is not None:
-            self.create_image(x, cy, anchor="w", image=self._title_icon, tags="caption")
-            x += px(24)
-        if self._title:
+            # Keep the caller's larger body logo intact; only this bar owns the fitted copy.
+            limit = min(px(20), self._height - hairline() - 2 * px(6), right - x)
+            if limit > 0:
+                icon = self._fit_title_icon(limit)
+                self.create_image(x, cy, anchor="w", image=icon, tags="caption")
+                x += icon.width() + px(8)
+        if self._title and x < right:
             ink = self._theme["TEXT"] if self._active else self._theme["MUTED"]
-            self.create_text(x, cy, anchor="w", text=self._title, font=gui_theme.FONT, fill=ink, tags="caption")
+            title = str(self._title).replace("\r", " ").replace("\n", " ").replace("\t", " ")
+            item = self.create_text(x, cy, anchor="w", text=title, font=gui_theme.FONT,
+                                    fill=ink, tags="caption")
+            # Canvas text bounds include a small overhang beyond Font.measure(). Use the
+            # actual item bounds so neither that overhang nor a long title enters a button.
+            def text_width(text):
+                self.itemconfigure(item, text=text)
+                left, _top, end, _bottom = self.bbox(item)
+                return end - left
+
+            available = right - x
+            if text_width(title) > available:
+                ellipsis = "\u2026"
+                if text_width(ellipsis) > available:
+                    self.delete(item)
+                    return
+                low, high = 0, len(title)
+                while low < high:
+                    middle = (low + high + 1) // 2
+                    if text_width(title[:middle] + ellipsis) <= available:
+                        low = middle
+                    else:
+                        high = middle - 1
+                self.itemconfigure(item, text=title[:low] + ellipsis)
+            left = self.bbox(item)[0]
+            self.move(item, x - left, 0)
+
+    def _fit_title_icon(self, limit):
+        """Fit a PhotoImage proportionally, retaining alpha without a large zoom buffer."""
+        source = self._title_icon
+        width, height = source.width(), source.height()
+        scale = min(1.0, limit / max(width, height))
+        fitted_w, fitted_h = max(1, round(width * scale)), max(1, round(height * scale))
+        key = (str(source), width, height, fitted_w, fitted_h)
+        if key != self._title_icon_fit_key:
+            if (fitted_w, fitted_h) == (width, height):
+                fitted = source
+            else:
+                fitted = tk.PhotoImage(master=self, width=fitted_w, height=fitted_h)
+                # Tk's copy keeps PNG alpha. Sampling straight into the small destination
+                # bounds memory even for a large source or a fractional display scale.
+                for y in range(fitted_h):
+                    sy = min(height - 1, int((y + 0.5) * height / fitted_h))
+                    for x in range(fitted_w):
+                        sx = min(width - 1, int((x + 0.5) * width / fitted_w))
+                        self.tk.call(str(fitted), "copy", str(source),
+                                     "-from", sx, sy, sx + 1, sy + 1, "-to", x, y)
+            self._title_icon_fit, self._title_icon_fit_key = fitted, key
+        return self._title_icon_fit
 
     def set_title(self, title):
         self._title = title

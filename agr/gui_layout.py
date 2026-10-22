@@ -1194,7 +1194,7 @@ def build(app):
     beta = character_beta()
     app.beta = beta
     root = app.root
-    gui_theme.initialize(root)
+    gui_theme.initialize(root, game_install=app.values['game_install'].get())
     root.configure(background=gui_theme.BACKDROP)
     root.title(f"RenderLock | {__version__}" + (" · Character beta" if beta else " · Development"))
 

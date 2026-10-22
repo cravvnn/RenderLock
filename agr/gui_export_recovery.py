@@ -10,9 +10,8 @@ import tkinter as tk
 from tkinter import ttk
 
 from . import gui_theme as theme
-from .gui_assets import APP_ICON_PNG
 from .gui_chrome import TitleBar, WindowChrome
-from .gui_widgets import Card, RoundedButton, RoundedEntry, copy_text
+from .gui_widgets import Card, DisplayText, RoundedButton, RoundedEntry, copy_text
 
 
 def failure_details(output):
@@ -63,8 +62,7 @@ def show_failure(app, command, output):
     window.resizable(True, True)
     window.icon = theme.brand_window(window)
     window.minsize(theme.px(480), theme.px(400))
-    original = tk.PhotoImage(master=window, data=APP_ICON_PNG)
-    logo = original.subsample(max(1, (original.width() + theme.px(32) - 1) // theme.px(32)))
+    logo = theme.brand_emblem(window)
     window.logo = logo
     window.chrome = chrome = WindowChrome(window)
     if chrome.prepare():
@@ -93,10 +91,12 @@ def show_failure(app, command, output):
     def label(parent, **options):
         options.setdefault('font', theme.FONT)
         options.setdefault('foreground', theme.TEXT)
+        options.setdefault('pady', theme.descent_shortfall(options['font']))
         return tk.Label(parent, background=theme.CARD, anchor='w', justify='left', **options)
 
-    label(header, image=logo).pack(side='left', padx=(0, theme.px(9)))
-    label(header, text='RenderLock', font=theme.FONT_WORDMARK, foreground=theme.BRAND).pack(side='left')
+    label(header, image=logo).pack(side='left', padx=(0, theme.px(5)))
+    DisplayText(header, text='RenderLock', font=theme.FONT_WORDMARK, foreground=theme.BRAND,
+                room=theme.descent_shortfall(theme.FONT_WORDMARK), background=theme.CARD).pack(side='left')
     label(body, text='Choose how to retry this export' if choices else 'The export could not finish',
               font=theme.FONT_SECTION).grid(row=1, column=0, sticky='w')
     label(body, text=recovery_summary(command, failure, output), wraplength=theme.px(560),

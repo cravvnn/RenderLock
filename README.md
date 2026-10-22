@@ -55,6 +55,8 @@ The output includes a `.blend`, a companion `.agrscene` package and an `.agr-rep
 
 The launcher writes its startup log under `%LOCALAPPDATA%/RenderLock/logs`. Preferences are stored under `%APPDATA%/RenderLock`.
 
+RenderLock uses Kara's original artwork and display typography. On Windows it reads the three supported VALVE Oracle/Pulp font files from your selected Deadlock installation and loads verified copies privately for RenderLock. The cache lives under `%LOCALAPPDATA%/RenderLock/ui-fonts-v1`, allowing standalone update recovery to use the same fonts. No fonts are installed into Windows or included in the download. Missing or changed game fonts use Segoe UI; ordinary interface text also uses Segoe UI by design. Restart RenderLock after selecting a game folder for the first time to refresh the display fonts.
+
 ### Recovering a stopped export
 
 For recognized failures, the recovery window explains what cannot be included and offers specific retry choices. You can keep supported approximate cloth, omit cloth or effects, or turn off incompatible Source lighting. Each choice describes what will be missing. A retry may repeat preparation and scene creation while reusing verified cached assets.

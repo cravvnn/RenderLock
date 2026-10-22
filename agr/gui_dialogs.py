@@ -9,9 +9,8 @@ import tkinter as tk
 from tkinter import font as tkfont, ttk
 
 from . import gui_theme as theme
-from .gui_assets import APP_ICON_PNG
 from .gui_chrome import TitleBar, WindowChrome
-from .gui_widgets import Card, RoundedButton
+from .gui_widgets import Card, DisplayText, RoundedButton
 
 
 def _exists(widget):
@@ -52,9 +51,7 @@ class _MessageDialog:
             window.transient(parent)
         window.resizable(False, False)
         window.icon = theme.brand_window(window)
-        original = tk.PhotoImage(master=window, data=APP_ICON_PNG)
-        window.logo = logo = original.subsample(
-            max(1, (original.width() + theme.px(32) - 1) // theme.px(32)))
+        window.logo = logo = theme.brand_emblem(window)
         window.chrome = chrome = WindowChrome(window, resizable=False)
         if chrome.prepare():
             window.title_bar = TitleBar(window, chrome, theme=theme.palette(), buttons=('close',),
@@ -86,11 +83,12 @@ class _MessageDialog:
         body.rowconfigure(2, weight=1)
         header = tk.Frame(body, background=theme.CARD)
         header.grid(row=0, column=0, columnspan=2, sticky='ew', pady=(0, theme.px(14)))
-        tk.Label(header, image=logo, background=theme.CARD).pack(side='left', padx=(0, theme.px(9)))
-        tk.Label(header, text='RenderLock', font=theme.FONT_WORDMARK,
-                 background=theme.CARD, foreground=theme.BRAND).pack(side='left')
+        tk.Label(header, image=logo, background=theme.CARD).pack(side='left', padx=(0, theme.px(5)))
+        DisplayText(header, text='RenderLock', font=theme.FONT_WORDMARK, foreground=theme.BRAND,
+                    room=theme.descent_shortfall(theme.FONT_WORDMARK), background=theme.CARD).pack(side='left')
         tk.Label(body, text=str(title), font=theme.FONT_SECTION, background=theme.CARD,
-                 foreground=theme.TEXT, anchor='w', justify='left', wraplength=wrap_width).grid(
+                 foreground=theme.TEXT, anchor='w', justify='left', wraplength=wrap_width,
+                 pady=theme.descent_shortfall(theme.FONT_SECTION)).grid(
                      row=1, column=0, columnspan=2, sticky='ew')
         message = str(message)
         font = tkfont.Font(root=window, font=theme.FONT)

@@ -81,8 +81,8 @@ FONT_WORDMARK = ("Segoe UI", 16, "bold")
 FONT_LOG = ("Consolas", 9)
 FONT_STICKER = ("Segoe UI", 10, "bold")
 
-# Display faces from the design. They are used only when installed on this machine
-# (they are not bundled); otherwise the Segoe UI fallbacks above stay in effect.
+# Display faces from the design. They can be registered privately from the user's
+# installed game; font bytes are not bundled. Segoe UI remains the fallback.
 # Sizes are design pixels and are converted with px() in initialize().
 DISPLAY_FONTS = {
     "FONT_WORDMARK": ("VALVE Oracle Medium", 21),
@@ -90,6 +90,7 @@ DISPLAY_FONTS = {
     "FONT_SECTION": ("VALVE Oracle SemiBold", 15),
     "FONT_STICKER": ("VALVE Pulp Bold", 14),
 }
+DISPLAY_FALLBACKS = {name: globals()[name] for name in DISPLAY_FONTS}
 # These faces report a shallow descent to Windows (VALVE Oracle: 0.09 em) while their
 # glyphs reach much lower (0.30 em), so Tk would crop "p", "y", ... Real depth per family:
 TRUE_DESCENT_EM = {"VALVE Oracle SemiBold": 0.30, "VALVE Oracle Medium": 0.30, "VALVE Pulp Bold": 0.40}
@@ -221,9 +222,12 @@ def motion_enabled():
     return True
 
 
-def _resolve_display_fonts(root):
-    """Switch titles, the wordmark and sticker labels to the design's display faces when installed."""
+def _resolve_display_fonts(root, eligible=None):
+    """Resolve the design's display faces afresh for this Tk interpreter and scale."""
+    globals().update(DISPLAY_FALLBACKS)
     families = set(tkfont.families(root))
+    if eligible is not None:
+        families.intersection_update(eligible)
     for name, (family, size) in DISPLAY_FONTS.items():
         if family in families:
             # Negative sizes are pixels; scale them like every other design-pixel value.
@@ -366,7 +370,7 @@ def palette():
     return dict(_ACTIVE or SKINS[globals().get("SKIN_NAME", DEFAULT_SKIN)])
 
 
-def initialize(root):
+def initialize(root, *, game_install=None):
     """Apply the selected skin and return its palette."""
     global _COLOR_MATRIX
     _COLOR_MATRIX = _display_matrix()
@@ -380,7 +384,13 @@ def initialize(root):
     globals().update(skin)
     globals()["SKIN_NAME"] = name
     globals()["SCALE"] = max(1.0, root.winfo_fpixels("1i") / 96.0)
-    _resolve_display_fonts(root)
+    try:
+        from .gui_fonts import load_fonts
+    except ImportError:
+        root._renderlock_font_status = {'status': 'unavailable', 'reason': 'font_loader_missing'}
+    else:
+        root._renderlock_font_status = load_fonts(root, install_path=game_install)
+    _resolve_display_fonts(root, root._renderlock_font_status.get('families', ()))
     root.configure(background=skin["BG"])
 
     style = ttk.Style(root)
@@ -419,6 +429,18 @@ def initialize(root):
     root.option_add("*TCombobox*Listbox.selectBackground", skin["SELECTION"])
     root.option_add("*TCombobox*Listbox.selectForeground", skin["TEXT"])
     return skin
+
+
+def brand_emblem(root):
+    """Use Kara's original emblem painter, shared with the designed update popup."""
+    import tkinter as tk
+    from .update_window import _emblem_photo
+    emblem = _emblem_photo(root)
+    if emblem is not None:
+        return emblem
+    from .gui_assets import APP_ICON_PNG
+    original = tk.PhotoImage(master=root, data=APP_ICON_PNG)
+    return original.subsample(max(1, (original.width() + px(16) - 1) // px(16)))
 
 
 def brand_window(root):

@@ -25,6 +25,9 @@ is allowed, so another session cannot overlap an update.
 The installer, recovery window and update errors use the same RenderLock theme,
 logo and window icon as the editor. The standalone recovery runtime bundles these
 brand assets so it can display them even if the installed app needs repair.
+It also includes the private font loader and can reuse the verified display-font
+cache prepared from the selected game installation. Font bytes are not bundled
+with the application or updater; unavailable faces fall back to Segoe UI.
 
 The updater verifies GitHub's ZIP SHA-256 digest and the complete package manifest,
 backs up replaced files, and checks Python, the UI imports and Tk after install.

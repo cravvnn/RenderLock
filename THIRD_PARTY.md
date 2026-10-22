@@ -12,6 +12,17 @@ Source installations use `requirements.txt`. The Windows portable distribution b
 
 The historical prepared model, texture, skeleton and animation assets derive from the user's supplied Deadlock exports. They are not included in this installed-game distribution and are not represented as original AGR code or relicensed under the parser/evaluator licenses.
 
+## Display fonts
+
+Kara's design uses VALVE Oracle Medium, VALVE Oracle SemiBold and VALVE Pulp Bold
+for display text. These are game typography assets credited in their metadata
+to YouWorkForThem, Nicolas Massi and VALVE Corporation. RenderLock distributes
+neither the font files nor a font license. Its Windows loader accepts only the
+three audited files from the user's installed game, verifies private cache
+copies and registers them for the current process. Standalone update recovery
+can reuse that cache. There is no system font installation; Segoe UI remains
+the fallback and the ordinary interface text face.
+
 ## Elagrimm character shader
 
 The current optional character-look adapter supports only the user-supplied
