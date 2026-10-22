@@ -1,3 +1,10 @@
+# 0.3.0b14 - Clearer lighting setup and matching dialogs
+
+- Choose Standard materials, Source lighting, Elagrimm + Source or Custom inside the existing Lighting lab. Source presets prepare their linked lighting-data settings together, without requiring a separate Map preparation checkbox. Full character animation remains strict unless partial export is explicitly selected.
+- Show the Elagrimm library picker beside the selected Elagrimm look. Hide library and helper fields for Standard materials; keep bundled decoder and .NET paths under Advanced tool overrides. Preserve saved library/tool locations when switching looks and preserve the active look for unrelated recovery choices.
+- Require separate, unsaved acceptance of partial lighting limits for each configured export. Relevant input or setting changes reset that acceptance. Existing game-resource and material-evaluator qualification checks remain strict; this release does not repair the current game-update refusal affecting some Source/NPR material paths or qualify a standalone Elagrimm look.
+- Use RenderLock's existing theme, logo, title bar and controls for settings, information and confirmation dialogs. Keep dialogs within the parent's monitor work area and make closing a confirmation decline the action.
+
 # 0.3.0b13 - Character names and material setup
 
 - Give actor collections, replay roots and imported meshes, armatures and empties canonical hero names with actor IDs and separate model-track labels. Preserve original object names, bone/material identities, rig selection and the shared root across character transformations. Generated cloth helpers retain their utility names.

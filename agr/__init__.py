@@ -1,2 +1,2 @@
 """RenderLock: offline replay scene conversion."""
-__version__ = "0.3.0b13"
+__version__ = "0.3.0b14"
