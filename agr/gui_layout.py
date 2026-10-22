@@ -19,6 +19,7 @@ default one, while controls keep their size.
 from __future__ import annotations
 
 import base64
+from pathlib import Path
 import tkinter as tk
 import zlib
 from tkinter import ttk
@@ -338,8 +339,21 @@ def refresh_character_look(app, *, changed=False):
     custom = mode == 'custom'
     if changed:
         app.lighting_consent.set(False)
+        app.look_tools_expanded = False
     app.look_custom_fields.grid() if custom else app.look_custom_fields.grid_remove()
     app.look_consent_fields.grid() if source or custom else app.look_consent_fields.grid_remove()
+    app.look_shader_fields.grid() if mode == 'elagrimm_source' or custom else app.look_shader_fields.grid_remove()
+    app.look_tools_fields.grid() if source or custom else app.look_tools_fields.grid_remove()
+    expanded = getattr(app, 'look_tools_expanded', False) and (source or custom)
+    app.look_tool_overrides.grid() if expanded else app.look_tool_overrides.grid_remove()
+    app.look_tools_toggle.configure(text='Hide advanced tool overrides' if expanded else 'Advanced tool overrides')
+    try:
+        found = all(Path(app.values[key].get()).is_file() for key in
+                    ('probe_atlas_decoder', 'cubemap_decoder', 'lighting_dotnet'))
+    except (OSError, ValueError):
+        found = False
+    app.look_tools_status.set('Lighting tools detected; used automatically for indirect light and reflections.' if found else
+                             'Lighting tools not found. Packaged RenderLock includes them; advanced overrides are for custom installations.')
     descriptions = {
         'standard': 'Converted game materials. Source lighting is off; saved shader and tool locations are kept.',
         'source': 'Prepares character diffuse and probe reflections together, including installed-map lighting data. No separate Map checkbox is needed.',
@@ -354,6 +368,13 @@ def refresh_character_look(app, *, changed=False):
         app.map_prepare_check.grid_remove() if source else app.map_prepare_check.grid()
         app.map_look_note.set('Lighting data is prepared automatically by the selected character look in Lighting lab.' if source else
                               'Prepare a region manually only for custom lighting or supported map work.')
+
+
+def toggle_look_tool_overrides(app):
+    if getattr(app, 'busy', False):
+        return
+    app.look_tools_expanded = not getattr(app, 'look_tools_expanded', False)
+    refresh_character_look(app)
 
 
 # --------------------------------------------------------------------------
@@ -947,33 +968,52 @@ def _development_lighting(app, page):
                       ("Partial hero probe lighting / reflections", "source_hero_lighting"),
                       ("Partial NPR indirect (requires follow camera)", "source_npr_lighting")):
         _check(app, custom, text, app.values[key], pady=(0, CHECK_GAP), installed_only=True)
+    app.look_shader_fields = shader = tk.Frame(body, background=gui_theme.CARD)
+    shader.grid(row=_next_row(body), column=0, columnspan=3, sticky='ew', pady=_pad((0, SECTION_GAP)))
+    shader.columnconfigure(0, minsize=px(WIDE_LABEL_COLUMN))
+    shader.columnconfigure(1, weight=1)
+    _path_row(app, shader, 'Elagrimm shader .blend', 'character_shader', app._browse_character_shader)
+    _note(shader, 'Select the separately downloaded Elagrimm library. Its materials are embedded in the exported .blend.', pady=(0, ROW_GAP))
+    shader_download = RoundedButton(shader, text='Get supported Elagrimm shader', style='quiet',
+        command=app._open_character_shader_download, theme=gui_theme.palette())
+    shader_download.grid(row=_next_row(shader), column=0, columnspan=3, sticky='w')
+    app.mutable_widgets.append(shader_download)
     app.look_consent_fields = consent = tk.Frame(body, background=gui_theme.CARD)
     consent.grid(row=_next_row(body), column=0, columnspan=3, sticky='ew')
     _note(consent, 'Source lighting is a partial, artistic approximation. Exposure, material response and reflections may differ from the game.', pady=(0, ROW_GAP))
     _check(app, consent, 'Accept partial lighting limits for this export', app.lighting_consent, True, False,
            pady=(0, SECTION_GAP))
-    body, row = _card(app, page, row, 'Lighting tools and shader library', label_column=WIDE_LABEL_COLUMN)
+    app.look_tools_fields = tools = tk.Frame(body, background=gui_theme.CARD)
+    tools.grid(row=_next_row(body), column=0, columnspan=3, sticky='ew')
+    tools.columnconfigure(0, weight=1)
+    app.look_tools_status = tk.StringVar()
+    wrap_to_width(_label(tools, '', textvariable=app.look_tools_status, justify='left', anchor='w', wraplength=px(TEXT_WRAP))).grid(
+        row=_next_row(tools), column=0, columnspan=3, sticky='ew', pady=_pad((0, ROW_GAP)))
+    app.look_tools_expanded = False
+    app.look_tools_toggle = RoundedButton(tools, text='Advanced tool overrides', style='quiet',
+        command=lambda: toggle_look_tool_overrides(app), theme=gui_theme.palette())
+    app.look_tools_toggle.grid(row=_next_row(tools), column=0, columnspan=3, sticky='w')
+    app.mutable_widgets.append(app.look_tools_toggle)
+    app.look_tool_overrides = overrides = tk.Frame(tools, background=gui_theme.CARD)
+    overrides.grid(row=_next_row(tools), column=0, columnspan=3, sticky='ew', pady=_pad((ROW_GAP, 0)))
+    overrides.columnconfigure(0, minsize=px(WIDE_LABEL_COLUMN))
+    overrides.columnconfigure(1, weight=1)
     for label, key, command in (
         ("Probe atlas decoder", "probe_atlas_decoder",
          lambda: app._browse_hero_decoder("probe_atlas_decoder", "ProbeAtlasDecode.dll")),
         ("Cubemap decoder", "cubemap_decoder",
          lambda: app._browse_hero_decoder("cubemap_decoder", "CubemapDecode.dll")),
-        ("Elagrimm shader .blend", "character_shader", app._browse_character_shader)):
-        _path_row(app, body, label, key, command)
-    _note(body, "Download the supported Elagrimm library separately and select its .blend here. "
-                "When Elagrimm + Source is chosen, appended materials are saved inside your export, without a separate shader file beside it.", pady=(0, CHECK_GAP))
-    shader_download = RoundedButton(body, text="Get supported Elagrimm shader", style="quiet",
-        command=app._open_character_shader_download, theme=gui_theme.palette())
-    shader_download.grid(row=_next_row(body), column=0, columnspan=3, sticky="w", pady=_pad((0, SECTION_GAP)))
-    app.mutable_widgets.append(shader_download)
-    _note(body, "A saved shader location does not enable it. Choose Elagrimm + Source above to use the library; that look prepares its lighting dependencies together.", pady=(0, CHECK_GAP))
-    _note(body, "Source lighting reads the installed map's lighting data; an external map .blend does not supply it. Character-only exports omit map geometry. "
-                "The supported Elagrimm library uses Eevee with an artistic rim. A standalone Studio shader path is not implemented in this review branch.")
+        ('.NET executable', 'lighting_dotnet', app._browse_lighting_dotnet)):
+        _path_row(app, overrides, label, key, command)
+    _note(overrides, 'The probe atlas decoder reads baked indirect lighting; the cubemap decoder reads environment reflections. These are bundled programs, not shader or texture files you need to supply.', pady=(0, 0))
     app.values['character_look'].trace_add('write', lambda *_: refresh_character_look(app, changed=True))
     for key in ('character_shader', 'shot_hero', 'map_name', 'map_margin', 'input', 'mode',
                 'start', 'end', 'fps', 'heroes', 'asset_source', 'game_install',
-                'source_lighting', 'source_hero_lighting', 'source_npr_lighting'):
+                'source_lighting', 'source_hero_lighting', 'source_npr_lighting',
+                'probe_atlas_decoder', 'cubemap_decoder', 'lighting_dotnet'):
         app.values[key].trace_add('write', lambda *_: app.lighting_consent.set(False))
+    for key in ('probe_atlas_decoder', 'cubemap_decoder', 'lighting_dotnet'):
+        app.values[key].trace_add('write', lambda *_: refresh_character_look(app))
     refresh_character_look(app)
     return row
 
