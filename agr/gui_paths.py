@@ -14,7 +14,7 @@ PATH_FIELDS = frozenset({
     "input", "assets", "blender", "output", "game_install", "source2viewer",
     "asset_cache", "particle_probe", "particle_dotnet", "world_region_probe",
     "lighting_dotnet", "probe_atlas_decoder", "cubemap_decoder",
-    "character_shader",
+    "character_shader", "external_map",
 })
 
 

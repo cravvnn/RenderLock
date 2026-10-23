@@ -1,5 +1,7 @@
-# 0.3.0b16 - Reliable cloth recovery and clearer feedback
+# 0.3.0b16 - Downloaded maps and reliable recovery
 
+- Add the separately hosted map workflow on the existing Map page. Download and extract the supported library, explicitly include it, and export characters and map into one scene with RenderLockChar and RenderLockMap master collections. Apply the qualified world coordinate basis without changing recorded character motion; no Source-lighting prerequisite is added. The map remains outside application ZIPs. Texture relinking, map cutting and the separate Map Optimizer remain manual, and map snapshot/replay revisions may differ.
+- Validate requested map identity and completed collection/geometry/alignment before publishing. A recognized map failure offers an explicit retry without the downloaded map while retaining strict character animation and requested lighting. Closing recovery never retries automatically.
 - Keep rounded controls' image caches separate for each Tk interpreter, preventing a recovery or standalone window from reusing images owned by another window runtime.
 - Write the failure summary, available recovery choices and diagnostic locations to the log before opening export recovery. If the dialog cannot open, report that error and keep the interface responsive so users can review settings and retry manually. A failed or dismissed dialog never starts an export or grants consent.
 - Recognize the exact older cloth-preparation error when its stage is absent, while preserving strict rejection for unrelated or conflicting stages. Supported-cloth continuation keeps models and animation strict; unsupported stiffening and world-collision operations remain unavailable.

@@ -15,7 +15,7 @@ Installed exports use the base Citadel/Core archive layout and any explicitly se
 - Automatic reconstruction for supported cloth proxies, plus optional bone constraints and material repairs.
 - **Experimental character look (Lighting lab):** partial Source lighting, probe reflections and the Elagrimm character shader.
 
-Map export is unavailable in the beta; scenes stay character-only and maps are added separately in Blender. The character look is partial and artistic by design, cloth and effects are incomplete and vary by hero, and a successful character export does not mean every effect was reproduced. Always read the coverage report.
+Installed map geometry conversion is unavailable in the beta. On **Map**, you can download the separate supported map package, extract it, choose `RenderLockMap.blend` and enable **Include downloaded map**. RenderLock appends and aligns it in the final scene independently of Source lighting. Texture relinking and cutting with the separate Map Optimizer remain manual; see [MAP_WORKFLOW.md](MAP_WORKFLOW.md). The character look is partial and artistic by design, cloth and effects are incomplete and vary by hero, and a successful character export does not mean every effect was reproduced. Always read the coverage report.
 
 If a converted emissive texture is present but has no visible glow, **Advanced → Character options → Emission and glass repairs (experimental)** can restore supported static emission from the material's recorded tint and strength. This option also applies an artistic glass approximation. It remains optional and does not recover every shader's glow, animated mask or game appearance; Elagrimm is not required for converted emission.
 

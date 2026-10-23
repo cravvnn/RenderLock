@@ -289,7 +289,9 @@ def scene_completion_message(report):
     if problems:
         return 'Scene saved; ' + ', '.join(problems) + '. See the coverage report.'
     content = []
-    if isinstance(stages['map'], dict) and stages['map'].get('status') == 'imported':
+    if isinstance(stages['map'], dict) and stages['map'].get('status') in ('imported', 'appended'):
+        content.append('map')
+    elif report.get('external_map', {}).get('status') == 'appended':
         content.append('map')
     effects = stages['particles']
     if isinstance(effects, dict) and effects.get('objects', 0) > 0:

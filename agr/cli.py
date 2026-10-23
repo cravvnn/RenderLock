@@ -167,7 +167,7 @@ def animation_mode(data, motion_only=False, saved_package=False, partial=False):
 
 
 def read_blender_completion(path, *, segment, output, data, fps, partial=False,
-                            requested_stages=(), shot_hero=None, partial_cloth=False):
+                            requested_stages=(), shot_hero=None, partial_cloth=False, external_map=None):
     """A scene file alone cannot establish which stages Blender completed."""
     try:
         report = json.loads(Path(path).read_text(encoding='utf-8'))
@@ -255,10 +255,16 @@ def read_blender_completion(path, *, segment, output, data, fps, partial=False,
                 if not (partial or partial_cloth):raise RuntimeError(f"{row['id']}: requested cloth failed: {motion.get('error','no completed bake')}")
                 warnings.append(f"{row['id']}: requested cloth failed: {motion.get('error','no completed bake')}")
     stages=set(requested_stages)
+    if external_map is not None:
+        from .external_map import validate_map_completion
+        validate_map_completion(report.get('external_map'), external_map,
+                                data.get('metadata', {}).get('coordinate_system'))
+        stages.add('external_map')
     for key,stage in [('hero_lighting','hero_lighting'),('npr_runtime','npr_lighting'),('effects','effects')]:
         if data.get(key) is not None:stages.add(stage)
     allowed={'hero_lighting':{'partial'},'npr_lighting':{'partial'},'character_shader':{'partial'},
-             'effects':{'partial','no_events','rendered'},'map':{'imported'},'map_lighting':{'partial'}}
+             'effects':{'partial','no_events','rendered'},'map':{'imported'},'map_lighting':{'partial'},
+             'external_map':{'appended'}}
     if not stages<=set(allowed):raise RuntimeError('Unknown requested Blender completion stage')
     identities={row['id'] for row in rows}
     expected_materials={};expected_contracts={}
@@ -476,6 +482,13 @@ def _convert(args, diagnostics):
     output = args.output.expanduser().resolve()
     if output.suffix.lower() != ".blend":
         raise ValueError("Output must end in .blend")
+    external_map = None
+    if getattr(args, 'external_map', None) is not None:
+        from .external_map import validate_map_library
+        external_map = validate_map_library(args.external_map)
+        if Path(external_map['path']) == output:
+            raise ValueError('External map: output must differ from the downloaded map library.')
+        args.character_only = True  # Read installed lighting if requested; do not duplicate map geometry.
     if args.fps <= 0 or args.fps > 240:
         raise ValueError("Export FPS must be between 1 and 240.")
     if args.start_tick is not None and args.start_tick < 0:
@@ -561,6 +574,9 @@ def _convert(args, diagnostics):
     log('Checking Blender startup and required capabilities...')
     blender_capabilities = check_blender(engine, python_mode=bool(args.blender_python),
                                          character_shader=character_shader is not None)
+    if external_map is not None:
+        from .external_map import validate_map_blender
+        validate_map_blender(blender_capabilities)
     heroes = args.heroes
     log("Hero selection: all heroes in the range." if heroes is None else
         "Hero selection: explicit IDs " + ", ".join(map(str, heroes)))
@@ -714,11 +730,15 @@ def _convert(args, diagnostics):
         script = Path(__file__).with_name("blender_scene.py").resolve()
         scene_output = work / "scene.blend"
         command = [engine, str(script)] if args.blender_python else [engine, "--background", "--factory-startup", "--python-exit-code", "1", "--python", str(script), "--"]
+        if external_map is not None and not args.blender_python:
+            command.insert(3, '--disable-autoexec')
         command += ["--segment", str(segment), "--assets", str(assets), "--output", str(scene_output), "--fps", str(args.fps)]
         if getattr(args, 'shot_hero', None) is not None:
             command += ['--shot-hero', str(args.shot_hero)]
         if character_shader is not None:
             command += ['--character-shader',str(character_shader)]
+        if external_map is not None:
+            command += ['--external-map', external_map['path']]
         if getattr(args,'character_only',False):
             command += ['--character-only']
         if args.partial:
@@ -750,7 +770,8 @@ def _convert(args, diagnostics):
         blender_report = read_blender_completion(scene_output.with_suffix('.scene.json'),
             segment=segment, output=scene_output, data=generated, fps=args.fps, partial=args.partial,
             requested_stages=requested_stages,shot_hero=getattr(args,'shot_hero',None),
-            partial_cloth=bool(getattr(args,'partial_cloth',False)))
+            partial_cloth=bool(getattr(args,'partial_cloth',False)),
+            **({'external_map': external_map} if external_map is not None else {}))
         save_scene(generated, segment)
         log("[4/4] Saving the scene package and coverage report...")
         set_stage("publish_scene")
@@ -781,6 +802,11 @@ def _convert(args, diagnostics):
             report['map_workflow']='external_blend'
             report['map']=dict(status='not_requested',reason='Separate map geometry',
                                prepared_lighting_assets=report['map'])
+        if external_map is not None:
+            report['map_workflow'] = 'external_blend_appended'
+            report['external_map'] = blender_report['external_map']
+            report['map'] = dict(blender_report['external_map'], source='downloaded_library',
+                                 prepared_lighting_assets=report['map'])
         report["secondary_motion"] = merge_secondary_motion_coverage(
             report["scene_extras"].get("secondary_motion", {"status": "not_requested"}),
             report.get("blender", {}).get("entities", []))
@@ -800,6 +826,8 @@ def _convert(args, diagnostics):
         log(f"Range: {generated['start_tick']}â€“{generated['end_tick']} inclusive; {len(generated['entities'])} entity tracks")
         log(f"Coverage: {report_path}")
         log(report["summary"])
+        if external_map is not None:
+            log('Map appended in RenderLockMap. In Blender, relink the downloaded Textures folder with File > External Data > Find Missing Files. Hide RenderLockChar while cutting with the separate Map Optimizer. This map snapshot may differ from the replay revision.')
         if report["status"] == "converted_with_warnings":
             for warning in report["warnings"]:
                 log("WARNING: " + warning)
@@ -851,6 +879,7 @@ def parser():
     cv.add_argument('--source-npr-lighting',action='store_true',help='Partial NPR indirect with camera-forward/white-instance assumptions; requires --partial and --source-hero-lighting; frame rim not saved')
     cv.add_argument('--character-shader',type=Path,help='Qualified user-supplied Elagrimm BLENDER-Deadlock-Shader.blend; partial Eevee Source-lighting bridge and artistic rim; requires --source-npr-lighting')
     cv.add_argument('--character-only',action='store_true',help='Omit map geometry from the Blender scene while retaining prepared lighting assets and coordinates for a separate map')
+    cv.add_argument('--external-map',type=Path,help='Append the supported downloaded RenderLockMap.blend; texture relinking and cutting remain manual, independently of Source lighting')
     cv.add_argument('--source-hero-lighting',action='store_true',help='Experimental partial hero probes/reflections; unit intensity/tint and viewer normalization assumptions; requires --source-lighting')
     cv.add_argument('--probe-atlas-decoder',type=Path,help='Qualified ProbeAtlasDecode.dll for --source-hero-lighting')
     cv.add_argument('--cubemap-decoder',type=Path,help='Qualified CubemapDecode.dll for --source-hero-lighting')

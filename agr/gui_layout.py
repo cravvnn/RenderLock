@@ -46,7 +46,7 @@ PAGE_DETAILS = {
     PAGE_SETUP: "Point RenderLock at Blender and your game files. Conversion never launches Deadlock.",
     PAGE_ADVANCED: "Experimental character options and output policy.",
     PAGE_LIGHTING: "Partial Source lighting and Elagrimm character look.",
-    PAGE_MAP: "Prepare lighting data; add map geometry separately in Blender.",
+    PAGE_MAP: "Append the downloaded map; keep lighting setup separate.",
     PAGE_UPDATES: "Review release notes and install RenderLock updates.",
 }
 
@@ -1325,10 +1325,26 @@ def build(app):
 
 
 def _build_map(app, page):
-    body, row = _card(app, page, 0, "Map region", label_column=WIDE_LABEL_COLUMN,
+    body, row = _card(app, page, 0, "Downloaded map", label_column=WIDE_LABEL_COLUMN,
+                     info='Download and extract the separate map once. RenderLock appends and aligns it; texture relinking and cutting stay manual.')
+    _check(app, body, 'Include downloaded map', app.values['external_map_enabled'])
+    _path_row(app, body, 'Map .blend', 'external_map', app._browse_external_map)
+    buttons = tk.Frame(body, background=gui_theme.CARD)
+    buttons.grid(row=_next_row(body), column=0, columnspan=3, sticky='w', pady=_pad((0, ROW_GAP)))
+    RoundedButton(buttons, text='Download map', style='quiet', command=app._open_map_link,
+                  theme=gui_theme.palette(), height=34).pack(side='left', padx=_pad((0, 8)))
+    RoundedButton(buttons, text='Map Optimizer', style='quiet', command=lambda: app._open_map_link(True),
+                  theme=gui_theme.palette(), height=34).pack(side='left')
+    map_note = wrap_to_width(_label(body, 'Extract the ZIP and choose RenderLockMap.blend. Characters, cameras, lights and effects stay in RenderLockChar; '
+               'the appended map is in RenderLockMap. In Blender, use File > External Data > Find Missing Files and select the '
+               'downloaded Textures folder. Hide RenderLockChar while cutting with the separate Map Optimizer, then show it again. '
+               'This map snapshot can differ from a later game or replay. Source lighting is optional and configured separately.',
+               color=gui_theme.DIM, font=gui_theme.FONT_SMALL, justify='left', anchor='w', wraplength=px(TEXT_WRAP)))
+    map_note.grid(row=_next_row(body), column=0, columnspan=3, sticky='ew', pady=_pad((SECTION_GAP, 0)))
+    body, row = _card(app, page, row, "Installed lighting region", label_column=WIDE_LABEL_COLUMN,
                       info="The lighting tools read one prepared region of the installed map. "
                            "Prepared regions are cached by map content and export bounds. "
-                           + ("This character beta omits map geometry from the Blender scene." if character_beta()
+                           + ("This beta omits installed geometry conversion; downloaded maps are appended separately above." if character_beta()
                               else "Map geometry can be omitted from the Blender scene."))
     app.map_prepare_check = _check(app, body, "Prepare installed map region", app.values["map_enabled"], pady=(0, CHECK_GAP),
            installed_only=True)
@@ -1340,7 +1356,7 @@ def _build_map(app, page):
     _path_row(app, body, "Regional exporter", "world_region_probe", app._browse_world_region_probe)
     _path_row(app, body, ".NET executable", "lighting_dotnet", app._browse_lighting_dotnet)
     if character_beta():
-        _note(body, "Character beta: map geometry is always omitted; lighting data remains available.")
+        _note(body, "The beta omits converted installed geometry; the downloaded map above is appended separately.")
     else:
         _check(app, body, "Characters only; omit prepared map geometry", app.values["character_only"])
     _note(body, "Source/NPR lighting needs data from the installed map. Character-only exports retain "

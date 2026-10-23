@@ -741,7 +741,7 @@ def _review_setup(scene, positions):
 
 
 def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime=None, shot_hero=None,
-                character_shader=None, character_only=False, allow_partial_lighting=False):
+                character_shader=None, character_only=False, allow_partial_lighting=False, external_map=None):
     _init_blender()
     started = time.monotonic()
     timings = []
@@ -991,6 +991,21 @@ def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime
             report["effects"] = {"status": "failed", "stage": "rendering", "error": str(exc)}
             report["warnings"].append("Particle rendering was incomplete: " + str(exc))
     mark("effects")
+    from agr.blender_external_map import group_renderlock_content, append_external_map
+    group_renderlock_content(scene)
+    # Pack only generated character/lighting/effect resources. The external map
+    # remains a separate manual texture-relink workflow, including missing images.
+    bpy.data.orphans_purge(do_local_ids=True, do_linked_ids=True, do_recursive=True)
+    bpy.ops.file.pack_all()
+    report["unpacked_images"] = [image.name for image in bpy.data.images if image.source == "FILE" and not image.packed_file]
+    if report["unpacked_images"]:
+        report["warnings"].append("Some image textures could not be packed: " + ", ".join(report["unpacked_images"]))
+    from agr.blender_images import finalize_packed_image_paths
+    finalize_packed_image_paths()
+    if external_map is not None:
+        report['external_map'] = append_external_map(scene, external_map, coordinates)
+        report['warnings'].extend(report['external_map']['limits'])
+        mark('external_map')
     report["timings"] = timings
     for marker in data.get("markers", []):
         tick = marker.get("tick")
@@ -1031,15 +1046,6 @@ def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime
         obj.select_set(False)
     roots[0].select_set(True)
     bpy.context.view_layer.objects.active = roots[0]
-    # Appending selected hierarchies can load unused dependencies from the asset
-    # file. Remove these before packing, otherwise every hero duplicates the pack.
-    bpy.data.orphans_purge(do_local_ids=True, do_linked_ids=True, do_recursive=True)
-    bpy.ops.file.pack_all()
-    report["unpacked_images"] = [image.name for image in bpy.data.images if image.source == "FILE" and not image.packed_file]
-    if report["unpacked_images"]:
-        report["warnings"].append("Some image textures could not be packed: " + ", ".join(report["unpacked_images"]))
-    from agr.blender_images import finalize_packed_image_paths
-    finalize_packed_image_paths()
     output.parent.mkdir(parents=True, exist_ok=True)
     bpy.ops.wm.save_as_mainfile(filepath=str(output), compress=True)
     mark("save")
@@ -1060,10 +1066,11 @@ def main(argv=None):
     parser.add_argument('--shot-hero', type=int)
     parser.add_argument('--character-shader',type=Path)
     parser.add_argument('--character-only',action='store_true')
+    parser.add_argument('--external-map',type=Path)
     args = parser.parse_args(argv)
     attach_blender_log(args.output)
     return build_scene(args.segment, args.assets, args.output, args.fps, args.partial,args.particle_runtime,
-                       args.shot_hero,args.character_shader,args.character_only,args.partial_lighting)
+                       args.shot_hero,args.character_shader,args.character_only,args.partial_lighting,args.external_map)
 
 
 if __name__ == "__main__":

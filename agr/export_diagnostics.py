@@ -24,7 +24,7 @@ _OPTION_NAMES = (
     "partial", "partial_cloth", "partial_lighting", "overwrite", "motion_only", "no_effects",
     "include_map", "map_name", "map_margin", "secondary_motion", "model_constraints",
     "material_repairs", "source_lighting", "source_hero_lighting", "source_npr_lighting",
-    "character_only", "character_shader", "shot_hero", "particle_probe", "dotnet",
+    "character_only", "character_shader", "external_map", "shot_hero", "particle_probe", "dotnet",
     "particle_history_ticks", "world_region_probe", "lighting_dotnet",
     "probe_atlas_decoder", "cubemap_decoder", "keep_work",
 )

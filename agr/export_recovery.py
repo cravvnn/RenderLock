@@ -35,7 +35,7 @@ _VALUE_OPTIONS = frozenset({
     '--lighting-dotnet', '--character-shader', '--probe-atlas-decoder',
     '--cubemap-decoder', '--particle-probe', '--dotnet', '--output',
     '--start-tick', '--end-tick', '--particle-history-ticks', '--fps',
-    '--shot-hero', '--heroes', '--blender', '--blender-python',
+    '--shot-hero', '--heroes', '--blender', '--blender-python', '--external-map',
 })
 _LIGHTING_SWITCHES = frozenset({
     '--source-lighting', '--source-hero-lighting', '--source-npr-lighting',
@@ -113,6 +113,8 @@ def _evidence(failure, log_text):
 def _problem(failure, log_text):
     stage, error, code = _evidence(failure, log_text)
     lowered = error.lower()
+    if stage in _OPTIONAL_STAGES | {'preflight', 'validate_options'} and error.startswith('External map: '):
+        return 'external_map', error
     # The known report contains per-hero optional cloth errors, including an
     # unbound generated proxy's vertex-map identity. Omitting that cloth never
     # relaxes the separate core model/rig/entity identity checks.
@@ -207,6 +209,7 @@ def recovery_summary(command: list[str], failure: dict, log_text: str = '') -> s
     _arguments(command)
     kind, _ = _problem(failure, log_text)
     return {
+        'external_map': 'The downloaded map could not be used. Review its file or explicitly continue without the map; character animation and lighting settings remain requested.',
         'cloth': 'Requested experimental cloth could not be prepared for all selected characters. '
                  'You can explicitly keep supported approximate cloth and report omitted/failed cloth, '
                  'or continue without cloth. Character models and animation remain strict.',
@@ -238,6 +241,12 @@ def recovery_choices(command: list[str], failure: dict, log_text: str = '') -> l
         return []
     present = {name for name, _ in rows}
     kind, _ = _problem(failure, log_text)
+    if kind == 'external_map' and '--external-map' in present:
+        return [RecoveryChoice('without_external_map', 'Continue without downloaded map',
+            'Retry without appending the downloaded map. Character models, animation, effects and lighting stay requested. '
+            'Setting: Map > Include downloaded map.',
+            _rewrite(rows, {'--external-map'}, ('--character-only',)),
+            (('external_map_enabled', '0'), ('character_only', '1')))]
     if kind == 'cloth' and present & {'--secondary-motion', '--cloth'}:
         choices = []
         if '--partial-cloth' not in present:

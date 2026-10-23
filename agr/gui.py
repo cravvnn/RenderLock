@@ -136,6 +136,8 @@ def build_convert_command(values: dict[str, str], *, partial: bool = False,
                           lighting_consent: bool = False) -> list[str]:
     """Validate editable fields and build argv without shell interpretation."""
     values = normalize_gui_paths(values)
+    if values.get('external_map_enabled') == '1':
+        values['character_only'] = '1'
     if values.get("heroes_empty", "0") == "1":
         raise ValueError("Select at least one character to export, or choose All.")
     source = values.get("input", "").strip()
@@ -229,6 +231,13 @@ def build_convert_command(values: dict[str, str], *, partial: bool = False,
         command += ['--character-shader',str(validate_character_shader_library(character_shader))]
     if values.get('character_only','0')=='1':
         command += ['--character-only']
+    if values.get('external_map_enabled', '0') == '1':
+        map_path = values.get('external_map', '').strip()
+        if not map_path or not Path(map_path).is_file() or Path(map_path).suffix.lower() != '.blend':
+            raise ValueError('Choose the downloaded RenderLockMap.blend on Map, or turn off Include downloaded map.')
+        if Path(map_path).resolve() == Path(output).resolve():
+            raise ValueError('Choose an output different from the downloaded map library.')
+        command += ['--external-map', map_path]
     if values.get('source_hero_lighting','0') == '1' or character_lighting:
         if values.get('source_lighting','0') != '1':raise ValueError('Hero lighting requires Partial static diffuse lighting.')
         from .source_hero_lighting import validate_hero_decoder_paths
@@ -325,6 +334,7 @@ class AGRApp:
             "output": "", "start": "", "end": "", "fps": "64", "heroes": "", "heroes_empty": "0",
             "asset_source": "installed", "game_install": "", "source2viewer": "", "asset_cache": "",
             "map_enabled": "0", "map_name": "dl_midtown", "map_margin": "26",
+            "external_map_enabled": "0", "external_map": "",
             "source_lighting": "0", "world_region_probe": "", "lighting_dotnet": "",
             "source_hero_lighting": "0", "source_npr_lighting": "0", "probe_atlas_decoder": "", "cubemap_decoder": "",
             "character_shader": "", "character_only": "0",
@@ -477,6 +487,23 @@ class AGRApp:
         path=filedialog.askopenfilename(parent=self.root,title='Choose Elagrimm BLENDER-Deadlock-Shader.blend',
             filetypes=[('Blender shader library','*.blend'),('All files','*')])
         if path:self.values['character_shader'].set(path)
+
+    def _browse_external_map(self) -> None:
+        path = filedialog.askopenfilename(parent=self.root, title='Choose downloaded RenderLockMap.blend',
+            filetypes=[('Blender map library', '*.blend'), ('All files', '*')])
+        if path:
+            self.values['external_map'].set(path)
+
+    def _open_map_link(self, optimizer=False) -> None:
+        import webbrowser
+        from .external_map import MAP_DOWNLOAD_URL, MAP_OPTIMIZER_URL
+        url = MAP_OPTIMIZER_URL if optimizer else MAP_DOWNLOAD_URL
+        try:
+            if webbrowser.open(url):
+                return
+        except (webbrowser.Error, OSError):
+            pass
+        self._append_log('Open this map workflow link:\n' + url + '\n')
 
     def _open_character_shader_download(self) -> None:
         import webbrowser

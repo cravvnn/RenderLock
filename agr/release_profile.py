@@ -21,8 +21,8 @@ def validate_conversion(args) -> None:
         return
     # The experimental character look (partial Source lighting, probe
     # reflections and the Elagrimm shader) is part of this beta.
-    # Map geometry stays omitted: scenes remain character-only and maps are
-    # added separately in Blender.
+    # Installed geometry conversion stays omitted. An explicitly requested,
+    # separately downloaded map library is appended independently afterward.
     args.character_only = True
 
 
