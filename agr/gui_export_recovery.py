@@ -51,10 +51,23 @@ def failure_details(output):
 
 
 def show_failure(app, command, output):
-    from .export_recovery import recovery_choices, recovery_summary
+    from .export_recovery import recovery_choices
     failure, work, bundle = failure_details(output)
     choices = recovery_choices(command, failure, output)
     window = tk.Toplevel(app.root)
+    try:
+        return _show_failure_window(app, command, output, window, failure, work, bundle, choices)
+    finally:
+        # Destroying this modal also releases its grab, if display failed after
+        # grab_set. Never inspect or change another window's grab or children.
+        try:
+            window.destroy()
+        except tk.TclError:
+            pass  # A choice, normal close, or root shutdown already destroyed it.
+
+
+def _show_failure_window(app, command, output, window, failure, work, bundle, choices):
+    from .export_recovery import recovery_summary
     window.withdraw()
     window.title('RenderLock | Export recovery')
     window.configure(background=theme.BACKDROP)

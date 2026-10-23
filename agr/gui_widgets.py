@@ -80,8 +80,9 @@ def _corner_rows(radius, fill, outline, bg):
 
 
 def _corner(master, radius, fill, outline, bg, which):
-    """Cached corner image; ``which`` is one of nw, ne, sw, se."""
-    key = (radius, fill, outline, bg, which)
+    """Corner image cached per Tk interpreter; ``which`` is nw, ne, sw or se."""
+    # Keep the interpreter itself: numeric ids can be reused after root teardown.
+    key = (master.tk, radius, fill, outline, bg, which)
     image = _CORNER_CACHE.get(key)
     if image is None:
         rows = _corner_rows(radius, fill, outline, bg)

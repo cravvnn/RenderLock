@@ -780,8 +780,24 @@ class AGRApp:
         self.root.after(100, self._poll)
 
     def _show_conversion_failure(self, output: str) -> None:
-        from .gui_export_recovery import show_failure
-        choice = show_failure(self, getattr(self, '_conversion_command', []), output)
+        from .export_recovery import recovery_choices, recovery_summary
+        from .gui_export_recovery import failure_details, show_failure
+        command = getattr(self, '_conversion_command', [])
+        failure, work, bundle = failure_details(output)
+        guidance = ['Export recovery: ' + recovery_summary(command, failure, output)]
+        for suggestion in recovery_choices(command, failure, output):
+            guidance.extend((suggestion.title, suggestion.description))
+        if work is not None:
+            guidance.append('Retained diagnostic folder: ' + str(work))
+        if bundle is not None:
+            guidance.append('Diagnostic ZIP: ' + str(bundle))
+        self._append_log('\n'.join(guidance) + '\n')
+        try:
+            choice = show_failure(self, command, output)
+        except Exception as exc:
+            self._append_log(f'Could not open export recovery: {type(exc).__name__}: {exc}\n'
+                             'Review the recovery guidance above and adjust settings before pressing Export to retry.\n')
+            return
         if choice is not None:
             self.root.after(0, lambda: self._retry_conversion(choice))
 

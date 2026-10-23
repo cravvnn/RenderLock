@@ -59,7 +59,7 @@ RenderLock uses Kara's original artwork and display typography. On Windows it re
 
 ### Recovering a stopped export
 
-For recognized failures, the recovery window explains what cannot be included and offers specific retry choices. You can keep supported approximate cloth, omit cloth or effects, or turn off incompatible Source lighting. Each choice describes what will be missing. A retry may repeat preparation and scene creation while reusing verified cached assets.
+For recognized failures, the recovery window explains what cannot be included and offers specific retry choices. You can keep supported approximate cloth, omit cloth or effects, or turn off incompatible Source lighting. Each choice describes what will be missing. The same guidance and diagnostic locations appear in the log before the window opens. If the window cannot open, the interface stays responsive and the log explains how to review settings and retry manually. Closing recovery never starts a retry. A retry may repeat preparation and scene creation while reusing verified cached assets.
 
 **Advanced → Output policy → Keep supported cloth if some cloth is unavailable** accepts omitted or failed cloth and keeps character models and animation strict. CLI users can select `--partial-cloth`. Missing character animation or models requires the separate, explicit **Allow partial export / movement placeholders** choice (`--partial`); rig identities, replay identities and data validation remain checked.
 

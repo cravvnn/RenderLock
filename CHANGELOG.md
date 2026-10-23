@@ -1,3 +1,10 @@
+# 0.3.0b16 - Reliable cloth recovery and clearer feedback
+
+- Keep rounded controls' image caches separate for each Tk interpreter, preventing a recovery or standalone window from reusing images owned by another window runtime.
+- Write the failure summary, available recovery choices and diagnostic locations to the log before opening export recovery. If the dialog cannot open, report that error and keep the interface responsive so users can review settings and retry manually. A failed or dismissed dialog never starts an export or grants consent.
+- Recognize the exact older cloth-preparation error when its stage is absent, while preserving strict rejection for unrelated or conflicting stages. Supported-cloth continuation keeps models and animation strict; unsupported stiffening and world-collision operations remain unavailable.
+- Stop reporting a missing point-follow attachment when a particle has no point-follow attachments to check. Genuine attachment failures, provider checks and existing particle coverage limits remain unchanged; this adds no new particle simulation support.
+
 # 0.3.0b15 - Base game assets and original UI typography
 
 - Exclude custom addon/mod search paths before opening archives for installed exports. A modded game configuration can no longer override the base character model through a separate addon folder and introduce missing dependencies such as Dynamo's backup model. Keep exact recorded model IDs, configured precedence among base mounts, selected-map priority and all payload/animation checks.

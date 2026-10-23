@@ -446,8 +446,7 @@ def prepare_installed_effects(segment_path, pack_dir, provider, decoder, log=pri
                 bindings = [event['data']['update_particle_ent'] for event in instance.get('events', [])
                             if event.get('type') == 'UPDATE_ENT'
                             and event.get('data', {}).get('update_particle_ent', {}).get('attach_type') == 5]
-                if not bindings:
-                    raise UnsupportedEffect('No recorded point-follow attachment')
+                # An empty inventory needs no table and establishes no simulation support.
                 for binding in bindings:
                     prepare_binding(instance, binding)
                 continue

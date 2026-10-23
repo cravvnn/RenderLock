@@ -116,7 +116,9 @@ def _problem(failure, log_text):
     # The known report contains per-hero optional cloth errors, including an
     # unbound generated proxy's vertex-map identity. Omitting that cloth never
     # relaxes the separate core model/rig/entity identity checks.
-    if stage == 'validate_cloth_preparation' and error.startswith('Requested cloth preparation did not complete: '):
+    # Legacy AGR error lines lack a stage. Only this exact preparation prefix
+    # can identify optional cloth there; a conflicting explicit stage wins.
+    if stage in ('', 'validate_cloth_preparation') and error.startswith('Requested cloth preparation did not complete: '):
         return 'cloth', error
     if stage == 'validate_blender_completion' and re.fullmatch(r'.+: requested cloth failed: .+', error, re.S):
         return 'cloth', error
