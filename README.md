@@ -1,7 +1,5 @@
 <div align="center">
 
-<img src="artwork/renderlockmain.png" width="120" alt="RenderLock emblem">
-
 <p><img src="artwork/renderlock-intro.gif" width="600" alt="RenderLock title over an animated Blender scene"></p>
 
 # RenderLock
