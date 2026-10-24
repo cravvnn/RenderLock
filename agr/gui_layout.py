@@ -855,7 +855,7 @@ def _build_export(app, page):
     body, row = _card(app, page, row, "Output")
     _path_row(app, body, "Save as", "output", app._browse_output)
     _check(app, body, "Include supported particle effects", app.values["effects_enabled"], pady=(0, 0),
-           info="Missing effects are listed in the coverage report. Add maps separately in Blender.")
+           info="Missing effects are listed in the coverage report. Downloaded maps are selected separately on Map.")
     return row
 
 

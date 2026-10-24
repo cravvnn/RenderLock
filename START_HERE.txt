@@ -1,14 +1,29 @@
-RenderLock — character beta
+RenderLock — replay performances in Blender
 
-Extract the entire portable ZIP, then double-click RenderLock.exe (a
-Launch_RenderLock.cmd fallback remains for troubleshooting).
-No Python installation or first-run package download is needed; the Source 2
-Viewer command-line exporter and the character-look tools are included.
+1. Extract the ENTIRE Windows ZIP, then open RenderLock.exe.
+   Launch_RenderLock.cmd is the fallback launcher. Python, the converter and
+   helper tools are included; install Blender separately.
+2. In Setup, choose Blender and your Deadlock installation.
+3. In Export, inspect a .dem, select characters and start with a short tick range.
+   Use Standard materials and turn off optional effects/cloth/map for the first
+   animation check. Keep broad partial export off for full animation.
+4. Choose a new .blend output, export, then read the coverage report.
 
-Select Blender and your Deadlock folder on Setup. Blender is not included.
-Choose a recording, inspect it and export a short tick range. The Lighting lab
-page adds the experimental character look (partial; read README.md first).
-Map export is not available in the beta.
+Optional features:
+- Map: Download map, extract it, choose RenderLockMap.blend and enable inclusion.
+  RenderLock appends and aligns it. Relink Textures and cut the final map manually.
+- Lighting lab: Source lighting and Elagrimm + Source are partial character looks.
+  The Elagrimm library is a separate download. Accept lighting limits explicitly.
+- Advanced: supported cloth, particles, model bone rules and material repairs.
+  Cloth-only, lighting-only and broad partial-character choices have different scopes.
 
-Read README.md for setup and coverage limits. Keep the .blend, .agrscene
-and .agr-report.json outputs together.
+Keep the .blend, .agrscene DIRECTORY and .agr-report.json together. Map textures
+remain external until relinked/packed. Read README.md and docs/README.md for guides.
+
+For a stopped export, review the recovery choices and exact diagnostic path.
+Logs/support ZIPs normally go to %LOCALAPPDATA%\RenderLock\logs. Closing recovery
+never retries. Review diagnostics before sharing paths or replay information.
+
+Downloads: https://github.com/cravvnn/RenderLock/releases/latest
+Support: https://discord.gg/deadlockediting
+Map: https://maps.allevilmc.com/download

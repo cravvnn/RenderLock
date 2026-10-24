@@ -29,6 +29,10 @@ SOURCE_ROOT_FILES = {
 RUNTIME_REQUIREMENTS = ("numpy", "boon-deadlock", "polars", "python-snappy")
 SKIP_PARTS = {"__pycache__", ".pytest_cache", ".git", ".venv", "target", "bin", "obj"}
 STALE_TOOLS = {"package_release.py", "package_startup_update.py"}
+PORTABLE_DOCUMENTS = (
+    "README.md", "START_HERE.txt", "THIRD_PARTY.md", "LICENSE", "CREDITS.md",
+    "CHANGELOG.md", "UPDATING.md", "CLOTH_WORKFLOW.md", "MAP_WORKFLOW.md", "CONTRIBUTING.md",
+)
 PARTICLE_COMMANDS = {
     "physics-json-v1", "material-bundle-v1", "decompile-cloth",
     "inventory-cloth-physics", "inventory-animation-clip-events", "inventory-model-hitboxes",
@@ -76,7 +80,7 @@ def copy_file(source, destination):
 def stage_source(root, output):
     """Keep executable source, tests and notices; omit diagnostic workspaces."""
     excluded_tests = []
-    for folder in ("agr", "native", "tests", "tools", "artwork"):
+    for folder in ("agr", "native", "tests", "tools", "artwork", "docs"):
         for path in sorted((root / folder).rglob("*")):
             relative = path.relative_to(root)
             if not path.is_file() or SKIP_PARTS.intersection(relative.parts[1:]):
@@ -96,6 +100,15 @@ def stage_source(root, output):
         copy_file(root / name, output / name)
     (output / "release_profile.json").write_text('{"profile": "character-beta"}\n', encoding="utf-8")
     return excluded_tests
+
+
+def stage_documentation(source, portable):
+    """Keep the README's user guides and original artwork available offline."""
+    for name in PORTABLE_DOCUMENTS:
+        copy_file(source / name, portable / name)
+    for folder in ('docs', 'artwork'):
+        if (source / folder).is_dir():
+            shutil.copytree(source / folder, portable / folder)
 
 
 def distributions():
@@ -243,7 +256,8 @@ def package(root, output, native_helper, source2viewer_dir=None, lighting_kit=No
     portable = output / f"RenderLock-{__version__}-Windows-x64"
     for folder in ("agr",):
         shutil.copytree(source / folder, portable / folder)
-    for name in ("README.md", "START_HERE.txt", "THIRD_PARTY.md", "LICENSE", "CREDITS.md", "CHANGELOG.md", "UPDATING.md", "Launch_RenderLock.cmd", "portable_launcher.py", "release_profile.json"):
+    stage_documentation(source, portable)
+    for name in ("Launch_RenderLock.cmd", "portable_launcher.py", "release_profile.json"):
         copy_file(source / name, portable / name)
     copy_file(native_helper, portable / "bin/agr-extract.exe")
     if launcher_exe is not None:

@@ -1,5 +1,7 @@
 # Experimental native Linux support
 
+[All user guides](docs/README.md) · [Building](docs/BUILDING.md)
+
 Linux support is being developed separately from the Windows portable release.
 There is no supported Linux release archive or Linux updater yet. Do not treat
 the Windows ZIP as a native Linux installer.
