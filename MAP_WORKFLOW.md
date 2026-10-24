@@ -1,6 +1,14 @@
 # Add the downloaded map
 
+[All guides](docs/README.md) · [Troubleshooting](docs/TROUBLESHOOTING.md#the-map-is-missing-pink-or-too-heavy)
+
 The map is a separate download, outside the RenderLock application ZIP. RenderLock appends and aligns it in the final replay scene. Texture relinking and map cutting remain manual.
+
+Automatic inclusion is available from **0.3.0b16**. The current download is about
+2.60 GB; extract the whole ZIP, not just its `.blend`. Use the
+[published Windows build](https://github.com/cravvnn/RenderLock/releases/latest)
+or matching current source. Older versions without this workflow require manual
+Blender appending; they do not gain support by changing a saved library path.
 
 ## In RenderLock
 

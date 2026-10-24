@@ -870,13 +870,13 @@ def parser():
     cv.add_argument("--asset-cache", type=Path, help="Folder for generated assets (defaults to your user cache)")
     cv.add_argument("--source2viewer", type=Path, help="Source 2 Viewer CLI executable for asset conversion")
     cv.add_argument("--map-name", help="Installed map archive name, e.g. dl_midtown; never inferred from the demo label 'start'")
-    cv.add_argument("--include-map", action="store_true", help="Import a region of the explicitly selected installed map")
+    cv.add_argument("--include-map", action="store_true", help="Prepare an explicitly selected installed map region; character beta omits its geometry while retaining requested lighting data")
     cv.add_argument("--map-margin", type=float, default=26.0, help="Extra map margin in metres around selected replay positions")
     cv.add_argument('--source-lighting', action='store_true',
-                    help='Explicitly select partial Source SH diffuse and world-node geometry; direct/specular/probes/fog and entity-lump geometry remain unsupported')
+                    help='Partial Source lighting from installed data; use --source-hero-lighting for character probes/reflections and --partial-lighting for lighting-only consent; static-map lighting is separately qualified')
     cv.add_argument('--world-region-probe', type=Path, help='Qualified WorldRegionProbe.dll for --source-lighting')
     cv.add_argument('--lighting-dotnet', type=Path, help='.NET executable for --source-lighting')
-    cv.add_argument('--source-npr-lighting',action='store_true',help='Partial NPR indirect with camera-forward/white-instance assumptions; requires --partial and --source-hero-lighting; frame rim not saved')
+    cv.add_argument('--source-npr-lighting',action='store_true',help='Partial NPR indirect with reference assumptions; requires --source-hero-lighting and explicit lighting consent (--partial-lighting preserves strict character data)')
     cv.add_argument('--character-shader',type=Path,help='Qualified user-supplied Elagrimm BLENDER-Deadlock-Shader.blend; partial Eevee Source-lighting bridge and artistic rim; requires --source-npr-lighting')
     cv.add_argument('--character-only',action='store_true',help='Omit map geometry from the Blender scene while retaining prepared lighting assets and coordinates for a separate map')
     cv.add_argument('--external-map',type=Path,help='Append the supported downloaded RenderLockMap.blend; texture relinking and cutting remain manual, independently of Source lighting')
@@ -891,7 +891,7 @@ def parser():
     cv.add_argument('--model-constraints', action='store_true',
                     help='Evaluate supported authored bone constraints from installed models; unsupported bindings fail explicitly')
     cv.add_argument("--secondary-motion", "--cloth", dest="secondary_motion", action="store_true",
-                    help="Bake version-matched decompiled cloth proxies using installed character assets; see per-hero coverage")
+                    help="Bake supported version-matched cloth from installed character assets; see per-entity coverage and limitations")
     cv.add_argument("--output", type=Path, required=True)
     cv.add_argument("--start-tick", type=int)
     cv.add_argument('--particle-history-ticks', type=int, default=0,

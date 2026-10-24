@@ -31,6 +31,14 @@ Third-party shader libraries remain separate downloads, under their authors' ter
 | [juliancz-a / Deadlock Playground](https://github.com/juliancz-a/deadlock-playground) | Cloth and material implementations reviewed as research references. No code was ported from that review. |
 | [Unicorn](https://github.com/unicorn-engine/unicorn), [Capstone](https://github.com/capstone-engine/capstone) and [pefile](https://github.com/erocarrera/pefile) contributors | Tools used for offline binary inspection and bounded numerical checks during compatibility research. They are not required to open exported Blender scenes. |
 
+## Map workflow
+
+The optional downloaded Midtown map is separate from the application package.
+The manual cutting workflow links to
+[Miruneko0 / Deadlock Map Optimizer](https://github.com/Miruneko0/Deadlock-Map-Optimizer).
+RenderLock does not bundle, install or run that add-on. See the
+[map guide](MAP_WORKFLOW.md) for the contributor snapshot's static/revision limits.
+
 ## Foundations and dependencies
 
 - **[Blender Foundation and the Blender community](https://www.blender.org/about/):** the scene, animation, rendering and baking platform RenderLock exports to.
@@ -38,10 +46,10 @@ Third-party shader libraries remain separate downloads, under their authors' ter
 - **[Python](https://www.python.org/), [Tcl/Tk](https://www.tcl.tk/), [Rust](https://www.rust-lang.org/) and [.NET](https://github.com/dotnet/runtime) contributors:** the languages, desktop UI and runtimes supporting the application and helper tools.
 - **[NumPy](https://numpy.org/), [Polars](https://pola.rs/), [python-snappy](https://github.com/andrix/python-snappy) and [cramjam](https://github.com/milesgranger/pyrus-cramjam) contributors:** numerical arrays, replay data processing and compression.
 - **[Typer](https://github.com/fastapi/typer), [Rich](https://github.com/Textualize/rich), [Pygments](https://pygments.org/), [markdown-it-py](https://github.com/executablebooks/markdown-it-py), [mdurl](https://github.com/executablebooks/mdurl), [Colorama](https://github.com/tartley/colorama), [Shellingham](https://github.com/sarugaku/shellingham) and [annotated-doc](https://github.com/fastapi/annotated-doc) contributors:** command-line and supporting dependencies included through the runtime dependency tree.
-- **The Rust dependency maintainers:** the native extractor also relies on crates including anyhow, prost and serde_json. The [resolved native dependency inventory](native/licenses/0.2.1/dependencies.json) records the complete package list, upstream repositories and retained notices.
+- **The Rust dependency maintainers:** the native extractor also relies on crates including anyhow, prost and serde_json. The [resolved native dependency inventory](https://github.com/cravvnn/RenderLock/blob/main/native/licenses/0.2.1/dependencies.json) records the complete package list, upstream repositories and retained notices.
 
 ## Licenses and corrections
 
-This page acknowledges the people and projects behind the work. Full license and provenance records are in [THIRD_PARTY.md](THIRD_PARTY.md), [animation reference notices](agr/vendor/THIRD_PARTY.md) and [native dependency notices](native/THIRD_PARTY.md). Portable packages retain their runtime and bundled-tool notices; `release_manifest.json` records the bundled dependency versions. RenderLock's MIT license does not replace third-party licenses or game-content ownership.
+This page acknowledges the people and projects behind the work. Full license and provenance records are in [THIRD_PARTY.md](THIRD_PARTY.md), [animation reference notices](agr/vendor/THIRD_PARTY.md) and [native dependency notices](https://github.com/cravvnn/RenderLock/blob/main/native/THIRD_PARTY.md). Portable packages retain their runtime and bundled-tool notices; `release_manifest.json` records the bundled dependency versions. RenderLock's MIT license does not replace third-party licenses or game-content ownership.
 
 For a missing or incorrect credit, [open an issue](https://github.com/cravvnn/RenderLock/issues) with the preferred name, project link and a description of the contribution.

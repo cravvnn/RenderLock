@@ -1,7 +1,10 @@
 # Updating RenderLock
 
+[All guides](docs/README.md) · [Troubleshooting](docs/TROUBLESHOOTING.md)
+
 The Windows portable build includes an **Updates** page from version 0.3.0b4.
-Users of an older build must download and extract this version once.
+Users of an older build must manually download and extract a current
+[Windows release](https://github.com/cravvnn/RenderLock/releases/latest) once.
 
 1. Open Updates to check the published release and read what's new.
 2. Click **Download update**. The current app stays open while the ZIP is
@@ -16,9 +19,14 @@ versions only. Draft releases are excluded. Notes are shown inside the app;
 the full release can also be opened on GitHub. Checks require internet access
 and can be deferred by GitHub's API limits or an incomplete release upload.
 Source checkouts cannot install updates over development files.
+The Windows updater is not a native Linux/macOS updater. Experimental Linux
+support remains on its separate development branch.
 
 Settings, the shared asset cache and exports are retained. Installation replaces
 only manifest-owned application files and refuses collisions with unowned files.
+If a new managed file collides with a file you added, keep a copy elsewhere and
+resolve that conflict before retrying; do not disable verification. A fresh
+complete extraction into another folder is also available for manual recovery.
 Keep the extracted app in a writable folder. One portable session per app folder
 is allowed, so another session cannot overlap an update.
 
@@ -39,11 +47,12 @@ different update. An update cannot repair an incompatible game/replay skeleton.
 
 ## Publishing a compatible update
 
-Publish the normal Windows ZIP as a release asset, with this exact convention:
+Publish the normal Windows ZIP as a release asset, with this exact convention
+(b16 shown as an example; always use the actual new release version):
 
-- Tag `v0.3.0b4` (or `0.3.0b4`), using the actual app version.
-- Asset `RenderLock-0.3.0b4-Windows-x64.zip`.
-- ZIP root `RenderLock-0.3.0b4-Windows-x64/`, including `release_manifest.json`.
+- Tag `v0.3.0b16` (or `0.3.0b16`).
+- Asset `RenderLock-0.3.0b16-Windows-x64.zip`.
+- ZIP root `RenderLock-0.3.0b16-Windows-x64/`, including `release_manifest.json`.
 - Paste the prepared release description into GitHub's release body; these are
   the notes users see inside RenderLock.
 
@@ -54,3 +63,9 @@ examines up to the most recent 100 releases and compares version numbers rather
 than trusting upload order. A missing ZIP or digest defers installation. GitHub's
 TLS and release-asset digest establish the download source; packages are not
 separately code-signed.
+
+Do not edit files inside a published ZIP or replace its bytes to update only the
+README: the launcher/updater verifies manifest-owned files. Repository guides can
+be refreshed independently; a new app release packages its corresponding docs.
+The map download is separate from the application update and should be managed
+as its own versioned library. See [Building](docs/BUILDING.md) for staging.
