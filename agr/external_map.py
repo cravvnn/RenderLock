@@ -4,16 +4,35 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-MAP_PACKAGE_ID = 'midtown-20261023'
-MAP_BLEND_SHA256 = 'df313a68d33b716f8411f87acbed02c242be09dd518de6866233de140b016903'
-MAP_BLEND_BYTES = 1193631059
-MAP_DOWNLOAD_URL = 'https://maps.allevilmc.com/RenderLockMap-midtown-20261023-df313a68d33b.zip'
+MAP_PACKAGE_ID = 'midtown-rebatched-20261024'
+MAP_BLEND_SHA256 = 'bd48e9355123bf01945753e74a2799d40b66b4d681dbfced35638ea356d5082b'
+MAP_BLEND_BYTES = 1258415284
+MAP_DOWNLOAD_URL = 'https://maps.allevilmc.com/download'
 MAP_OPTIMIZER_URL = 'https://github.com/Miruneko0/Deadlock-Map-Optimizer'
 MAP_COLLECTION = 'RenderLockMap'
 CHAR_COLLECTION = 'RenderLockChar'
-MAP_OBJECTS = 6392
-MAP_MESHES = 6314
-MAP_VERTICES = 38678716
+MAP_OBJECTS = 6542
+MAP_MESHES = 6461
+MAP_VERTICES = 38926624
+
+
+_LEGACY_MAPS = {
+    'df313a68d33b716f8411f87acbed02c242be09dd518de6866233de140b016903': {
+        'package_id': 'midtown-20261023', 'bytes': 1193631059,
+        'objects': 6392, 'meshes': 6314, 'vertices': 38678716,
+    },
+}
+
+
+def map_definition(library):
+    """Look up exact qualified bytes; caller-supplied counts are not trusted."""
+    definitions = dict(_LEGACY_MAPS)
+    definitions[MAP_BLEND_SHA256] = dict(package_id=MAP_PACKAGE_ID, bytes=MAP_BLEND_BYTES,
+        objects=MAP_OBJECTS, meshes=MAP_MESHES, vertices=MAP_VERTICES)
+    try:
+        return dict(definitions[library['sha256']])
+    except (KeyError, TypeError) as exc:
+        raise ValueError('External map: the requested library identity is not qualified.') from exc
 
 
 def validate_map_blender(report):
@@ -28,15 +47,19 @@ def validate_map_library(path):
     try:
         path = Path(path).expanduser().resolve()
         before = path.stat()
-        if path.suffix.lower() != '.blend' or not path.is_file() or before.st_size != MAP_BLEND_BYTES:
+        sizes = {MAP_BLEND_BYTES, *(entry['bytes'] for entry in _LEGACY_MAPS.values())}
+        if path.suffix.lower() != '.blend' or not path.is_file() or before.st_size not in sizes:
             raise ValueError('Choose RenderLockMap.blend from the supported map download, after extracting the ZIP.')
         with path.open('rb') as stream:
             digest = hashlib.file_digest(stream, 'sha256').hexdigest()
         after = path.stat()
         identity = lambda s: (s.st_dev, s.st_ino, s.st_size, s.st_mtime_ns)
-        if identity(before) != identity(after) or digest != MAP_BLEND_SHA256:
+        if identity(before) != identity(after) or digest not in {MAP_BLEND_SHA256, *_LEGACY_MAPS}:
             raise ValueError('The map differs from the supported download. Keep its original library unchanged; edit or cut the final exported scene instead.')
-        return dict(path=str(path), sha256=digest, package_id=MAP_PACKAGE_ID)
+        definition = map_definition({'sha256': digest})
+        if after.st_size != definition['bytes']:
+            raise ValueError('Map library size differs from its qualified identity.')
+        return dict(path=str(path), sha256=digest, package_id=definition['package_id'])
     except (OSError, RuntimeError, ValueError) as exc:
         raise ValueError('External map: ' + str(exc)) from exc
 
@@ -50,10 +73,14 @@ def map_coordinate_matrix(coordinates=None):
 
 def validate_map_completion(result, library, coordinates=None):
     import numpy as np
-    expected = dict(status='appended', package_id=MAP_PACKAGE_ID,
+    try:
+        definition = map_definition(library)
+    except ValueError as exc:
+        raise RuntimeError('External map: completion requested an unqualified library identity.') from exc
+    expected = dict(status='appended', package_id=definition['package_id'],
                     library_sha256=library['sha256'], collection=MAP_COLLECTION,
-                    character_collection=CHAR_COLLECTION, imported_objects=MAP_OBJECTS,
-                    mesh_objects=MAP_MESHES, vertices=MAP_VERTICES,
+                    character_collection=CHAR_COLLECTION, imported_objects=definition['objects'],
+                    mesh_objects=definition['meshes'], vertices=definition['vertices'],
                     texture_relink='manual', map_cutting='manual', linked_libraries=0)
     if not isinstance(result, dict) or any(result.get(k) != v for k, v in expected.items()):
         raise RuntimeError('External map: Blender completion lacks the requested map hierarchy or identity; the scene was not published.')

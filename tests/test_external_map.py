@@ -39,6 +39,35 @@ def test_library_identity_requires_original_bytes_and_rejects_zip(monkeypatch, t
         maps.validate_map_library(path.with_suffix('.zip'))
 
 
+def test_qualified_older_local_library_keeps_its_own_inventory(monkeypatch, tmp_path):
+    old = b'old qualified fixture library'
+    digest = hashlib.sha256(old).hexdigest()
+    definition = dict(package_id='old-fixture', bytes=len(old), objects=3, meshes=2, vertices=9)
+    monkeypatch.setattr(maps, '_LEGACY_MAPS', {digest: definition})
+    path = tmp_path / 'RenderLockMap.blend'; path.write_bytes(old)
+    library = maps.validate_map_library(path)
+    assert library['package_id'] == 'old-fixture'
+    # A caller cannot provide its own counts or promote an older map to latest.
+    assert maps.map_definition(dict(library, objects=0, package_id='forged')) == definition
+    result = map_result()
+    result.update(package_id='old-fixture', library_sha256=digest,
+                  imported_objects=3, mesh_objects=2, vertices=9)
+    maps.validate_map_completion(result, library)
+    result['vertices'] += 1
+    with pytest.raises(RuntimeError, match='External map:'):
+        maps.validate_map_completion(result, library)
+
+
+def test_current_map_profile_is_returned_as_a_copy_and_unknown_hash_is_refused():
+    profile = maps.map_definition({'sha256': maps.MAP_BLEND_SHA256})
+    profile['objects'] = 0
+    assert maps.map_definition({'sha256': maps.MAP_BLEND_SHA256})['objects'] == maps.MAP_OBJECTS
+    with pytest.raises(ValueError, match='External map:'):
+        maps.map_definition({'sha256': 'unqualified'})
+    with pytest.raises(RuntimeError, match='External map:'):
+        maps.validate_map_completion(map_result(), {'sha256':'unqualified'})
+
+
 def test_source_world_points_align_without_character_model_yaw():
     point = np.array([1234., -567., 890.])
     imported = np.array([point[1], -point[0], point[2], 1]) * [.0254, .0254, .0254, 1]

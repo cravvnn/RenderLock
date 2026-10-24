@@ -66,8 +66,9 @@ def _append_external_map(scene, path, coordinates):
     import bpy
     from mathutils import Matrix
     from .external_map import (validate_map_library, validate_map_completion, map_coordinate_matrix,
-        MAP_COLLECTION, CHAR_COLLECTION, MAP_PACKAGE_ID, MAP_OBJECTS, MAP_MESHES, MAP_VERTICES)
+        map_definition, MAP_COLLECTION, CHAR_COLLECTION)
     library = validate_map_library(path)
+    definition = map_definition(library)
     if any(block.library is not None for block in bpy.data.user_map()):
         raise ValueError('External map: generated character data must be local before adding the map; existing linked data was left unchanged.')
     if bpy.data.collections.get(MAP_COLLECTION) is not None:
@@ -92,14 +93,14 @@ def _append_external_map(scene, path, coordinates):
         raise ValueError('External map: the map collection could not be made local.')
     print(f'AGR map: graph localized in {time.monotonic()-started:.1f}s', flush=True)
     profile = json.loads(collection.get('renderlock_map_profile', '{}'))
-    if (profile.get('package_id') != MAP_PACKAGE_ID or profile.get('source_frame') != 'vrf_blender_metres'
+    if (profile.get('package_id') != definition['package_id'] or profile.get('source_frame') != 'vrf_blender_metres'
             or tuple(collection.instance_offset) != (0, 0, 0)):
         raise ValueError('External map: library coordinate profile differs from the supported map.')
     objects = list(collection.all_objects)
     members = set(objects)
     meshes = [o for o in objects if o.type == 'MESH']
-    if (len(objects) != MAP_OBJECTS or len(meshes) != MAP_MESHES
-            or sum(len(o.data.vertices) for o in meshes) != MAP_VERTICES
+    if (len(objects) != definition['objects'] or len(meshes) != definition['meshes']
+            or sum(len(o.data.vertices) for o in meshes) != definition['vertices']
             or any(o.parent is not None and o.parent not in members for o in objects)):
         raise ValueError('External map: library object hierarchy or geometry inventory is incomplete.')
     basis = bpy.data.objects.new('RenderLock | map alignment', None)
@@ -114,7 +115,7 @@ def _append_external_map(scene, path, coordinates):
     # Blender reports one bookkeeping user even for a fully local append.
     # Actual ID.library references decide whether a Library record is unused.
     remove_unused_library_records()
-    result = dict(status='appended', package_id=MAP_PACKAGE_ID,
+    result = dict(status='appended', package_id=definition['package_id'],
                   library_sha256=library['sha256'], collection=collection.name,
                   character_collection=CHAR_COLLECTION, imported_objects=len(objects),
                   mesh_objects=len(meshes), vertices=sum(len(o.data.vertices) for o in meshes),
@@ -122,6 +123,7 @@ def _append_external_map(scene, path, coordinates):
                   texture_relink='manual', map_cutting='manual', linked_libraries=len(bpy.data.libraries),
                   limits=['Map snapshot revision was not supplied; geometry can differ from a replay or later game update.',
                           'Relink map textures with File > External Data > Find Missing Files, then cut manually with the separate Map Optimizer.',
+                          'The rebatching bakes ambient map props to a static pose; authored fan, sign and similar animations are not replayed.',
                           'The map supplies no Source lighting data, recorded destruction or cloth collision.'])
     validate_map_completion(result, library, coordinates)
     scene['renderlock_external_map'] = json.dumps(result)
