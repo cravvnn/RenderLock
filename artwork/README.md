@@ -9,6 +9,9 @@ Source artwork for the RenderLock identity, as delivered by the designer.
 - `renderlockclear.png` — alternate composition.
 - `RenderLock.ico` — multi-size icon generated from `renderlockmain.png`
   (16-64 px BMP entries, 128/256 px PNG entries).
+- `renderlock-intro.gif` — looping README title clip supplied by Cravvnn, resized
+  to 600 x 600. It uses only the opening Blender/title shot, cut before the first
+  switch to the app screen. The source MP4 is not included in the repository.
 
 Note: the three source images carry WebP data exactly as delivered (browsers
 and Windows Photos open them normally).

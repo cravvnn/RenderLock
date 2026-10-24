@@ -85,7 +85,7 @@ def stage_source(root, output):
             relative = path.relative_to(root)
             if not path.is_file() or SKIP_PARTS.intersection(relative.parts[1:]):
                 continue
-            if "licenses" not in relative.parts and path.suffix.lower() not in {".py", ".rs", ".toml", ".lock", ".md", ".txt", ".patch", ".png", ".ico"}:
+            if "licenses" not in relative.parts and path.suffix.lower() not in {".py", ".rs", ".toml", ".lock", ".md", ".txt", ".patch", ".png", ".ico", ".gif"}:
                 continue
             if folder == "tools" and relative.name in STALE_TOOLS:
                 # Superseded 0.2.x packaging scripts; the current flow uses

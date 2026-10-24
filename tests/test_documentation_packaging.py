@@ -21,17 +21,20 @@ def test_guides_and_original_artwork_survive_both_stages(tmp_path,packager):
         (root/name).write_text('root document\n')
     for name,contents in [('docs/README.md',b'guide index'),('docs/USER_GUIDE.md',b'user guide'),
                           ('artwork/renderlockmain.png',b'original artwork fixture'),
+                          ('artwork/renderlock-intro.gif',b'GIF89a fixture'),
+                          ('artwork/private-source.mp4',b'private source video'),
                           ('docs/.git/private.md',b'private git data'),('docs/private.blend',b'game data')]:
         p=root/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(contents)
     source=tmp_path/'source';source.mkdir()
     packager.stage_source(root,source)
     portable=tmp_path/'portable'
     packager.stage_documentation(source,portable)
-    for name in ('docs/README.md','docs/USER_GUIDE.md','artwork/renderlockmain.png',
+    for name in ('docs/README.md','docs/USER_GUIDE.md','artwork/renderlockmain.png','artwork/renderlock-intro.gif',
                  'CLOTH_WORKFLOW.md','MAP_WORKFLOW.md','CONTRIBUTING.md'):
         assert (portable/name).read_bytes()==(root/name).read_bytes()
     assert not (source/'docs/private.blend').exists()
     assert not (portable/'docs/.git').exists()
+    assert not (portable/'artwork/private-source.mp4').exists()
 
 
 def test_portable_documentation_is_owned_by_the_release_manifest(tmp_path,packager):
