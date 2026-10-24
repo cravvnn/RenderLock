@@ -43,7 +43,8 @@ def test_source_identity_failure_precedes_any_decoder_operation(tmp_path,monkeyp
     path=source(tmp_path/'source.vtex_c');calls=[]
     monkeypatch.setattr(assets,'sha',lambda p:'decoder')
     monkeypatch.setattr(assets,'QUALIFIED_DECODER_PAIRS',{('decoder','skia')})
-    decoder=SimpleNamespace(executable='decoder.exe',identity={'companions':{'libSkiaSharp.dll':'skia'}},
+    decoder=SimpleNamespace(executable='decoder.exe',identity={'companions':{
+        'libSkiaSharp.dll':'skia','libSkiaSharp.so':'skia','libSkiaSharp.dylib':'skia'}},
                             _entry=lambda *a:calls.append('decode'))
     provider=SimpleNamespace(resolve=lambda r:SimpleNamespace(sha256='changed' if r.endswith('.vtex_c') else 'material',local_path=path))
     plan=dict(status='sources_resolved_not_decoded',materials=[dict(material='a.vmat_c',source_sha256='material',
@@ -94,7 +95,8 @@ def test_changed_decoder_output_dimensions_cannot_enter_material_package(tmp_pat
         if cached:write_wrong_png()
         else:build(decoded.parent)
         return decoded.parent
-    decoder=SimpleNamespace(executable='decoder.exe',identity={'companions':{'libSkiaSharp.dll':'skia'}},_entry=entry)
+    decoder=SimpleNamespace(executable='decoder.exe',identity={'companions':{
+        'libSkiaSharp.dll':'skia','libSkiaSharp.so':'skia','libSkiaSharp.dylib':'skia'}},_entry=entry)
     provider=SimpleNamespace(resolve=lambda r:SimpleNamespace(sha256='verified',local_path=path))
     plan=dict(status='sources_resolved_not_decoded',materials=[dict(material='a.vmat_c',source_sha256='verified',
         textures={k:dict(resource='a.vtex_c',source_sha256='verified') for k in assets.PARAMETERS})])

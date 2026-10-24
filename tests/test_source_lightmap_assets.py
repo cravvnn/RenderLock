@@ -57,6 +57,8 @@ def test_decoded_header_size_and_truncation(tmp_path,channel):
 
 
 def fixture(tmp_path,monkeypatch):
+    # These pinned decoder-pair cases model Windows binaries on any test host.
+    monkeypatch.setattr(assets.sys, 'platform', 'win32')
     decoder=AssetConverter.__new__(AssetConverter)
     decoder.executable=tmp_path/'converter.exe';decoder.root=tmp_path/'derived-v1';decoder.root.mkdir()
     decoder.identity={'executable_sha256':assets.QUALIFIED_CONVERTER_SHA256,

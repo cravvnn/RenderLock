@@ -74,6 +74,18 @@ def test_missing_linux_companion_cannot_fall_back_to_windows_or_none(monkeypatch
     assert all(executable and native for executable,native in lightmap.QUALIFIED_DECODER_PAIRS)
 
 
+def test_reported_linux_pair_still_requires_decoder_qualification(monkeypatch):
+    from agr import source_npr_assets as npr
+    monkeypatch.setattr(lightmap.sys, 'platform', 'linux')
+    executable='3aaa77568beaf6b130d974993a42088d8ce58b2e001fdda42a2fd8aae58ffb4d'
+    native='5039f4daa53be6fdf1742af522c24e3b77d5e7653936cc87ee09b9603cbdee53'
+    monkeypatch.setattr(npr, 'sha', lambda path: executable)
+    decoder=SimpleNamespace(executable='not-executed',identity={'companions':{'libSkiaSharp.so':native}})
+    plan={'status':'sources_resolved_not_decoded','materials':[{}]}
+    with pytest.raises(ConversionError,match='requires requalification'):
+        npr.decode_npr_material_assets(plan,SimpleNamespace(),decoder)
+
+
 def test_linux_discovery_does_not_select_packaged_windows_executable(tmp_path, monkeypatch):
     monkeypatch.setattr(cli.sys, 'platform', 'linux')
     monkeypatch.setattr(cli, '__file__', str(tmp_path / 'agr/cli.py'))
