@@ -828,7 +828,7 @@ def _convert(args, diagnostics):
         log(f"Coverage: {report_path}")
         log(report["summary"])
         if external_map is not None:
-            log('Map appended in RenderLockMap. In Blender, relink the downloaded Textures folder with File > External Data > Find Missing Files. Hide RenderLockChar while cutting with the separate Map Optimizer. This map snapshot may differ from the replay revision.')
+            log('Map appended in RenderLockMap. In Blender, cut in Solid view first with the separate Map Optimizer (Map = RenderLockMap), remove unused map materials/images, then relink retained textures with File > External Data > Find Missing Files. Inspect camera placement before rendering. See MAP_WORKFLOW.md for memory and EEVEE limits. This snapshot may differ from the replay revision.')
         if report["status"] == "converted_with_warnings":
             for warning in report["warnings"]:
                 log("WARNING: " + warning)

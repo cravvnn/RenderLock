@@ -1006,6 +1006,17 @@ def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime
         report['external_map'] = append_external_map(scene, external_map, coordinates)
         report['warnings'].extend(report['external_map']['limits'])
         mark('external_map')
+        if shot_hero is not None:
+            from agr.blender_shot import assess_appended_map_shot
+            try:
+                visibility = assess_appended_map_shot(scene, selected[0], report['camera'])
+            except Exception as exc:
+                visibility = {'status': 'not_checked', 'reason': f'{type(exc).__name__}: {exc}'}
+                report['warnings'].append('Downloaded-map camera visibility could not be checked; inspect the shot in Blender.')
+            report['camera']['external_map_visibility'] = visibility
+            if visibility['status'] == 'obstructed':
+                report['warnings'].append('Hero shot is obstructed after adding the downloaded map. Move the camera or cut RenderLockMap in Blender; recorded character motion and camera keys were retained.')
+            mark('external_map_camera_check')
     report["timings"] = timings
     for marker in data.get("markers", []):
         tick = marker.get("tick")

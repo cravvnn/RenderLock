@@ -24,6 +24,41 @@ def _clear_ray(scene, depsgraph, origin, aim, actor):
     return False  # Dense helper geometry cannot silently imply a clear view.
 
 
+def assess_appended_map_shot(scene, root, shot):
+    """Advisory recheck after append; never change the chosen camera or action.
+
+    The original framing runs before the external map exists. Repeat only its
+    bounded visibility samples, not candidate selection or animation baking.
+    """
+    import bpy
+    from mathutils import Vector
+    if scene.camera is None or shot.get('mode') != 'hero follow':
+        return {'status': 'not_checked', 'reason': 'No generated hero-follow camera'}
+    actor = {root, *root.children_recursive}
+    frames = shot['sample_frames']
+    center = Vector(shot['target_offset_m'])
+    height = shot['bounds_max_m'][2] - shot['bounds_min_m'][2]
+    original_frame, original_subframe = scene.frame_current, scene.frame_subframe
+    samples = []
+    try:
+        for frame in frames:
+            scene.frame_set(frame)
+            deps = bpy.context.evaluated_depsgraph_get()
+            origin = scene.camera.evaluated_get(deps).matrix_world.translation.copy()
+            target = root.evaluated_get(deps).matrix_world.translation + center
+            aims = [target, target + Vector((0, 0, height * .3)),
+                    target - Vector((0, 0, height * .3))]
+            clear = sum(int(_clear_ray(scene, deps, origin, aim, actor)) for aim in aims)
+            samples.append({'frame': frame, 'clear_rays': clear, 'rays': len(aims)})
+    finally:
+        scene.frame_set(original_frame, subframe=original_subframe)
+    visibility = min(sample['clear_rays'] / sample['rays'] for sample in samples)
+    return {'status': 'obstructed' if visibility < 1 else 'sampled_clear',
+            'minimum_sampled_visibility': visibility, 'samples': samples,
+            'scope': 'Three visibility rays at the existing hero-shot sample frames after map append. '
+                     'This does not prove the camera is inside geometry or that all frames are clear.'}
+
+
 def frame_actor(scene, root):
     import bpy
     from mathutils import Vector

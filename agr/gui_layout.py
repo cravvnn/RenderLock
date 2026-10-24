@@ -1336,8 +1336,9 @@ def _build_map(app, page):
     RoundedButton(buttons, text='Map Optimizer', style='quiet', command=lambda: app._open_map_link(True),
                   theme=gui_theme.palette(), height=34).pack(side='left')
     map_note = wrap_to_width(_label(body, 'Extract the ZIP and choose RenderLockMap.blend. Characters, cameras, lights and effects stay in RenderLockChar; '
-               'the appended map is in RenderLockMap. In Blender, use File > External Data > Find Missing Files and select the '
-               'downloaded Textures folder. Hide RenderLockChar while cutting with the separate Map Optimizer, then show it again. '
+               'the appended map is in RenderLockMap. In Blender, cut in Solid view first with the separate Map Optimizer '
+               '(Map = RenderLockMap), remove unused map materials/images, then relink the retained Textures folder with '
+               'File > External Data > Find Missing Files. Whole-map relinking uses substantial RAM; resolve missing images before EEVEE. '
                'This map snapshot can differ from a later game or replay. Source lighting is optional and configured separately.',
                color=gui_theme.DIM, font=gui_theme.FONT_SMALL, justify='left', anchor='w', wraplength=px(TEXT_WRAP)))
     map_note.grid(row=_next_row(body), column=0, columnspan=3, sticky='ew', pady=_pad((SECTION_GAP, 0)))

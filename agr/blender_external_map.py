@@ -78,6 +78,7 @@ def _append_external_map(scene, path, coordinates):
     started = time.monotonic()
     # Load as one graph and localize the batch. Final scene data must be local;
     # no live library dependencies may remain in the completed append.
+    print('AGR map: loading downloaded map library...', flush=True)
     with bpy.data.libraries.load(library['path'], link=True) as (available, loaded):
         if MAP_COLLECTION not in available.collections:
             raise ValueError('External map: the library has no RenderLockMap collection.')
@@ -86,12 +87,17 @@ def _append_external_map(scene, path, coordinates):
     if collection is None or collection.name != MAP_COLLECTION:
         raise ValueError('External map: the map collection was not appended locally.')
     scene.collection.children.link(collection)
-    print(f'AGR map: library loaded in {time.monotonic()-started:.1f}s', flush=True)
+    loaded_at = time.monotonic()
+    print(f'AGR map: library loaded in {loaded_at-started:.1f}s', flush=True)
+    print('AGR map: localizing map data; this can take several minutes. '
+          'Blender is still working; no texture relinking is performed here.', flush=True)
     bpy.ops.object.make_local(type='ALL')
     collection = scene.collection.children.get(MAP_COLLECTION)
     if collection is None or collection.library is not None:
         raise ValueError('External map: the map collection could not be made local.')
-    print(f'AGR map: graph localized in {time.monotonic()-started:.1f}s', flush=True)
+    localized_at = time.monotonic()
+    print(f'AGR map: graph localized in {localized_at-loaded_at:.1f}s '
+          f'({localized_at-started:.1f}s total)', flush=True)
     profile = json.loads(collection.get('renderlock_map_profile', '{}'))
     if (profile.get('package_id') != definition['package_id'] or profile.get('source_frame') != 'vrf_blender_metres'
             or tuple(collection.instance_offset) != (0, 0, 0)):
@@ -121,8 +127,11 @@ def _append_external_map(scene, path, coordinates):
                   mesh_objects=len(meshes), vertices=sum(len(o.data.vertices) for o in meshes),
                   coordinate_matrix=[list(row) for row in basis.matrix_world],
                   texture_relink='manual', map_cutting='manual', linked_libraries=len(bpy.data.libraries),
+                  timings_seconds={'library_load': loaded_at-started,
+                                   'localize': localized_at-loaded_at},
                   limits=['Map snapshot revision was not supplied; geometry can differ from a replay or later game update.',
-                          'Relink map textures with File > External Data > Find Missing Files, then cut manually with the separate Map Optimizer.',
+                          'Cut the map in Solid view with the separate Map Optimizer before relinking retained textures with File > External Data > Find Missing Files. Whole-map relinking can use substantial RAM.',
+                          'Missing map textures can cause EEVEE GPU texture errors and pink characters. Relink the retained textures before using EEVEE, or hide RenderLockMap while checking characters.',
                           'The rebatching bakes ambient map props to a static pose; authored fan, sign and similar animations are not replayed.',
                           'The map supplies no Source lighting data, recorded destruction or cloth collision.'])
     validate_map_completion(result, library, coordinates)

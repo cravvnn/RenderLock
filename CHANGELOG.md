@@ -1,3 +1,10 @@
+# 0.3.0b17.dev1 - Experimental Linux test kit
+
+- Keep native helper companions in preparation/cache identities, improve native Linux/Flatpak discovery and make helper builds and material-group conversion choose the host-native asset. Allow explicit model-helper reuse without enabling effects. Unknown decoder/native pairs remain refused; no Linux pixel qualification is granted.
+- Distinguish cloth-modified bones in saved-scene checks as PARTIAL rather than a full animation PASS; unrelated pose defects still fail.
+- Announce map loading/localization before long operations and report their timings separately. Recheck bounded hero-follow visibility samples after map append and warn about obstructions without changing camera keys or recorded motion.
+- Recommend cutting in Solid view before relinking retained textures, explain observed memory pressure and missing-image EEVEE issues, and provide an isolated source test kit using an existing Linux environment. No self-contained native runtime, updater, map speedup or general Linux compatibility claim.
+
 # 0.3.0b16 - Downloaded maps and reliable recovery
 
 - Add the separately hosted map workflow on the existing Map page. Download and extract the supported library, explicitly include it, and export characters and map into one scene with RenderLockChar and RenderLockMap master collections. Apply the qualified world coordinate basis without changing recorded character motion; no Source-lighting prerequisite is added. The map remains outside application ZIPs. Texture relinking, map cutting and the separate Map Optimizer remain manual, and map snapshot/replay revisions may differ.

@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -22,7 +23,8 @@ def cloth_module_hashes():
 
 def discover_extractor():
     root = Path(__file__).resolve().parents[1]
-    probe = next((p for p in (root/'tools/particles/ParticleProbe.dll',
+    override = os.environ.get('AGR_MODEL_EXTRACTOR')
+    probe = Path(override).expanduser().resolve() if override else next((p for p in (root/'tools/particles/ParticleProbe.dll',
                               root/'research/ParticleProbe/bin/Release/net10.0/ParticleProbe.dll') if p.is_file()), None)
     executable = 'dotnet.exe' if sys.platform == 'win32' else 'dotnet'
     dotnet = next((p for p in (root/'tools/dotnet'/executable, root/'.toolchains/dotnet'/executable) if p.is_file()), None)
@@ -31,6 +33,8 @@ def discover_extractor():
         dotnet = Path(found) if found else None
     if probe is None or dotnet is None:
         raise ConversionError('Automatic cloth reconstruction requires the bundled RenderLock model extractor')
+    if probe.suffix.lower() != '.dll' or not probe.is_file():
+        raise ConversionError('AGR_MODEL_EXTRACTOR must select an existing managed ParticleProbe.dll')
     return particle_command(probe, dotnet), particle_environment(probe, dotnet)
 
 

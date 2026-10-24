@@ -11,6 +11,80 @@ from agr.helper_files import helper_file_inventory
 from tools import prepare_lighting_helpers as setup
 
 
+@pytest.mark.parametrize('platform,relative', [
+    ('linux', 'libSkiaSharp.so'), ('linux', 'runtimes/linux-x64/native/libSkiaSharp.so'),
+    ('win32', 'libSkiaSharp.dll'), ('win32', 'runtimes/win-x64/native/libSkiaSharp.dll')])
+def test_material_group_image_companion_uses_host_platform(tmp_path, monkeypatch, platform, relative):
+    from agr import helper_files
+    monkeypatch.setattr(helper_files.sys, 'platform', platform)
+    native = tmp_path / relative; native.parent.mkdir(parents=True, exist_ok=True); native.write_bytes(b'native fixture')
+    assert helper_files.native_image_path(tmp_path) == native
+
+
+def test_linux_material_group_cannot_use_windows_image_library(tmp_path, monkeypatch):
+    from agr import helper_files
+    monkeypatch.setattr(helper_files.sys, 'platform', 'linux')
+    (tmp_path / 'libSkiaSharp.dll').write_bytes(b'Windows')
+    with pytest.raises(ConversionError, match='missing for this platform'):
+        helper_files.native_image_path(tmp_path)
+
+
+def test_explicit_model_extractor_used_without_requiring_effects(tmp_path, monkeypatch):
+    from agr import reconstructed_cloth
+    probe = tmp_path / 'ParticleProbe.dll'; probe.touch()
+    dotnet = tmp_path / 'dotnet'; dotnet.touch()
+    monkeypatch.setenv('AGR_MODEL_EXTRACTOR', str(probe))
+    monkeypatch.setattr(reconstructed_cloth.sys, 'platform', 'linux')
+    monkeypatch.setattr(reconstructed_cloth.shutil, 'which', lambda _: str(dotnet))
+    command, environment = reconstructed_cloth.discover_extractor()
+    assert command == [str(dotnet), str(probe)]
+    assert environment['DOTNET_ROOT'] == str(tmp_path)
+
+
+def test_bad_explicit_model_extractor_does_not_fall_back(tmp_path, monkeypatch):
+    from agr import reconstructed_cloth
+    dotnet = tmp_path / 'dotnet'; dotnet.touch()
+    monkeypatch.setenv('AGR_MODEL_EXTRACTOR', str(tmp_path / 'missing.dll'))
+    monkeypatch.setattr(reconstructed_cloth.shutil, 'which', lambda _: str(dotnet))
+    with pytest.raises(ConversionError, match='existing managed ParticleProbe.dll'):
+        reconstructed_cloth.discover_extractor()
+
+
+def test_linux_material_bundle_tracks_native_bytes_and_loader_path(tmp_path, monkeypatch):
+    import json
+    from agr import helper_files, model_material_groups as groups
+    from agr.asset_converter import sha
+    monkeypatch.setattr(helper_files.sys, 'platform', 'linux')
+    tool = tmp_path / 'ParticleProbe.dll'; tool.write_bytes(b'managed fixture')
+    parser = tmp_path / 'ValveResourceFormat.dll'; parser.write_bytes(b'parser fixture')
+    monkeypatch.setattr(groups, 'PARSER_SHA256', sha(parser))
+    native = tmp_path / 'runtimes/linux-x64/native/libSkiaSharp.so'
+    native.parent.mkdir(parents=True); native.write_bytes(b'Linux native fixture')
+    source = tmp_path / 'source.bin'; source.write_bytes(b'source fixture')
+    provider = SimpleNamespace(lookup=lambda _: SimpleNamespace(length=1, preload=b''),
+        resolve=lambda _: SimpleNamespace(local_path=source, sha256=sha(source)))
+    monkeypatch.setattr(groups, 'dump_map_data', lambda *a: dict(m_shaderName='pbr.vfx'))
+    captures = {}
+    def entry(operation, inputs, settings, build):
+        captures['settings'] = settings
+        out = tmp_path / 'bundle'; out.mkdir(); build(out); return out
+    def execute(command, **kwargs):
+        captures['environment'] = kwargs['env']
+        request, output, result = map(Path, command[-3:])
+        output.write_bytes(b'material bundle fixture')
+        result.write_text(json.dumps(dict(status='converted_materials_only', request_sha256=sha(request),
+            parser_sha256=sha(parser), bundle_sha256=sha(output),
+            materials=[dict(resource='materials/test.vmat_c')])))
+        return SimpleNamespace(returncode=0, stdout=b'', stderr=b'')
+    monkeypatch.setattr(groups.subprocess, 'run', execute)
+    monkeypatch.setattr(groups, 'read_glb', lambda _: dict(materials=[dict(extras=dict(vmat=dict(Name='materials/test.vmat')))]))
+    result = groups._bundle({'materials/test.vmat_c'}, provider, SimpleNamespace(_entry=entry),
+        command=['dotnet', str(tool)], environment={'LD_LIBRARY_PATH': '/existing/library/path'})
+    assert result['materials'] == ['materials/test.vmat_c']
+    assert captures['settings']['native_image_sha256'] == sha(native)
+    assert captures['environment']['LD_LIBRARY_PATH'] == str(native.parent) + groups.os.pathsep + '/existing/library/path'
+
+
 def test_native_companion_inventory_changes_with_linux_payload(tmp_path):
     for name in ('Helper.dll', 'Helper.deps.json', 'libSkiaSharp.so', 'libother.so.1.2',
                  'libother.dylib', 'native.dll', 'private.vtex_c', 'lib.so.backup'):

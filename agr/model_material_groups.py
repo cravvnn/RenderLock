@@ -63,12 +63,13 @@ def _bundle(resources,provider,decoder,*,command=None,environment=None,unlit_onl
         from . import gltf_materials
         settings['unlit_adapter_sha256']=sha(Path(gltf_materials.__file__))
     # Native pixel conversion is part of the immutable input identity as well.
-    native=tool.parent/'runtimes/win-x64/native/libSkiaSharp.dll'
-    if not native.is_file():native=tool.with_name('libSkiaSharp.dll')
-    if not native.is_file():raise ConversionError('Material-group exporter native image decoder is missing')
+    from .helper_files import native_image_path
+    native=native_image_path(tool.parent)
     settings['native_image_sha256']=sha(native)
     env=dict(os.environ if environment is None else environment)
     env['PATH']=str(native.parent)+os.pathsep+env.get('PATH','')
+    if native.suffix == '.so':
+        env['LD_LIBRARY_PATH']=str(native.parent)+(os.pathsep+env['LD_LIBRARY_PATH'] if env.get('LD_LIBRARY_PATH') else '')
     def build(temp):
         request_path=temp/'request.json';request_path.write_text(json.dumps(request,allow_nan=False),encoding='utf-8')
         result=temp/'result.json';output=temp/'materials.glb'

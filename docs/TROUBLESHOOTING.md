@@ -102,7 +102,8 @@ Use the [supported download](https://maps.allevilmc.com/download), extract the
 entire ZIP and choose its unchanged `RenderLockMap.blend` on **Map**. The raw
 contributor ZIP/glTF is not the supported automatic-append library.
 
-Map textures remain external. In Blender, use **File > External Data > Find Missing
+Map textures remain external. Cut in **Solid** view before loading textures,
+remove unused map materials/images, then use **File > External Data > Find Missing
 Files** on the downloaded `Textures` folder. Set the external optimizer's **Map**
 selector to **RenderLockMap**; hiding characters alone does not scope cutting.
 For large merged cells, **Precise Cut** gives a closer boundary than **Entire
@@ -112,6 +113,13 @@ The complete map is large and must load before you cut it. A short replay does
 not eliminate that cost. Cut the area you need before heavy material-preview or
 render work. Ambient props stay static, and snapshot geometry can differ from
 the replay. The map is not a source of installed lighting data or cloth collision.
+
+Whole-map relinking exceeded 19 GB of process RAM in a supplied Linux test before
+it was stopped. Missing map images also produced EEVEE GPU texture errors and
+pink characters in that witness. Hide `RenderLockMap` to inspect characters, cut
+the map first and relink the retained images before EEVEE. If the camera sees a
+wall, inspect its placement or cut that geometry; map alignment alone does not
+guarantee a clear camera view. See the [map workflow](../MAP_WORKFLOW.md#in-blender).
 
 ## Missing effects or different motion
 

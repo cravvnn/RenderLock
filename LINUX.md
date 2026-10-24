@@ -3,7 +3,9 @@
 [All user guides](docs/README.md) · [Building](docs/BUILDING.md)
 
 Linux support is being developed separately from the Windows portable release.
-There is no supported Linux release archive or Linux updater yet. Do not treat
+The experimental **0.3.0b17.dev1 source test kit** is described in
+[TESTING_LINUX.md](TESTING_LINUX.md). It reuses a tester's existing native tools;
+there is no self-contained supported Linux binary release or Linux updater yet. Do not treat
 the Windows ZIP as a native Linux installer.
 
 A community CachyOS/Arch, KDE Wayland witness reports successful Standard, Source
@@ -24,6 +26,10 @@ The supplied reports and renders are not a replacement for decoder qualification
   selects native CLI names instead of a leftover Windows `.exe`. Blender on PATH
   remains preferred; `~/.local/bin/blender` and `/opt/blender/blender` are fallback
   locations. An explicit executable can always be selected.
+- Material-group conversion selects a Linux `.so` rather than a Windows DLL and
+  includes its bytes in the derived-cache identity. `AGR_MODEL_EXTRACTOR` can
+  select an existing managed model helper without requesting particle simulation;
+  the helper/parser/completion checks remain strict.
 - Texture-decoder identity uses `libSkiaSharp.so` on Linux rather than treating a
   missing Windows DLL as the native identity. Unknown decoder/native-library
   pairs remain refused.
@@ -139,3 +145,14 @@ Local checks for this branch ran on Windows: focused Python tests, cross-platfor
 managed compilation/native asset copying, a Windows helper self-test, and small
 actual background Blender verification fixtures. No native Linux runtime was
 available for an independent end-to-end run.
+
+## Midtown follow-up witness
+
+The supplied b16 Linux map run completed with exact supported map counts, zero
+linked libraries and explicit cloth/effect warnings. It used broad partial export,
+so it does not replace a strict animation control. Its report identified a camera
+blocked by a map cell, a long silent localization step, whole-map texture-loading
+memory pressure and EEVEE GPU errors with missing map images. The test kit adds
+progress/timing and advisory post-append shot samples, plus a cut-first workflow.
+It does not relocate the camera, alter textures or claim a map-loading speedup.
+The supplied report did not include a saved scene or native decoder binaries.
