@@ -1,6 +1,7 @@
 """The handoff borrows dependencies without patching an old installation."""
 import json
 from pathlib import Path
+from zipfile import ZipFile
 
 import pytest
 
@@ -62,6 +63,7 @@ def test_linux_source_archive_is_complete_and_refuses_overwrite(tmp_path, monkey
     root = tmp_path / 'checkout'; root.mkdir()
     for name in SOURCE_ROOT_FILES:
         (root / name).write_text('# documentation fixture\n', encoding='utf-8')
+    (root / 'launch_renderlock.sh').write_bytes(b'#!/usr/bin/env bash\r\nset -euo pipefail\r\n')
     for name, data in [('agr/__init__.py', b'__version__ = "0.3.0b17.dev1"\n'),
                        ('tools/run_linux_test.py', b'print("launcher fixture")\n'),
                        ('artwork/renderlock-intro.gif', b'GIF89a'),
@@ -76,6 +78,11 @@ def test_linux_source_archive_is_complete_and_refuses_overwrite(tmp_path, monkey
     paths = {r['path'] for r in manifest['files']}
     assert {'TESTING_LINUX.md', 'LINUX.md', 'tools/run_linux_test.py', 'artwork/renderlock-intro.gif'} <= paths
     assert not any('private' in p for p in paths)
+    with ZipFile(result['archive']['path']) as archive:
+        info = archive.getinfo('RenderLock-0.3.0b17.dev1-Linux-test-source/launch_renderlock.sh')
+        assert b'\r' not in archive.read(info)
+        assert info.create_system == 3
+        assert (info.external_attr >> 16) & 0o777 == 0o755
     assert json.loads((output / 'packaging-receipt.json').read_text()) == result
     with pytest.raises(FileExistsError):
         package(root, output, '0.3.0b17.dev1')

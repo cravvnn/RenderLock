@@ -4,8 +4,27 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import stat
+from zipfile import ZipFile, ZipInfo, ZIP_DEFLATED
 
-from package_character_beta import archive, stage_source, write_manifest
+from package_character_beta import stage_source, write_manifest
+from package_installed_release import digest, validate_archive
+
+
+def archive_linux_source(stage, output):
+    temporary = output.with_suffix('.zip.tmp')
+    with ZipFile(temporary, 'w', ZIP_DEFLATED, compresslevel=6) as target:
+        for path in sorted(stage.rglob('*')):
+            if not path.is_file():
+                continue
+            info = ZipInfo.from_file(path, stage.name + '/' + path.relative_to(stage).as_posix())
+            info.create_system = 3
+            info.external_attr = (stat.S_IFREG | (0o755 if path.suffix == '.sh' else 0o644)) << 16
+            info.compress_type = ZIP_DEFLATED
+            target.writestr(info, path.read_bytes())
+    validate_archive(temporary, stage.name)
+    temporary.replace(output)
+    return dict(path=str(output), bytes=output.stat().st_size, sha256=digest(output))
 
 
 def package(root, output, version):
@@ -14,10 +33,14 @@ def package(root, output, version):
     stage = output / f'RenderLock-{version}-Linux-test-source'
     stage.mkdir()
     excluded = stage_source(Path(root).resolve(), stage)
+    # A Windows checkout can contain CRLF shell scripts. Linux needs LF and
+    # Unix executable attributes even when this archive is built on Windows.
+    for path in stage.rglob('*.sh'):
+        path.write_bytes(path.read_bytes().replace(b'\r\n', b'\n'))
     write_manifest(stage, version, 'Linux-experimental-test-source')
     receipt = dict(version=version, kind='Linux-experimental-test-source',
                    runtime_bundled=False, excluded_research_tests=excluded,
-                   archive=archive(stage, output / (stage.name + '.zip')))
+                   archive=archive_linux_source(stage, output / (stage.name + '.zip')))
     (output / 'packaging-receipt.json').write_text(json.dumps(receipt, indent=2) + '\n', encoding='utf-8')
     return receipt
 
