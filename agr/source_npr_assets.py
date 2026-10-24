@@ -10,7 +10,7 @@ from pathlib import Path
 import struct
 import subprocess
 from .asset_converter import sha
-from .source_lightmap_assets import QUALIFIED_DECODER_PAIRS
+from .source_lightmap_assets import QUALIFIED_DECODER_PAIRS, image_decoder_identity
 from .path_io import native_path
 from .source_material_routes import source_material_contract,NPR_ROUTE
 
@@ -100,7 +100,7 @@ def decode_npr_material_assets(plan,provider,decoder):
     """Content-verified conversion; decoded PNGs still require pixel validation."""
     if plan.get('status')!='sources_resolved_not_decoded' or not 1<=len(plan.get('materials',[]))<=64:
         raise ConversionError('Expected bounded NPR source plan')
-    identity=(sha(decoder.executable),decoder.identity.get('companions',{}).get('libSkiaSharp.dll'))
+    identity=image_decoder_identity(decoder,executable_sha256=sha(decoder.executable))
     if identity not in QUALIFIED_DECODER_PAIRS:
         raise ConversionError('NPR texture decoder requires requalification')
     sources={};layouts={}

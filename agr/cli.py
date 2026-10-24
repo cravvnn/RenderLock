@@ -81,7 +81,8 @@ def default_asset_cache():
 
 def discover_source2viewer():
     """Find the command-line exporter without launching it."""
-    names = ("Source2Viewer-CLI.exe", "Source2ViewerCLI.exe", "Source2Viewer-CLI", "Source2ViewerCLI")
+    names = (("Source2Viewer-CLI.exe", "Source2ViewerCLI.exe") if sys.platform == 'win32'
+             else ("Source2Viewer-CLI", "Source2ViewerCLI"))
     program = Path(__file__).resolve().parents[1]
     for base in (program / "tools", program / "tools" / "source2viewer", program, program / "bin"):
         for name in names:

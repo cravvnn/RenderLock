@@ -256,7 +256,8 @@ def _prepare_probe_atlas_batch(provider,decoder,plan,*,probe,dotnet):
     probe=Path(probe).resolve();dotnet=Path(dotnet).resolve()
     if probe.name!='ProbeAtlasDecode.dll' or not dotnet.is_file():raise ConversionError('Explicit atlas helper and .NET required')
     qualified_probe_helpers(probe,ATLAS_HELPER_HASHES)
-    helpers={p.relative_to(probe.parent).as_posix():sha(p) for p in sorted(probe.parent.rglob('*')) if p.is_file() and p.suffix in ('.dll','.json','.exe')}
+    from .helper_files import helper_file_inventory
+    helpers=helper_file_inventory(probe.parent)
     config=[]
     for resource in sorted({r['resource'] for r in plan['regions']}):
         resolved=provider.resolve(resource)

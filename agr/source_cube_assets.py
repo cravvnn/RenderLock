@@ -57,7 +57,8 @@ def prepare_cube_assets(provider,decoder,plan,*,probe,dotnet,max_decoded_bytes=2
     if probe.name!='CubemapDecode.dll' or not dotnet.is_file():raise ConversionError('Explicit cube helper and .NET required')
     qualified_probe_helpers(probe,required)
     _,cube_depth=dimensions_for_plan(plan)
-    helpers={p.relative_to(probe.parent).as_posix():sha(p) for p in sorted(probe.parent.rglob('*')) if p.is_file() and p.suffix in ('.dll','.json','.exe')}
+    from .helper_files import helper_file_inventory
+    helpers=helper_file_inventory(probe.parent)
     selections={}
     for p in plan['probes']:selections.setdefault(compiled(p['cubemaptexture']),[]).append(p['array_index'])
     estimate=sum(len(v) for v in selections.values())*sum((256>>m)**2*6*16 for m in range(7))

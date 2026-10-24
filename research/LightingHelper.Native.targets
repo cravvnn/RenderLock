@@ -1,0 +1,17 @@
+<Project>
+  <!-- Managed helper source uses the pinned lighting VRF revision, not the
+       separate particle fork. Select native assets explicitly when cross-building. -->
+  <PropertyGroup>
+    <ProbeRuntimeIdentifier Condition="'$(ProbeRuntimeIdentifier)' == ''">$(NETCoreSdkRuntimeIdentifier)</ProbeRuntimeIdentifier>
+    <ProbeNativeName Condition="'$(ProbeRuntimeIdentifier)' == 'win-x64'">libSkiaSharp.dll</ProbeNativeName>
+    <ProbeNativeName Condition="'$(ProbeRuntimeIdentifier)' == 'linux-x64'">libSkiaSharp.so</ProbeNativeName>
+    <ProbeNativePath>$(ProbeReferences)/runtimes/$(ProbeRuntimeIdentifier)/native/$(ProbeNativeName)</ProbeNativePath>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(ProbeNativeName)' != ''">
+    <None Include="$(ProbeNativePath)" Link="$(ProbeNativeName)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <Target Name="ValidateProbeNativeAsset" BeforeTargets="PrepareForBuild">
+    <Error Condition="'$(ProbeNativeName)' == ''" Text="Lighting helpers require explicit ProbeRuntimeIdentifier=win-x64 or linux-x64. Other architectures are not qualified." />
+    <Error Condition="!Exists('$(ProbeNativePath)')" Text="Missing $(ProbeNativeName) for $(ProbeRuntimeIdentifier). Use the native asset from the same pinned lighting dependency build: $(ProbeNativePath)" />
+  </Target>
+</Project>

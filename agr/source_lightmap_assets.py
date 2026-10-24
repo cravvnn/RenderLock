@@ -10,6 +10,7 @@ import re
 import struct
 import subprocess
 import time
+import sys
 
 from .asset_converter import ConversionError, compiled, sha
 from .installed_map import selected_world
@@ -30,6 +31,18 @@ QUALIFIED_DECODER_PAIRS = (
     (QUALIFIED_CONVERTER_20_1_SHA256, QUALIFIED_SKIA_20_1_SHA256),
 )
 CHANNELS = ('DC', 'R', 'G', 'B')
+
+
+def image_decoder_identity(decoder, *, executable_sha256=None):
+    """Bind qualification to the native image library the host will actually load.
+
+    Recording a Unix companion does not grant qualification to an unknown pair.
+    In particular, a missing Windows DLL is never evidence about Linux decoding.
+    """
+    name = ('libSkiaSharp.dll' if sys.platform == 'win32' else
+            'libSkiaSharp.dylib' if sys.platform == 'darwin' else 'libSkiaSharp.so')
+    return (executable_sha256 or decoder.identity.get('executable_sha256'),
+            decoder.identity.get('companions', {}).get(name))
 
 
 def qualify_world_lighting(world):
@@ -115,8 +128,7 @@ def decoded_image_size(path, channel):
 def prepare_lightmap_assets(provider, decoder, *, allow_partial=False, log=print):
     if allow_partial is not True:
         raise ConversionError('Source static diffuse requires explicit partial-lighting selection')
-    identity = (decoder.identity.get('executable_sha256'),
-                decoder.identity.get('companions', {}).get('libSkiaSharp.dll'))
+    identity = image_decoder_identity(decoder)
     if identity[0] not in {pair[0] for pair in QUALIFIED_DECODER_PAIRS}:
         raise ConversionError('Source lightmap texture decoder is not qualified')
     if identity not in QUALIFIED_DECODER_PAIRS:

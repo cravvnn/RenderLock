@@ -39,6 +39,12 @@ Probe selection follows each selected character's movement region, and distant c
 
 CLI users can select `--partial-lighting` to accept artistic lighting limits while retaining strict character data. The existing `--partial` option also permits missing models or animation and remains a separate, broader choice.
 
+## Native Linux (experimental)
+
+Native Linux support is being developed on a separate branch. See [LINUX.md](LINUX.md)
+for dependencies, tested scope and the remaining decoder/package qualification
+gates. No supported Linux release archive is available yet.
+
 ## Windows portable
 
 Ready-to-run Windows packages are published on the Releases page of this repository. Extract the complete portable ZIP, then double-click **RenderLock.exe**. Python, its runtime dependencies, the **Source 2 Viewer 20.1 command-line exporter**, the character-look helper tools and a .NET runtime are included; the launcher does not download packages. A `Launch_RenderLock.cmd` fallback remains for troubleshooting.

@@ -11,6 +11,7 @@ import shutil
 from agr.asset_converter import ConversionError, sha
 from agr.source_region import regional_command
 from agr.source_hero_lighting import validate_hero_decoder_paths
+from agr.helper_files import helper_file_inventory
 
 
 def prepare_helpers(world, atlas, cube, dotnet, output):
@@ -22,12 +23,7 @@ def prepare_helpers(world, atlas, cube, dotnet, output):
         raise ConversionError('Helper destination already exists; choose a new directory')
     planned = {}
     for role, helper in [('world', world), ('atlas', atlas), ('cube', cube)]:
-        files = {}
-        for path in sorted(helper.parent.rglob('*')):
-            if path.is_file() and path.suffix.lower() in ('.dll', '.json', '.exe'):
-                if not path.resolve().is_relative_to(helper.parent):
-                    raise ConversionError('Helper companion escapes its source directory')
-                files[path.relative_to(helper.parent).as_posix()] = sha(path)
+        files = helper_file_inventory(helper.parent)
         for suffix in ('.deps.json', '.runtimeconfig.json'):
             if helper.stem + suffix not in files:
                 raise ConversionError('Missing helper runtime metadata: ' + helper.stem + suffix)

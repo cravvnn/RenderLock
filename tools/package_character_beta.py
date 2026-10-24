@@ -22,7 +22,7 @@ from package_installed_release import digest, validate_archive
 
 SOURCE_ROOT_FILES = {
     "README.md", "START_HERE.txt", "THIRD_PARTY.md", "requirements.txt", "pyproject.toml",
-    "LICENSE", "CREDITS.md", "CONTRIBUTING.md", "CHANGELOG.md", "UPDATING.md", "CLOTH_WORKFLOW.md", "MAP_WORKFLOW.md",
+    "LICENSE", "CREDITS.md", "CONTRIBUTING.md", "CHANGELOG.md", "UPDATING.md", "CLOTH_WORKFLOW.md", "MAP_WORKFLOW.md", "LINUX.md",
     "bootstrap.py", "Launch_RenderLock.bat", "Launch_RenderLock_Windows.cmd",
     "launch_renderlock.sh", "portable_launcher.py", "Launch_RenderLock.cmd",
 }

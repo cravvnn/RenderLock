@@ -146,6 +146,7 @@ def discover_installations() -> list[Path]:
                 roots.append(Path(value) / "Steam")
     else:
         roots.extend([Path.home() / ".steam/steam", Path.home() / ".local/share/Steam",
+                      Path.home() / ".var/app/com.valvesoftware.Steam/.local/share/Steam",
                       Path.home() / "Library/Application Support/Steam"])
     libraries = list(roots)
     for root in roots:

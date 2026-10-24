@@ -52,6 +52,9 @@ def discover_blender() -> str:
     elif sys.platform == "darwin":
         candidates = [Path("/Applications/Blender.app/Contents/MacOS/Blender"),
                       Path.home() / "Applications/Blender.app/Contents/MacOS/Blender"]
+    elif sys.platform.startswith('linux'):
+        candidates = [Path.home() / '.local/bin/blender', Path('/usr/bin/blender'),
+                      Path('/opt/blender/blender')]
     return next((str(path.resolve()) for path in candidates if path.is_file()), "")
 
 

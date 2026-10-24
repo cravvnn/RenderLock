@@ -10,6 +10,7 @@ from .source_lightmap_assets import prepare_lightmap_assets
 from .source_brdf_assets import prepare_brdf_assets
 from .source_lighting_profiles import VRF_6779, VRF_20_1
 from .source_lighting_package import build_lighting_package
+from .helper_files import helper_file_inventory
 
 
 VRF_SHA256 = '5475c86ef49bab2163e5f8e8e83f0e01514c4a2c07ec734abad5e42a28c18951'
@@ -40,8 +41,7 @@ def regional_command(probe, dotnet=None):
     if not vrf.is_file() or sha(vrf) not in (VRF_SHA256,VRF_6779,VRF_20_1):
         raise ConversionError('Regional exporter VRF assembly is not qualified')
     # Include runtime/native companions, not just the small adapter DLL.
-    files = {p.relative_to(probe.parent).as_posix():sha(p) for p in sorted(probe.parent.rglob('*'))
-             if p.is_file() and p.suffix.lower() in ('.dll','.json','.exe')}
+    files = helper_file_inventory(probe.parent)
     return [str(Path(dotnet).resolve()),str(probe)], files
 
 

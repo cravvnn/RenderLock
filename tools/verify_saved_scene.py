@@ -2,6 +2,7 @@
 
 Run with Blender Python: --blend shot.blend --output validation.json.
 The matching shot.agrscene and shot.agr-report.json must be beside the scene.
+Cloth-modified bones are explicitly unverified: exit 2/PARTIAL, never full PASS.
 """
 import argparse
 import json
@@ -16,6 +17,7 @@ from mathutils import Matrix, Quaternion, Vector
 from agr.scene_package import read_scene
 from agr.vendor.pose_math import Pose, globals_for
 from agr.model_constraints import ModelConstraints
+from agr.pose_verification import cloth_modified_bones, verification_status
 
 
 def verify(blend, *, all_frames=False):
@@ -27,12 +29,15 @@ def verify(blend, *, all_frames=False):
     scale = basis["unit_scale"]
     origin = np.asarray(basis["origin"])
     world = Matrix.Rotation(math.radians(basis["world_yaw_degrees"]), 4, "Z")
-    result = {"blender": bpy.app.version_string, "entities": [], "max_root_error_metres": 0., "max_bone_matrix_error": 0., "bone_checks": 0, "root_checks": 0}
+    result = {"blender": bpy.app.version_string, "entities": [], "max_root_error_metres": 0., "max_bone_matrix_error": 0., "bone_checks": 0, "root_checks": 0,
+              "cloth_bone_checks_not_performed": 0, "limits": []}
     descriptions = {e["id"]: e for e in report["entities"]}
     for entity in data["entities"]:
         item = descriptions[entity["id"]]
         roots = bpy.data.objects[item["root"]]
         rig = bpy.data.objects[item["rig"]]
+        excluded = cloth_modified_bones(item.get('secondary_motion'),
+            {b.name: b.parent.name if b.parent else None for b in rig.data.bones})
         sk = json.loads(Path(entity["skeleton_file"]).read_text())
         definition = entity.get('model_constraints')
         solver = ModelConstraints(definition['names'], definition['parents'], definition['definitions'],
@@ -93,6 +98,8 @@ def verify(blend, *, all_frames=False):
                 result["max_root_error_metres"] = max(result["max_root_error_metres"], error)
                 result["root_checks"] += 1
                 checked_names = set(mapping.values()) | (solver.affected_names if solver else set())
+                result['cloth_bone_checks_not_performed'] += len(checked_names & excluded)
+                checked_names -= excluded
                 for name in checked_names:
                     if name not in rig.pose.bones:
                         continue
@@ -100,10 +107,13 @@ def verify(blend, *, all_frames=False):
                     error = float(np.max(np.abs(np.asarray(rig.pose.bones[name].matrix)-np.asarray(expected_matrix))))
                     result["max_bone_matrix_error"] = max(result["max_bone_matrix_error"], error)
                     result["bone_checks"] += 1
-            result["entities"].append({"id": entity["id"], "checked_frames": len(chosen)})
+            result["entities"].append({"id": entity["id"], "checked_frames": len(chosen),
+                                       "cloth_bones_not_verified": sorted(excluded)})
     result["unpacked_images"] = [i.name for i in bpy.data.images if i.source == "FILE" and not i.packed_file]
     result["external_libraries"] = len(bpy.data.libraries)
-    result["status"] = "PASS" if result["max_root_error_metres"] < 0.0001 and result["max_bone_matrix_error"] < 0.0001 and not result["unpacked_images"] and not result["external_libraries"] else "FAIL"
+    result["status"] = verification_status(result)
+    if any(e['cloth_bones_not_verified'] for e in result['entities']):
+        result['limits'].append('Recorded body roots and unmodified bones checked. Cloth-modified bones require a separate bake comparison; their motion is not verified here. Use a cloth-off export for full recorded-pose verification.')
     return result
 
 
@@ -118,4 +128,4 @@ if __name__ == "__main__":
     args.output.write_text(json.dumps(result, indent=2)+"\n")
     print(json.dumps(result))
     if result["status"] != "PASS":
-        raise SystemExit(1)
+        raise SystemExit(2 if result['status'] == 'PARTIAL' else 1)
