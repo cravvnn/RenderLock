@@ -131,7 +131,7 @@ def _append_external_map(scene, path, coordinates):
                                    'localize': localized_at-loaded_at},
                   limits=['Map snapshot revision was not supplied; geometry can differ from a replay or later game update.',
                           'Cut the map in Solid view with the separate Map Optimizer before relinking retained textures with File > External Data > Find Missing Files. Whole-map relinking can use substantial RAM.',
-                          'Missing map textures can cause EEVEE GPU texture errors and pink characters. Relink the retained textures before using EEVEE, or hide RenderLockMap while checking characters.',
+                          'Missing map textures can cause EEVEE GPU texture errors and pink map props; packed character textures are unaffected. Relink the retained textures before using EEVEE, or hide RenderLockMap while checking map props.',
                           'The rebatching bakes ambient map props to a static pose; authored fan, sign and similar animations are not replayed.',
                           'The map supplies no Source lighting data, recorded destruction or cloth collision.'])
     validate_map_completion(result, library, coordinates)

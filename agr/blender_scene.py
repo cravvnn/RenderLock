@@ -1015,7 +1015,12 @@ def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime
                 report['warnings'].append('Downloaded-map camera visibility could not be checked; inspect the shot in Blender.')
             report['camera']['external_map_visibility'] = visibility
             if visibility['status'] == 'obstructed':
-                report['warnings'].append('Hero shot is obstructed after adding the downloaded map. Move the camera or cut RenderLockMap in Blender; recorded character motion and camera keys were retained.')
+                where = ''
+                if visibility.get('hit_object'):
+                    where = (f" Frame {visibility.get('first_obstructed_frame')}: "
+                             f"{visibility['hit_object']} at {visibility.get('hit_distance_m'):.2f} m.")
+                report['warnings'].append('Hero shot is obstructed after adding the downloaded map.'
+                    + where + ' Move the camera or cut RenderLockMap in Blender; recorded character motion and camera keys were retained.')
             mark('external_map_camera_check')
     report["timings"] = timings
     for marker in data.get("markers", []):
@@ -1038,7 +1043,7 @@ def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime
     readme = bpy.data.texts.new("AGR_README")
     readme.write("RENDERLOCK REPLAY SEGMENT\n\nSpace: play. Timeline event markers refer to recorded ticks.\n"
                    + "Armature bones are hidden for a clean preview; unhide the rig in the Outliner to inspect or pose.\n"
-                 + "Ticks " + str(data["start_tick"]) + "â€“" + str(data["end_tick"]) + " inclusive; " + str(fps) + " FPS.\n"
+                 + "Ticks " + str(data["start_tick"]) + "-" + str(data["end_tick"]) + " inclusive; " + str(fps) + " FPS.\n"
                  + "Meshes can be in rest pose when evaluated pose data is unavailable. Map/effect/secondary-motion coverage is listed below.\n"
                  + "Death animation can be replaced manually; automatic ragdoll is outside the current scope. Prepared cloth proxies are tied to the body animation, range and FPS; regenerate the export after editing them. Body angles do not reproduce the client backward-dash turn.\n"
                  + "Model basis yaw is explicit per asset; world coordinates and root tracks remain independently editable.\n\n"

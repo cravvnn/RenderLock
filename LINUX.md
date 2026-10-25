@@ -3,7 +3,7 @@
 [All user guides](docs/README.md) · [Building](docs/BUILDING.md)
 
 Linux support is being developed separately from the Windows portable release.
-The experimental **0.3.0b17.dev1 source test kit** is described in
+The experimental **0.3.0b17.dev2 source test kit** is described in
 [TESTING_LINUX.md](TESTING_LINUX.md). It reuses a tester's existing native tools;
 there is no self-contained supported Linux binary release or Linux updater yet. Do not treat
 the Windows ZIP as a native Linux installer.

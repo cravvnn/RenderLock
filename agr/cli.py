@@ -778,7 +778,9 @@ def _convert(args, diagnostics):
         set_stage("publish_scene")
         generated = read_scene(segment)
         report = {"application": "RenderLock", "version": __version__, "status": "converted", "output": str(output), "scene_package": str(package / "manifest.json"), "start_tick": generated["start_tick"], "end_tick": generated["end_tick"], "tick_rate": generated["tick_rate"], "export_fps": args.fps, "entities": len(generated["entities"]), "coverage": generated.get("coverage", {}), "seconds": round(time.monotonic() - started, 3), "scene_extras": generated.get("coverage", {}).get("scene_extras", {}), "ragdoll": "outside_current_scope", "death_workflow": "user_authored_animation",
-                  "map_workflow": "installed_region" if args.include_map else "external_blend", "backward_dash_facing": "not_validated"}
+                  "map_workflow": {"status": "installed_region" if args.include_map else "external_blend",
+                                   "collection": None, "timings_seconds": None},
+                  "backward_dash_facing": "not_validated"}
         report['blender_runtime'] = blender_capabilities
         report['export_policy'] = {'partial_animation': bool(args.partial),
                                    'partial_cloth': bool(getattr(args,'partial_cloth',False))}
@@ -791,6 +793,9 @@ def _convert(args, diagnostics):
         report["blender"] = blender_report
         report["blender"]["segment"] = str(package / "manifest.json")
         report["blender"]["output"] = str(output)
+        # Mirror the camera/advisory block at the top level so a consumer does
+        # not have to know that it currently lives under "blender".
+        report["camera"] = blender_report.get("camera")
         report["particles"] = merge_stage_coverage(report["particles"], report["blender"].get("effects"))
         report["map"] = merge_stage_coverage(report["map"], report["blender"].get("map"))
         if 'hero_lighting' in report['blender']:
@@ -800,14 +805,17 @@ def _convert(args, diagnostics):
         if 'character_shader' in report.get('blender',{}):
             report['character_shader']=report['blender']['character_shader']
         if getattr(args,'character_only',False):
-            report['map_workflow']='external_blend'
+            report['map_workflow']['status']='external_blend'
             report['map']=dict(status='not_requested',reason='Separate map geometry',
                                prepared_lighting_assets=report['map'])
         if external_map is not None:
-            report['map_workflow'] = 'external_blend_appended'
+            report['map_workflow']['status'] = 'external_blend_appended'
             report['external_map'] = blender_report['external_map']
             report['map'] = dict(blender_report['external_map'], source='downloaded_library',
                                  prepared_lighting_assets=report['map'])
+        report['map_workflow']['collection'] = report['map'].get('collection')
+        report['map_workflow']['timings_seconds'] = report['map'].get('timings_seconds')
+        report['map_workflow_status'] = report['map_workflow']['status']
         report["secondary_motion"] = merge_secondary_motion_coverage(
             report["scene_extras"].get("secondary_motion", {"status": "not_requested"}),
             report.get("blender", {}).get("entities", []))
@@ -824,7 +832,7 @@ def _convert(args, diagnostics):
         set_stage("complete")
         log(f"Saved: {output}")
         log("Stage timings: " + ", ".join(f"{row['stage']} {row['seconds']:.1f}s" for row in timings))
-        log(f"Range: {generated['start_tick']}â€“{generated['end_tick']} inclusive; {len(generated['entities'])} entity tracks")
+        log(f"Range: {generated['start_tick']}-{generated['end_tick']} inclusive; {len(generated['entities'])} entity tracks")
         log(f"Coverage: {report_path}")
         log(report["summary"])
         if external_map is not None:

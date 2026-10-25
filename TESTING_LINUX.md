@@ -1,4 +1,4 @@
-# Linux test kit: 0.3.0b17.dev1
+# Linux test kit: 0.3.0b17.dev2
 
 This is **experimental source**, not a self-contained Linux binary release or an
 update to Windows b16. Extract it into a new folder beside your working copy.
@@ -13,7 +13,7 @@ explicit, so there is no copying of Windows binaries or silent replacement of
 the old installation. No dependency download or game process is required.
 
 ```sh
-cd /path/to/RenderLock-0.3.0b17.dev1-Linux-test-source
+cd /path/to/RenderLock-0.3.0b17.dev2-Linux-test-source
 OLD="$HOME/Applications/RenderLock"
 python3 tools/run_linux_test.py --tools-from "$OLD" -- --help
 ```
@@ -54,6 +54,14 @@ blender --background --factory-startup --disable-autoexec --python-exit-code 1 \
   --output "$HOME/blender_work/renderlock-linux-test/haze-standard-verify.json" --all-frames
 ```
 
+The verifier separates the character and map texture contracts. Character
+material images must be packed, or the result is `FAIL` (exit 1). A scene with
+an external map keeps its map textures external until you cut and relink them,
+so those images are reported as declared limits and the result is `PARTIAL`
+(exit 2). Pass `--external-map-images` when you deliberately keep the map
+textures external and want the verifier to accept that instead of returning
+`PARTIAL`; character images are still required to be packed.
+
 ## Map follow-up
 
 Repeat the short control with `--external-map /path/to/RenderLockMap.blend` and a
@@ -64,16 +72,21 @@ compare map counts/alignment, character poses and separate map timings.
 - The log now announces loading and localization **before** those long steps.
   Localization can still take several minutes; this kit claims no speedup.
 - A generated hero-follow shot gets a bounded visibility recheck after append.
-  `camera.external_map_visibility` records the samples. An obstruction warning
-  means move the camera or cut the map; no camera keys are changed automatically.
-  Sampled-clear does not guarantee every frame is unobstructed.
+  `camera.external_map_visibility` records the samples, including
+  `first_obstructed_frame`, the nearest `hit_object` and `hit_distance_m`. An
+  obstruction warning means move the camera or cut the map; no camera keys are
+  changed automatically. Sampled-clear does not guarantee every frame is
+  unobstructed: a 3-frame control samples frames 1, 2 and 3 only, so a clear
+  short range does not prove a longer export of the same start tick is clear.
 - Cut in **Solid** view first. Use the external optimizer's **Map = RenderLockMap**
   and **Precise Cut**. Remove unused map materials/images after cutting, then
   relink the retained textures. See [MAP_WORKFLOW.md](MAP_WORKFLOW.md).
-- Missing map images can cause EEVEE GPU errors that also make characters pink.
-  Hide `RenderLockMap` to check the packed character textures separately. Resolve
-  the retained map textures before EEVEE material preview/rendering; Cycles does
-  not repair missing images.
+- Missing map images cause EEVEE GPU texture errors and pink **map props**.
+  Packed character textures are unaffected; the earlier witness report that
+  described a pink character was a magenta map mannequin prop. Hide
+  `RenderLockMap` to confirm the character separately. Resolve the retained map
+  textures before EEVEE material preview/rendering; Cycles does not repair
+  missing images.
 
 ## Optional follow-ups and what to return
 

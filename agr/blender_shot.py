@@ -3,25 +3,33 @@ import math
 
 
 def _clear_ray(scene, depsgraph, origin, aim, actor):
-    """Ignore render-hidden helper surfaces, without skipping visible scenery."""
+    """Ignore render-hidden helper surfaces, without skipping visible scenery.
+
+    Returns ``(clear, blocker_name, distance_from_origin)``. A ray that ends on
+    the character counts as clear; the first visible non-actor surface is the
+    blocker named in the advisory.
+    """
     delta = aim - origin
     remaining = delta.length
     if remaining <= 1e-6:
-        return True
+        return True, None, None
     direction = delta.normalized()
+    travelled = 0.
     for _ in range(32):
         hit = scene.ray_cast(depsgraph, origin, direction, distance=remaining)
         if not hit[0]:
-            return True
+            return True, None, None
         obj = hit[4].original
+        distance = travelled + (hit[1] - origin).length
         if not obj.hide_render and getattr(obj, 'visible_camera', True):
-            return obj in actor
+            return (True, None, None) if obj in actor else (False, obj.name, distance)
         advance = (hit[1] - origin).length + 1e-4
         remaining -= advance
         if remaining <= 0:
-            return True
+            return True, None, None
         origin = hit[1] + direction * 1e-4
-    return False  # Dense helper geometry cannot silently imply a clear view.
+        travelled = distance
+    return False, None, None  # Dense helper geometry cannot silently imply a clear view.
 
 
 def assess_appended_map_shot(scene, root, shot):
@@ -48,15 +56,29 @@ def assess_appended_map_shot(scene, root, shot):
             target = root.evaluated_get(deps).matrix_world.translation + center
             aims = [target, target + Vector((0, 0, height * .3)),
                     target - Vector((0, 0, height * .3))]
-            clear = sum(int(_clear_ray(scene, deps, origin, aim, actor)) for aim in aims)
-            samples.append({'frame': frame, 'clear_rays': clear, 'rays': len(aims)})
+            clear, hit_object, hit_distance = 0, None, None
+            for aim in aims:
+                visible, blocker, distance = _clear_ray(scene, deps, origin, aim, actor)
+                clear += int(visible)
+                if not visible and (hit_distance is None or
+                                    (distance is not None and distance < hit_distance)):
+                    hit_object, hit_distance = blocker, distance
+            samples.append({'frame': frame, 'clear_rays': clear, 'rays': len(aims),
+                            'hit_object': hit_object, 'hit_distance_m': hit_distance})
     finally:
         scene.frame_set(original_frame, subframe=original_subframe)
     visibility = min(sample['clear_rays'] / sample['rays'] for sample in samples)
+    first = next((sample for sample in samples if sample['clear_rays'] < sample['rays']), None)
     return {'status': 'obstructed' if visibility < 1 else 'sampled_clear',
-            'minimum_sampled_visibility': visibility, 'samples': samples,
+            'minimum_sampled_visibility': visibility,
+            'first_obstructed_frame': first['frame'] if first else None,
+            'hit_object': first['hit_object'] if first else None,
+            'hit_distance_m': first['hit_distance_m'] if first else None,
+            'samples': samples,
             'scope': 'Three visibility rays at the existing hero-shot sample frames after map append. '
-                     'This does not prove the camera is inside geometry or that all frames are clear.'}
+                     'hit_object/hit_distance_m name the nearest visible blocker at the first '
+                     'obstructed sample. This does not prove the camera is inside geometry or that '
+                     'all frames are clear.'}
 
 
 def frame_actor(scene, root):

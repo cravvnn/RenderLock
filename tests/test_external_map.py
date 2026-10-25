@@ -188,12 +188,18 @@ def test_cli_passes_requested_library_and_publishes_only_completed_map(export_jo
         calls.append(command)
         assert command[command.index('--external-map') + 1] == str(args.external_map)
         assert '--character-only' in command and '--disable-autoexec' in command and '--partial' not in command
-        return write_blender_completion(command, **({'external_map': map_result()} if completed else {}))
+        extra = {'external_map': map_result(), 'camera': {'mode': 'review', 'frames': 3}} if completed else {}
+        return write_blender_completion(command, **extra)
     monkeypatch.setattr(cli.subprocess, 'run', execute)
     if completed:
         cli.convert(args)
         report = json.loads(args.output.with_suffix('.agr-report.json').read_text())
-        assert report['map_workflow'] == 'external_blend_appended'
+        assert report['map_workflow']['status'] == 'external_blend_appended'
+        assert report['map_workflow_status'] == 'external_blend_appended'
+        assert report['map_workflow']['collection'] == maps.MAP_COLLECTION
+        assert report['map_workflow']['timings_seconds'] == report['external_map'].get('timings_seconds')
+        assert report['camera'] == {'mode': 'review', 'frames': 3}
+        assert report['camera'] == report['blender']['camera']
         assert report['map']['status'] == 'appended' and report['external_map']['library_sha256'] == maps.MAP_BLEND_SHA256
         assert report['export_policy']['partial_animation'] is False
     else:

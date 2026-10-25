@@ -47,9 +47,33 @@ def cloth_modified_bones(report, parents):
     return affected
 
 
+def classify_unpacked_images(images, character_images, map_images, *, map_declared=False):
+    """Separate the character and map texture contracts in a saved scene.
+
+    Character material images must be packed. Map images are deliberately
+    external until the user cuts and relinks the downloaded library, so they
+    are declared limits, never a silent character-texture pass. A name used by
+    both collections belongs to the character contract. When an external map
+    was requested, unattributed images are treated as post-cut map debris
+    instead of failing the character contract; without that declaration every
+    unpacked image remains a failure.
+    """
+    names = set(images)
+    character = names & set(character_images)
+    map_only = (names & set(map_images)) - character
+    unattributed = names - character - map_only
+    if map_declared:
+        map_only |= unattributed
+    else:
+        character |= unattributed
+    return {'unpacked_images': sorted(character), 'map_unpacked_images': sorted(map_only)}
+
+
 def verification_status(result):
     if (not 0 <= result['max_root_error_metres'] < .0001 or not 0 <= result['max_bone_matrix_error'] < .0001
             or result['unpacked_images'] or result['external_libraries']):
         return 'FAIL'
+    if result.get('map_unpacked_images') and not result.get('map_images_external_accepted', False):
+        return 'PARTIAL'
     return 'PARTIAL' if (result.get('cloth_bone_checks_not_performed', 0) or
         any(e.get('cloth_bones_not_verified') for e in result.get('entities', []))) else 'PASS'

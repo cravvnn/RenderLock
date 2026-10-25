@@ -69,13 +69,19 @@ def main(output):
     scene.frame_set(2, subframe=.25)
     blocked = assess_appended_map_shot(scene, root, shot)
     assert blocked['status'] == 'obstructed' and blocked['minimum_sampled_visibility'] == 0
+    first = next(sample for sample in blocked['samples'] if sample['clear_rays'] < sample['rays'])
+    assert blocked['first_obstructed_frame'] == first['frame']
+    assert blocked['hit_object'] == wall.name and blocked['hit_distance_m'] > 0
+    assert first['hit_object'] == wall.name and first['hit_distance_m'] == blocked['hit_distance_m']
     assert (scene.frame_current, scene.frame_subframe) == (2, .25)
     wall.hide_render = True
     hidden = assess_appended_map_shot(scene, root, shot)
     assert hidden['status'] == 'sampled_clear'
+    assert hidden['first_obstructed_frame'] is None and hidden['hit_object'] is None
     wall.hide_render = False; wall.visible_camera = False
     invisible = assess_appended_map_shot(scene, root, shot)
     assert invisible['status'] == 'sampled_clear'
+    assert invisible['hit_distance_m'] is None
     wall.visible_camera = True
     with patch('agr.blender_shot._clear_ray', side_effect=RuntimeError('injected ray failure')):
         try:

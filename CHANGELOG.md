@@ -1,3 +1,10 @@
+# 0.3.0b17.dev2 - Linux verifier and map advisory fixes
+
+- Separate the saved-scene texture contracts. Character material images must stay packed and still fail verification, while external `RenderLockMap` textures are reported as a declared limit and return PARTIAL. `--external-map-images` accepts external map textures explicitly after cutting/relinking; it never excuses a character image. A map scene can now be checked instead of always failing on the map's own 1556 images.
+- Extend the post-append camera advisory with `first_obstructed_frame`, the nearest `hit_object` and `hit_distance_m`, and name that blocker in the export warning. Camera keys and recorded motion remain untouched.
+- Mirror the camera block at the top level of the coverage report and report `map_workflow` as an object with `status`, `collection` and `timings_seconds`. `map_workflow_status` retains the previous string for simple consumers.
+- Correct the missing-map EEVEE guidance (pink map props, not a broken character) and print the tick range with an ASCII hyphen so the range line no longer appears as mojibake on UTF-8 Linux consoles.
+
 # 0.3.0b17.dev1 - Experimental Linux test kit
 
 - Keep native helper companions in preparation/cache identities, improve native Linux/Flatpak discovery and make helper builds and material-group conversion choose the host-native asset. Allow explicit model-helper reuse without enabling effects. Unknown decoder/native pairs remain refused; no Linux pixel qualification is granted.

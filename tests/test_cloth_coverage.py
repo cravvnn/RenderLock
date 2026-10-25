@@ -176,7 +176,8 @@ def test_cli_publishes_actual_per_hero_cloth_outcomes_and_external_map_scope(tmp
     assert report['status'] == 'converted_with_warnings'
     assert 'cloth failed for Haze' in report['summary']
     assert report['particles']['objects'] == 160
-    assert report['map_workflow'] == 'external_blend'
+    assert report['map_workflow']['status'] == 'external_blend'
+    assert report['map_workflow_status'] == 'external_blend'
     assert report['death_workflow'] == 'user_authored_animation'
     assert report['ragdoll'] == 'outside_current_scope'
     saved = json.loads(output.with_suffix('.agr-report.json').read_text())

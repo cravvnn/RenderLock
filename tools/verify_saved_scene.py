@@ -2,7 +2,10 @@
 
 Run with Blender Python: --blend shot.blend --output validation.json.
 The matching shot.agrscene and shot.agr-report.json must be beside the scene.
-Cloth-modified bones are explicitly unverified: exit 2/PARTIAL, never full PASS.
+Character material images must be packed. External ``RenderLockMap`` images are
+reported as declared limits and return PARTIAL unless --external-map-images
+explicitly accepts them. Cloth-modified bones are explicitly unverified:
+exit 2/PARTIAL, never full PASS.
 """
 import argparse
 import json
@@ -17,12 +20,74 @@ from mathutils import Matrix, Quaternion, Vector
 from agr.scene_package import read_scene
 from agr.vendor.pose_math import Pose, globals_for
 from agr.model_constraints import ModelConstraints
-from agr.pose_verification import cloth_modified_bones, verification_status
+from agr.pose_verification import classify_unpacked_images, cloth_modified_bones, verification_status
 
 
-def verify(blend, *, all_frames=False):
+def _node_tree_images(tree, images, seen):
+    if id(tree) in seen:
+        return
+    seen.add(id(tree))
+    for node in tree.nodes:
+        image = getattr(node, "image", None)
+        if image is not None:
+            images.add(image.name)
+        group = getattr(node, "node_tree", None)
+        if group is not None:
+            _node_tree_images(group, images, seen)
+
+
+def _material_images(objects):
+    """Images reached through material/world node trees of the given objects."""
+    images, seen = set(), set()
+    for obj in objects:
+        for slot in getattr(obj, "material_slots", ()):
+            material = slot.material
+            if material is not None and material.use_nodes and material.node_tree is not None:
+                _node_tree_images(material.node_tree, images, seen)
+    return images
+
+
+def classify_scene_images(full_report, *, external_map_images=False):
+    """Split the opened scene's unpacked images by ownership contract.
+
+    Only an explicitly requested external map relaxes images that no material
+    reaches (debris left after cutting). Character images stay hard failures.
+    """
+    from agr.external_map import CHAR_COLLECTION, MAP_COLLECTION
+    scene = bpy.context.scene
+    unpacked = [i.name for i in bpy.data.images if i.source == "FILE" and not i.packed_file]
+    map_collection = bpy.data.collections.get(MAP_COLLECTION)
+    char_collection = bpy.data.collections.get(CHAR_COLLECTION)
+    map_objects = set(map_collection.all_objects) if map_collection is not None else set()
+    char_objects = (set(char_collection.all_objects) if char_collection is not None
+                    else set(scene.objects) - map_objects)
+    character_images = _material_images(char_objects)
+    for world in bpy.data.worlds:
+        if world.use_nodes and world.node_tree is not None:
+            _node_tree_images(world.node_tree, character_images, set())
+    workflow = full_report.get("map_workflow")
+    report = full_report.get("blender") or {}
+    map_declared = bool(
+        (isinstance(workflow, dict) and workflow.get("status") == "external_blend_appended")
+        or workflow == "external_blend_appended"
+        or full_report.get("external_map")
+        or (report.get("map") or {}).get("collection") == MAP_COLLECTION)
+    classified = classify_unpacked_images(unpacked, character_images,
+        _material_images(map_objects), map_declared=map_declared)
+    result = dict(classified, map_images_external_accepted=bool(external_map_images), limits=[])
+    if result["map_unpacked_images"] and not external_map_images:
+        result["limits"].append(
+            f"{len(result['map_unpacked_images'])} map texture image(s) are external by design: "
+            "RenderLockMap textures are relinked manually after cutting. Character textures must "
+            "still be packed. Re-run with --external-map-images to accept external map textures "
+            "explicitly.")
+    return result
+
+
+def verify(blend, *, all_frames=False, external_map_images=False):
     data = read_scene(blend.with_suffix(".agrscene"))
-    report = json.loads(blend.with_suffix(".agr-report.json").read_text())["blender"]
+    full_report = json.loads(blend.with_suffix(".agr-report.json").read_text())
+    report = full_report["blender"]
     bpy.ops.wm.open_mainfile(filepath=str(blend.resolve()), load_ui=False, use_scripts=False)
     scene = bpy.context.scene
     basis = report["coordinates"]
@@ -109,8 +174,12 @@ def verify(blend, *, all_frames=False):
                     result["bone_checks"] += 1
             result["entities"].append({"id": entity["id"], "checked_frames": len(chosen),
                                        "cloth_bones_not_verified": sorted(excluded)})
-    result["unpacked_images"] = [i.name for i in bpy.data.images if i.source == "FILE" and not i.packed_file]
     result["external_libraries"] = len(bpy.data.libraries)
+    # Split the packed character contract from the deliberately external map
+    # textures. See classify_scene_images for the exact ownership rules.
+    images = classify_scene_images(full_report, external_map_images=external_map_images)
+    result["limits"].extend(images.pop("limits"))
+    result.update(images)
     result["status"] = verification_status(result)
     if any(e['cloth_bones_not_verified'] for e in result['entities']):
         result['limits'].append('Recorded body roots and unmodified bones checked. Cloth-modified bones require a separate bake comparison; their motion is not verified here. Use a cloth-off export for full recorded-pose verification.')
@@ -122,9 +191,12 @@ if __name__ == "__main__":
     ap.add_argument("--blend", type=Path, required=True)
     ap.add_argument("--output", type=Path, required=True)
     ap.add_argument("--all-frames", action="store_true", help="Check every recorded source tick, including fractional output frames")
+    ap.add_argument("--external-map-images", action="store_true",
+        help="Accept external RenderLockMap textures as a declared limit instead of PARTIAL; character textures must still be packed")
     argv = sys.argv[sys.argv.index("--")+1:] if "--" in sys.argv else sys.argv[1:]
     args = ap.parse_args(argv)
-    result = verify(args.blend, all_frames=args.all_frames)
+    result = verify(args.blend, all_frames=args.all_frames,
+                    external_map_images=args.external_map_images)
     args.output.write_text(json.dumps(result, indent=2)+"\n")
     print(json.dumps(result))
     if result["status"] != "PASS":
