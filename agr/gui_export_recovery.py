@@ -77,7 +77,9 @@ def _show_failure_window(app, command, output, window, failure, work, bundle, ch
     window.minsize(theme.px(480), theme.px(400))
     logo = theme.brand_emblem(window)
     window.logo = logo
-    window.chrome = chrome = WindowChrome(window)
+    # Unlike the main window, this small dialog has no deferred repaint loop.
+    # Keep its native content visible and clickable when Windows resizes it.
+    window.chrome = chrome = WindowChrome(window, defer_resize_redraw=False)
     if chrome.prepare():
         window.title_bar = TitleBar(window, chrome, theme=theme.palette(), buttons=('close',),
                                     links=False, title='RenderLock | Export recovery', icon=logo)
