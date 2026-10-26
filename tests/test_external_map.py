@@ -207,3 +207,28 @@ def test_cli_passes_requested_library_and_publishes_only_completed_map(export_jo
             cli.convert(args)
         assert not args.output.exists()
     assert len(calls) == 1
+
+
+class FakeEevee:
+    def __init__(self, value):
+        self.shadow_pool_size = value
+
+
+@pytest.mark.parametrize('before,after,raised', [
+    ('512', '2048', True), ('16', '2048', True), ('1024', '2048', True),
+    ('2048', '2048', False), ('1536', '2048', True)])
+def test_shadow_pool_is_only_widened_for_a_map_scene(before, after, raised):
+    from agr.blender_external_map import raise_shadow_pool
+    scene = type('Scene', (), {'eevee': FakeEevee(before)})()
+    result = raise_shadow_pool(scene)
+    assert scene.eevee.shadow_pool_size == after
+    assert result['previous'] == before
+    assert result['raised'] is raised
+    assert result['value'] == after
+
+
+def test_shadow_pool_is_left_alone_without_eevee_settings():
+    from agr.blender_external_map import raise_shadow_pool
+    assert raise_shadow_pool(type('Scene', (), {})()) is None
+    unknown = type('Scene', (), {'eevee': FakeEevee('bogus')})()
+    assert raise_shadow_pool(unknown) is None and unknown.eevee.shadow_pool_size == 'bogus'

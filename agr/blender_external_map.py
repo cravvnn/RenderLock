@@ -14,6 +14,140 @@ def remove_unused_library_records():
             bpy.data.libraries.remove(library)
 
 
+# Six thousand appended map meshes overflow EEVEE's default 512 MiB shadow pool
+# and silently drop shadows ("Shadow buffer full"). Widen it only when the map is
+# part of the scene, and only from the lower default so an explicit setting wins.
+MAP_SHADOW_POOL_SIZE = '2048'
+_SHADOW_POOL_LADDER = ('16', '32', '64', '128', '256', '512', '1024', '1536', '2048')
+
+
+def raise_shadow_pool(scene):
+    """Widen EEVEE's shadow pool for a map scene; never lower a larger value."""
+    eevee = getattr(scene, 'eevee', None)
+    if eevee is None or not hasattr(eevee, 'shadow_pool_size'):
+        return None
+    try:
+        rung = _SHADOW_POOL_LADDER.index(str(eevee.shadow_pool_size))
+    except ValueError:
+        return None
+    target = _SHADOW_POOL_LADDER.index(MAP_SHADOW_POOL_SIZE)
+    previous = str(eevee.shadow_pool_size)
+    if rung < target:
+        eevee.shadow_pool_size = MAP_SHADOW_POOL_SIZE
+    return {'previous': previous, 'value': str(eevee.shadow_pool_size),
+            'raised': rung < target}
+
+
+def isolate_character_view_layer(scene):
+    """Exclude the map from the character layer so characters-only views stay cheap.
+
+    The append adds ``RenderLockMap`` directly to the scene root after the
+    character master layer node was restored. A second view layer that excludes
+    it is the documented characters-only toggle; the render layer keeps
+    everything. Nothing is deleted and no render visibility flag changes.
+    """
+    import bpy
+    from .external_map import MAP_COLLECTION
+    layer = next((vl for vl in scene.view_layers if vl.name == 'RenderLockChar'), None)
+    if layer is None:
+        layer = scene.view_layers.new('RenderLockChar')
+    collection = bpy.data.collections.get(MAP_COLLECTION)
+    if collection is None:
+        return {'status': 'not_excluded', 'reason': 'no map collection'}
+    # Match by collection, not by node name: a name collision with the map's own
+    # root collection makes Blender store the node under a suffixed name.
+    node = next((child for child in layer.layer_collection.children
+                 if child.collection is collection), None)
+    if node is None:
+        return {'status': 'not_excluded', 'reason': 'map is not a root layer child'}
+    node.exclude = True
+    return {'status': 'excluded', 'view_layer': layer.name, 'collection': MAP_COLLECTION,
+            'layer_node': node.name,
+            'toggle': 'View Layer collection exclude (Characters only)'}
+
+
+def hide_reference_grid(scene):
+    """Hide the 88 m review grid once the real map supplies the ground reference."""
+    import bpy
+    hidden = [obj.name for obj in bpy.data.objects
+              if obj.name.startswith('Reference grid (not map geometry)') and not obj.hide_render]
+    for obj in list(bpy.data.objects):
+        if obj.name.startswith('Reference grid (not map geometry)'):
+            obj.hide_render = True
+            obj.hide_viewport = True
+    return {'hidden': hidden, 'status': 'hidden' if hidden else 'absent'}
+
+
+def neutralize_map_scene(scene, camera_root, generated_shot=None):
+    """Apply the reviewed map-scene settings after a successful append.
+
+    ``generated_shot`` is the ``frame_actor`` report of a generated hero-follow
+    camera, if any. Returns a report dict; no recorded animation, camera keys or
+    geometry change.
+    """
+    import bpy
+    from .external_map import MAP_COLLECTION
+    report = {'shadow_pool': raise_shadow_pool(scene),
+              'reference_grid': hide_reference_grid(scene),
+              'character_view_layer': isolate_character_view_layer(scene)}
+    if camera_root is not None:
+        camera = scene.camera
+        if camera is None:
+            report['camera_visibility'] = {'status': 'not_checked', 'reason': 'Scene has no active camera'}
+        elif (generated_shot or {}).get('mode') == 'hero follow' and generated_shot.get('sample_frames'):
+            # The generated follow camera is already sampled by its caller.
+            report['camera_visibility'] = {'status': 'not_checked', 'reason': 'generated hero-follow camera'}
+        else:
+            try:
+                if camera.type != 'CAMERA':
+                    raise ValueError('Active object is not a camera')
+                report['camera_visibility'] = assess_active_camera(scene, camera, camera_root)
+            except Exception as exc:
+                report['camera_visibility'] = {'status': 'not_checked',
+                                               'reason': f'{type(exc).__name__}: {exc}'}
+    return report
+
+
+def assess_active_camera(scene, camera, root, samples=7):
+    """Sample an artist/overview camera against the appended map for obstructions.
+
+    The hero-follow path samples its own keys. Any other active camera that the
+    user or an earlier export restored otherwise gets no check at all, so a shot
+    framed before the map existed can sit inside a wall unnoticed.
+    """
+    import bpy
+    from .blender_shot import _clear_ray
+    start, end = int(scene.frame_start), int(scene.frame_end)
+    if end < start:
+        return {'status': 'not_checked', 'reason': 'Empty frame range'}
+    step = max(1, (end - start) // max(1, samples - 1))
+    frames = sorted({*range(start, end + 1, step), end})[:samples]
+    actor = {root, *root.children_recursive}
+    original_frame, original_subframe = scene.frame_current, scene.frame_subframe
+    rows = []
+    try:
+        for frame in frames:
+            scene.frame_set(frame)
+            deps = bpy.context.evaluated_depsgraph_get()
+            origin = camera.evaluated_get(deps).matrix_world.translation.copy()
+            aim = root.evaluated_get(deps).matrix_world.translation.copy()
+            visible, blocker, distance = _clear_ray(scene, deps, origin, aim, actor)
+            rows.append({'frame': frame, 'clear_rays': int(visible), 'rays': 1,
+                         'hit_object': None if visible else blocker,
+                         'hit_distance_m': None if visible else distance})
+    finally:
+        scene.frame_set(original_frame, subframe=original_subframe)
+    first = next((row for row in rows if not row['clear_rays']), None)
+    return {'status': 'obstructed' if first else 'sampled_clear',
+            'minimum_sampled_visibility': min(row['clear_rays'] for row in rows),
+            'first_obstructed_frame': first['frame'] if first else None,
+            'hit_object': first['hit_object'] if first else None,
+            'hit_distance_m': first['hit_distance_m'] if first else None,
+            'camera': camera.name, 'samples': rows,
+            'scope': 'One ray to the character root at evenly spaced frames of the scene range '
+                     'for a non-generated active camera, after map append. Not every frame.'}
+
+
 def group_renderlock_content(scene):
     import bpy
     from .external_map import CHAR_COLLECTION

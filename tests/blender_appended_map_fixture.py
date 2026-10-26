@@ -92,6 +92,46 @@ def main(output):
             raise AssertionError('Ray failure was swallowed')
     assert (scene.frame_current, scene.frame_subframe) == (2, .25)
     assert before == snapshot(scene, root)
+    # Post-append map-scene neutralization: shadow pool, review grid, a cheap
+    # characters-only view layer, and a warning for a non-generated camera.
+    grid = bpy.data.curves.new('Reference grid (not map geometry)', 'CURVE')
+    bpy.data.objects.new(grid.name, grid)
+    from agr.blender_external_map import isolate_character_view_layer, neutralize_map_scene, raise_shadow_pool
+    scene.collection.objects.link(bpy.data.objects[grid.name])
+    assert not bpy.data.objects[grid.name].hide_render
+    scene.eevee.shadow_pool_size = '512'
+    assert isolate_character_view_layer(scene)['status'] == 'excluded'
+    neutral = neutralize_map_scene(scene, root, generated_shot=shot)
+    assert str(scene.eevee.shadow_pool_size) == '2048'
+    assert neutral['reference_grid']['status'] == 'hidden'
+    assert bpy.data.objects[grid.name].hide_render is True
+    layer = scene.view_layers['RenderLockChar']
+    map_node = next(child for child in layer.layer_collection.children
+                    if child.collection is bpy.data.collections[external_map.MAP_COLLECTION])
+    # Blender may store the node under a suffixed name when the collection has
+    # the same name; the exclusion must still be found by collection identity.
+    assert map_node.exclude is True
+    map_branch = next(child for child in scene.view_layers[0].layer_collection.children
+                      if child.collection is bpy.data.collections[external_map.MAP_COLLECTION])
+    assert map_branch.exclude is False
+    assert neutral['character_view_layer']['status'] == 'excluded'
+    # The generated follow camera is sampled by its own caller, not re-sampled.
+    assert neutral['camera_visibility']['status'] == 'not_checked'
+    shot['mode'] = 'artist'
+    artist = neutralize_map_scene(scene, root, generated_shot=shot)['camera_visibility']
+    assert artist['camera'] == 'follow' and artist['first_obstructed_frame'] is not None
+    assert artist['hit_object'] == wall.name
+    wall.hide_render = True
+    assert neutralize_map_scene(scene, root, generated_shot=shot)['camera_visibility']['status'] == 'sampled_clear'
+    wall.hide_render = False
+    # A larger or equal explicit pool survives; the helper only widens.
+    scene.eevee.shadow_pool_size = '2048'
+    assert str(scene.eevee.shadow_pool_size) == '2048'
+    assert raise_shadow_pool(scene)['raised'] is False
+    # Restore the hand-set states so the reopen check tests saved data, not
+    # these fixture toggles.
+    wall.hide_render = False
+    shot['mode'] = 'hero follow'
     saved = output / 'appended.blend'
     bpy.ops.wm.save_as_mainfile(filepath=str(saved))
     bpy.ops.wm.open_mainfile(filepath=str(saved))

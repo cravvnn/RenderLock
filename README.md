@@ -17,7 +17,7 @@ Blender scene for cinematics, edits and stills, with coverage reports for option
 cloth, effects and character lighting. A separately downloaded map can be appended
 and aligned in the same scene.
 
-**This branch: 0.3.0b17.dev2 - experimental Linux source test kit.**
+**This branch: 0.3.0b17.dev3 - experimental Linux source test kit.**
 See [TESTING_LINUX.md](TESTING_LINUX.md). **Published Windows: 0.3.0b16.** Its portable ZIP
 includes Python, the asset converter and helper tools. Install Blender separately
 and supply your own Deadlock installation and replay.

@@ -1022,6 +1022,22 @@ def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime
                 report['warnings'].append('Hero shot is obstructed after adding the downloaded map.'
                     + where + ' Move the camera or cut RenderLockMap in Blender; recorded character motion and camera keys were retained.')
             mark('external_map_camera_check')
+        from agr.blender_external_map import neutralize_map_scene
+        report['map_scene'] = neutralize_map_scene(
+            scene, selected[0] if shot_hero is not None else None,
+            generated_shot=report['camera'] if shot_hero is not None else None)
+        camera_check = report['map_scene'].get('camera_visibility') or {}
+        report['camera']['active_camera_visibility'] = camera_check or None
+        if camera_check.get('status') == 'obstructed':
+            report['warnings'].append(
+                f"Active camera {camera_check.get('camera')!r} is obstructed by the downloaded map at frame "
+                f"{camera_check.get('first_obstructed_frame')}: {camera_check.get('hit_object')} at "
+                f"{camera_check.get('hit_distance_m'):.2f} m. Move the camera or cut RenderLockMap; "
+                "camera keys were retained.")
+        if report['map_scene'].get('shadow_pool', {}).get('raised'):
+            report['warnings'].append(
+                'EEVEE shadow pool raised to 2048 MiB for the downloaded map so map shadows are not '
+                'silently dropped; lower it in Render settings if GPU memory is tight.')
     report["timings"] = timings
     for marker in data.get("markers", []):
         tick = marker.get("tick")

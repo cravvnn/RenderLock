@@ -1,4 +1,4 @@
-# Linux test kit: 0.3.0b17.dev2
+# Linux test kit: 0.3.0b17.dev3
 
 This is **experimental source**, not a self-contained Linux binary release or an
 update to Windows b16. Extract it into a new folder beside your working copy.
@@ -13,7 +13,7 @@ explicit, so there is no copying of Windows binaries or silent replacement of
 the old installation. No dependency download or game process is required.
 
 ```sh
-cd /path/to/RenderLock-0.3.0b17.dev2-Linux-test-source
+cd /path/to/RenderLock-0.3.0b17.dev3-Linux-test-source
 OLD="$HOME/Applications/RenderLock"
 python3 tools/run_linux_test.py --tools-from "$OLD" -- --help
 ```
@@ -71,6 +71,21 @@ compare map counts/alignment, character poses and separate map timings.
 
 - The log now announces loading and localization **before** those long steps.
   Localization can still take several minutes; this kit claims no speedup.
+- After a successful append the export also applies three map-scene settings,
+  recorded under `map_scene` in the scene report (and `map_scene` warnings
+  appear in the summary):
+  - **EEVEE shadow pool raised to 2048 MiB** (only when the scene had a lower
+    value). About 6,500 map meshes overflow the 512 MiB default and Blender
+    silently drops shadows without saying so in a normal viewport. Lower it in
+    **Render Settings > Shadows** if GPU memory is tight on a small card.
+  - **The review grid is hidden.** `Reference grid (not map geometry)` is an
+    88 m curve; with the real map appended it would render as a grey grid in
+    characters-only passes.
+  - **A `RenderLockChar` view layer excludes `RenderLockMap`.** Use it for
+    viewport and material-preview work on characters. Excluding a collection
+    is cheaper than per-object `hide_render` and skips evaluation. It does
+    **not** free memory: an excluded 38.9 M-vertex map is still resident, so
+    characters-only memory only drops if the map is in a separate file.
 - A generated hero-follow shot gets a bounded visibility recheck after append.
   `camera.external_map_visibility` records the samples, including
   `first_obstructed_frame`, the nearest `hit_object` and `hit_distance_m`. An

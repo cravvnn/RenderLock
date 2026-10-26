@@ -1,3 +1,10 @@
+# 0.3.0b17.dev3 - Map scene settings and camera checks
+
+- Raise EEVEE's shadow pool to 2048 MiB when the downloaded map is appended. About 6,500 map meshes overflow the 512 MiB default and Blender silently drops shadows; the setting is only widened, an explicitly larger value is kept, and the change is recorded and warned about because it trades GPU memory for correct shadows.
+- Hide the `Reference grid (not map geometry)` review curve whenever the map supplies real ground, so an 88 m grey grid no longer renders in characters-only passes.
+- Add a `RenderLockChar` view layer that excludes `RenderLockMap`. It is the cheap characters-only toggle (view-layer exclusion, not per-object flags), and the documentation states plainly that it does not free map memory.
+- Sample any non-generated active camera against the appended map and warn with the first obstructed frame, blocking object and distance, alongside the existing generated hero-follow check. Camera keys and recorded motion stay untouched.
+
 # 0.3.0b17.dev2 - Linux verifier and map advisory fixes
 
 - Separate the saved-scene texture contracts. Character material images must stay packed and still fail verification, while external `RenderLockMap` textures are reported as a declared limit and return PARTIAL. `--external-map-images` accepts external map textures explicitly after cutting/relinking; it never excuses a character image. A map scene can now be checked instead of always failing on the map's own 1556 images.
