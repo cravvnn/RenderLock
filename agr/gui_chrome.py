@@ -280,9 +280,13 @@ class WindowChrome:
     Windows offers no resizing, snapping or maximizing for it; its size changes only from the app.
     """
 
-    def __init__(self, root, *, resizable=True):
+    def __init__(self, root, *, resizable=True, defer_resize_redraw=True):
         self.root = root
         self.resizable = resizable
+        # Only windows with a matching resize/settled repaint handler may
+        # suspend their native content. Otherwise WM_SETREDRAW can leave the
+        # child invisible and unable to receive mouse input indefinitely.
+        self.defer_resize_redraw = defer_resize_redraw
         self.api = None
         self.hwnd = None
         self._proc = None       # keep the callback alive for as long as the window exists
@@ -406,7 +410,7 @@ class WindowChrome:
                     # Not for minimizing or coming back from the taskbar: no new layout to wait for.
                     iconic = api.user32.IsIconic(hwnd) or pos.x <= -32000
                     # (A fixed-size window only changes size from its own code, which lays out at once.)
-                    if jump and not self.sizing and not iconic and self.resizable:
+                    if jump and not self.sizing and not iconic and self.resizable and self.defer_resize_redraw:
                         self._hide_content()
                         pos.flags |= 0x0100  # SWP_NOCOPYBITS: no old pixels carried into the new size
             if msg == 0x0047 and self.followers:  # WM_WINDOWPOSCHANGED: owned overlays keep up, even mid-drag
