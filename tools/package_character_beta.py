@@ -10,6 +10,8 @@ import importlib.metadata as metadata
 import json
 import os
 from pathlib import Path
+import posixpath
+import re
 import shutil
 import subprocess
 import sys
@@ -33,6 +35,12 @@ PORTABLE_DOCUMENTS = (
     "README.md", "START_HERE.txt", "THIRD_PARTY.md", "LICENSE", "CREDITS.md",
     "CHANGELOG.md", "UPDATING.md", "CLOTH_WORKFLOW.md", "MAP_WORKFLOW.md", "CONTRIBUTING.md",
 )
+# Published b16 updaters accept only these root files and managed directories.
+# Keep new documentation beneath tools/ so those updaters can install this ZIP.
+PORTABLE_ROOT_DOCUMENTS = {
+    "README.md", "START_HERE.txt", "THIRD_PARTY.md", "LICENSE", "CREDITS.md",
+    "CHANGELOG.md", "UPDATING.md",
+}
 PARTICLE_COMMANDS = {
     "physics-json-v1", "material-bundle-v1", "decompile-cloth",
     "inventory-cloth-physics", "inventory-animation-clip-events", "inventory-model-hitboxes",
@@ -103,12 +111,37 @@ def stage_source(root, output):
 
 
 def stage_documentation(source, portable):
-    """Keep the README's user guides and original artwork available offline."""
-    for name in PORTABLE_DOCUMENTS:
-        copy_file(source / name, portable / name)
+    """Keep offline guides usable by both the current and the published b16 updater."""
+    paths = {name: name if name in PORTABLE_ROOT_DOCUMENTS else 'tools/' + name
+             for name in PORTABLE_DOCUMENTS}
     for folder in ('docs', 'artwork'):
         if (source / folder).is_dir():
-            shutil.copytree(source / folder, portable / folder)
+            for path in (source / folder).rglob('*'):
+                if path.is_file():
+                    relative = path.relative_to(source).as_posix()
+                    paths[relative] = 'tools/' + relative
+
+    # Source and offline package have different layouts. Rewrite only relative
+    # links whose targets we moved; leave anchors, URLs and other assets alone.
+    link = re.compile(r'''(?P<prefix>\]\(|\bsrc=["'])(?P<target>[^\s)"']+)''')
+    for original, target in paths.items():
+        src, dst = source / original, portable / target
+        if src.suffix.lower() != '.md':
+            copy_file(src, dst)
+            continue
+        def relocate(match):
+            value = match['target']
+            path, separator, fragment = value.partition('#')
+            if not path or path.startswith(('/', '//')) or re.match(r'^[a-zA-Z][\w+.-]*:', path):
+                return match.group(0)
+            logical = posixpath.normpath(posixpath.join(posixpath.dirname(original), path))
+            if logical not in paths:
+                return match.group(0)
+            adjusted = posixpath.relpath(paths[logical], posixpath.dirname(target) or '.')
+            return match['prefix'] + adjusted + (separator + fragment if separator else '')
+        content = link.sub(relocate, src.read_text(encoding='utf-8'))
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_text(content, encoding='utf-8', newline='\n')
 
 
 def distributions():
