@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
+from agr.updater import owned_name
 
 
 @pytest.fixture
@@ -19,7 +20,10 @@ def test_guides_and_original_artwork_survive_both_stages(tmp_path,packager):
     root=tmp_path/'checkout';root.mkdir()
     for name in packager.SOURCE_ROOT_FILES:
         (root/name).write_text('root document\n')
-    for name,contents in [('docs/README.md',b'guide index'),('docs/USER_GUIDE.md',b'user guide'),
+    (root/'README.md').write_text('[Guide](docs/README.md) [Map](MAP_WORKFLOW.md)\n'
+                                  '<img src="artwork/renderlock-intro.gif">\n', encoding='utf-8')
+    for name,contents in [('docs/README.md',b'[User](USER_GUIDE.md) [Home](../README.md)'),
+                          ('docs/USER_GUIDE.md',b'[Map](../MAP_WORKFLOW.md)'),
                           ('artwork/renderlockmain.png',b'original artwork fixture'),
                           ('artwork/renderlock-intro.gif',b'GIF89a fixture'),
                           ('artwork/private-source.mp4',b'private source video'),
@@ -29,12 +33,22 @@ def test_guides_and_original_artwork_survive_both_stages(tmp_path,packager):
     packager.stage_source(root,source)
     portable=tmp_path/'portable'
     packager.stage_documentation(source,portable)
-    for name in ('docs/README.md','docs/USER_GUIDE.md','artwork/renderlockmain.png','artwork/renderlock-intro.gif',
+    for name in ('docs/USER_GUIDE.md','artwork/renderlockmain.png','artwork/renderlock-intro.gif',
                  'CLOTH_WORKFLOW.md','MAP_WORKFLOW.md','CONTRIBUTING.md'):
-        assert (portable/name).read_bytes()==(root/name).read_bytes()
+        staged, original = portable/'tools'/name, root/name
+        if staged.suffix == '.md':
+            assert staged.read_text(encoding='utf-8') == original.read_text(encoding='utf-8')
+        else:
+            assert staged.read_bytes() == original.read_bytes()
+    assert (portable/'README.md').read_text(encoding='utf-8') == (
+        '[Guide](tools/docs/README.md) [Map](tools/MAP_WORKFLOW.md)\n'
+        '<img src="tools/artwork/renderlock-intro.gif">\n')
+    assert (portable/'tools/docs/README.md').read_text(encoding='utf-8') == (
+        '[User](USER_GUIDE.md) [Home](../../README.md)')
+    assert (portable/'tools/docs/USER_GUIDE.md').read_text(encoding='utf-8') == '[Map](../MAP_WORKFLOW.md)'
     assert not (source/'docs/private.blend').exists()
-    assert not (portable/'docs/.git').exists()
-    assert not (portable/'artwork/private-source.mp4').exists()
+    assert not (portable/'tools/docs/.git').exists()
+    assert not (portable/'tools/artwork/private-source.mp4').exists()
 
 
 def test_portable_documentation_is_owned_by_the_release_manifest(tmp_path,packager):
@@ -47,7 +61,11 @@ def test_portable_documentation_is_owned_by_the_release_manifest(tmp_path,packag
     packager.write_manifest(portable,'0.3.0b16','Windows-x64-portable')
     manifest=json.loads((portable/'release_manifest.json').read_text())
     records={r['path']:r for r in manifest['files']}
-    assert set(packager.PORTABLE_DOCUMENTS)|{'docs/README.md','artwork/renderlockmain.png'} == set(records)
+    expected = {name if name in packager.PORTABLE_ROOT_DOCUMENTS else 'tools/'+name
+                for name in packager.PORTABLE_DOCUMENTS}
+    assert expected|{'tools/docs/README.md','tools/artwork/renderlockmain.png'} == set(records)
+    # This is the published b16 updater's unchanged path policy.
+    assert all(owned_name(name) for name in records)
     for name,row in records.items():
         assert row['bytes']==(portable/name).stat().st_size
         assert row['sha256']==packager.digest(portable/name)
