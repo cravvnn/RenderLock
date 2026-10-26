@@ -1,3 +1,8 @@
+# 0.3.0b17 - Responsive export recovery
+
+- Keep export recovery controls visible and clickable after the Windows dialog is resized. Choosing a retry still requires an explicit selection, and closing the dialog never starts a job.
+- Include the refreshed usage, troubleshooting and building guides in the portable package.
+
 # 0.3.0b16 - Downloaded maps and reliable recovery
 
 - Add the separately hosted map workflow on the existing Map page. Download and extract the supported library, explicitly include it, and export characters and map into one scene with RenderLockChar and RenderLockMap master collections. Apply the qualified world coordinate basis without changing recorded character motion; no Source-lighting prerequisite is added. The map remains outside application ZIPs. Texture relinking, map cutting and the separate Map Optimizer remain manual, and map snapshot/replay revisions may differ.
