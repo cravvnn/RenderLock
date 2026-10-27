@@ -265,6 +265,62 @@ def fixed_attachment(instance, start, end):
     return bindings[0]
 
 
+def recorded_binding_profile(instance):
+    """Choose the same conservative binding provider in preflight and Blender."""
+    model_profile = instance.get('resource') == REGEN_RESOURCE
+    root_profile = model_profile or any(isinstance(event, dict) and event.get('type') == 'UPDATE_ENT'
+        and isinstance(event.get('data'), dict)
+        and isinstance(event['data'].get('update_particle_ent'), dict)
+        and event['data']['update_particle_ent'].get('control_point') == 0
+        and event['data']['update_particle_ent'].get('attach_type') == 1
+        for event in instance.get('events', []))
+    provider = (regeneration_bindings if model_profile else root_origin_bindings
+                if root_profile else fixed_point_bindings)
+    return model_profile, root_profile, provider
+
+
+def preflight_recorded_bindings(data, *, output_start=None):
+    """Find definite lack of bindings, without asserting renderability.
+
+    Examine every recorded instance, including unselected and expired ones, so
+    this can overestimate candidates but never discard a potentially usable
+    instance based on selection, authored duration, model or renderer guesses.
+    Unexpected/malformed input remains indeterminate for the normal pipeline.
+    """
+    from collections import Counter
+    instances = data.get('particle_instances')
+    start, end = data.get('start_tick'), data.get('end_tick')
+    if (not isinstance(instances, list) or any(not isinstance(row, dict) for row in instances)
+            or type(start) is not int or type(end) is not int or not 0 <= start <= end
+            or not isinstance(data.get('effects'), dict)):
+        return {'status': 'indeterminate', 'reason': 'Particle inputs were not completely prepared.'}
+    if output_start is None:
+        output_start = start
+    if type(output_start) is not int or not start <= output_start <= end:
+        return {'status': 'indeterminate', 'reason': 'Particle history bounds were not established.'}
+    reasons = Counter()
+    possible = 0
+    for instance in instances:
+        try:
+            _, _, provider = recorded_binding_profile(instance)
+            provider(instance, start, end)
+            possible += 1
+        except (ValueError, KeyError, OSError, RuntimeError, subprocess.SubprocessError) as exc:
+            birth = instance.get('created_tick')
+            scope = 'before_output' if type(birth) is int and birth < output_start else 'output_range'
+            resource = instance.get('resource') if isinstance(instance.get('resource'), str) else '<unresolved>'
+            reasons[(scope, resource, str(exc))] += 1
+        except Exception:
+            return {'status': 'indeterminate', 'reason': 'A particle input could not be checked safely.'}
+    grouped = [{'scope': scope, 'resource': resource, 'reason': reason, 'occurrences': count}
+               for (scope, resource, reason), count in sorted(reasons.items(),
+                    key=lambda row: (row[0][0] != 'output_range', -row[1], row[0][1], row[0][2]))]
+    return {'status': 'possible' if possible else 'unavailable', 'checked_instances': len(instances),
+            'possible_instances': possible, 'motion_start_tick': start, 'output_start_tick': output_start,
+            'end_tick': end, 'rejection_groups': grouped[:50], 'omitted_rejection_groups': max(0, len(grouped)-50),
+            'scope': 'Binding check only; a possible instance still requires simulation and rendering.'}
+
+
 def validate_control_response(simulation, instance_id, bindings):
     """Do not discard supplied CPs or silently use unsupplied default points."""
     rows = simulation.get('instances', [])
@@ -383,15 +439,7 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
         try:
             if entities[instance['entity_id']].get('model_tracks'):
                 raise ValueError('Particle model/attachment providers across recorded model changes are not yet qualified')
-            model_profile=instance.get('resource')==REGEN_RESOURCE
-            root_profile=model_profile or any(isinstance(e, dict) and e.get('type') == 'UPDATE_ENT'
-                and isinstance(e.get('data'), dict)
-                and isinstance(e['data'].get('update_particle_ent'), dict)
-                and e['data']['update_particle_ent'].get('control_point') == 0
-                and e['data']['update_particle_ent'].get('attach_type') == 1
-                for e in instance.get('events', []))
-            binding_provider=(regeneration_bindings if model_profile else root_origin_bindings
-                              if root_profile else fixed_point_bindings)
+            model_profile, root_profile, binding_provider = recorded_binding_profile(instance)
             bindings=binding_provider(instance,motion_start,data['end_tick'])
             model_provenance=None
             if root_profile:

@@ -709,6 +709,20 @@ def _convert(args, diagnostics):
             if legacy:
                 data["metadata"]["source_coordinate_system"] = legacy
             data["metadata"]["coordinate_system"] = {"unit_scale": 0.0254, "origin": [0, 0, 0], "world_yaw_degrees": 0, "model_yaw_degrees": 180}
+        if particle_probe:
+            # This check deliberately considers even expired/unselected rows.
+            # A passing binding is only a possibility, not proof of rendering.
+            # If none can pass, strict completion would fail after scene assembly.
+            from .recorded_effect_simulation import preflight_recorded_bindings
+            set_stage('particle_preflight')
+            particle_check = preflight_recorded_bindings(data, output_start=args.start_tick or data['start_tick'])
+            (work / 'particle-preflight.json').write_text(json.dumps(particle_check, indent=2) + '\n', encoding='utf-8')
+            if particle_check['status'] == 'unavailable':
+                log('Particle preflight: no recorded instance has a currently supported creation-time binding; '
+                    'see particle-preflight.json for the recorded reasons.')
+                if not args.partial:
+                    raise RuntimeError('Particle simulation has unresolved diagnostics: no recorded instance has a supported binding; the scene was not published.')
+                log('Partial export was explicitly selected; continuing with the particle limitation reported.')
         mode = animation_mode(data, args.motion_only, saved_package, args.partial)
         set_stage("evaluate_animation")
         save_scene(data, segment)
@@ -750,6 +764,7 @@ def _convert(args, diagnostics):
             # These plans, diagnostics and prepared states are part of the
             # effect audit, so they must survive normal temporary-work cleanup.
             effect_artifacts=Path(tempfile.mkdtemp(prefix=output.stem+'-effects-',dir=output.parent))
+            diagnostics.effect_artifacts = effect_artifacts
             runtime.update(probe=str(particle_probe),dotnet=particle_dotnet,output_dir=str(effect_artifacts))
             runtime_path=work/'particle-runtime.json'
             runtime_path.write_text(json.dumps(runtime),encoding='utf-8')

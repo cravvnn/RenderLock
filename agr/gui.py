@@ -329,6 +329,10 @@ class AGRApp:
         self._inspect_source = None
         self._roster_source = None
         self._roster_complete = False
+        self._portrait_generation = 0
+        self._portrait_loading_key = None
+        self._portrait_loaded_key = None
+        self._portrait_timer = None
         self.values = {key: tk.StringVar(value=value) for key, value in {
             "mode": "replay", "input": "", "assets": "", "blender": "",
             "output": "", "start": "", "end": "", "fps": "64", "heroes": "", "heroes_empty": "0",
@@ -382,6 +386,8 @@ class AGRApp:
         self.update_ui = UpdateUI(self, PROGRAM_ROOT)
         for key in ("input", "mode"):
             self.values[key].trace_add("write", self._input_changed)
+        for key in ("game_install", "source2viewer", "asset_cache"):
+            self.values[key].trace_add("write", self._portrait_settings_changed)
         self.root.protocol("WM_DELETE_WINDOW", self._close)
         self.root.after(100, self._poll)
 
@@ -730,6 +736,7 @@ class AGRApp:
                 self.follow_picker.load(metadata)
             self._roster_source = self._input_identity()
             self._roster_complete = self.character_picker.has_roster and not metadata.get("roster_warning")
+            self._request_nurse_portrait()
             for page in getattr(self, "page_layouts", {}).values():
                 page._schedule()
         first_tick = metadata.get("start_tick", metadata.get("first_tick", 0))
@@ -760,6 +767,55 @@ class AGRApp:
                       f" · {len(roster)} character tracks" if isinstance(roster, list) else "")
             self.input_summary.set(ticks + detail + " · Review the preview range before export.")
 
+    def _portrait_settings_changed(self, *_args) -> None:
+        """Discard a stale installed portrait when its game or converter changes."""
+        from .gui_characters import set_installed_portrait
+        self._portrait_generation += 1
+        self._portrait_loaded_key = self._portrait_loading_key = None
+        set_installed_portrait(87, None)
+        self.character_picker.refresh_portraits()
+        if self._portrait_timer is not None:
+            self.root.after_cancel(self._portrait_timer)
+        self._portrait_timer = self.root.after(500, self._request_nurse_portrait)
+
+    def _request_nurse_portrait(self) -> None:
+        """Load missing Nurse artwork asynchronously; the UI owns all Tk images."""
+        timer = getattr(self, '_portrait_timer', None)
+        if timer is not None:
+            self.root.after_cancel(timer)
+        self._portrait_timer = None
+        if 87 not in self.character_picker.hero_ids:
+            return
+        key = (self.values['game_install'].get().strip(), self.values['source2viewer'].get().strip(),
+               self.values['asset_cache'].get().strip() or str(default_asset_cache()))
+        if not all(key) or key in (self._portrait_loaded_key, self._portrait_loading_key):
+            return
+        self._portrait_generation += 1
+        generation = self._portrait_generation
+        self._portrait_loading_key = key
+
+        def worker():
+            try:
+                from .gui_portraits import load_nurse_portrait
+                portrait, error = load_nurse_portrait(*key), None
+            except Exception as exc:
+                portrait, error = None, f'{type(exc).__name__}: {exc}'
+            self.events.put(('nurse_portrait', (generation, key, portrait, error)))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _finish_nurse_portrait(self, payload) -> None:
+        generation, key, portrait, error = payload
+        if generation != self._portrait_generation:
+            return
+        self._portrait_loading_key = None
+        if error:
+            self._append_log('Nurse Harrow portrait unavailable; showing initials: ' + error + '\n')
+            return
+        from .gui_characters import set_installed_portrait
+        set_installed_portrait(87, portrait)
+        self._portrait_loaded_key = key
+        self.character_picker.refresh_portraits()
+
     def _poll(self) -> None:
         try:
             # Limit each pass so a noisy parser cannot starve the Tk event loop.
@@ -767,6 +823,8 @@ class AGRApp:
                 kind, payload = self.events.get_nowait()
                 if kind == "log":
                     self._append_log(str(payload))
+                elif kind == 'nurse_portrait':
+                    self._finish_nurse_portrait(payload)
                 elif kind == "finished":
                     operation, code, output = payload
                     self._set_busy(False)

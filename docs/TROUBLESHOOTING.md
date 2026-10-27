@@ -120,6 +120,19 @@ cases remain unsupported. More recovered history helps only supported recorded
 cases. An empty point-follow inventory is neutral; genuine attachment failures
 still matter. A successful character export is not complete ability reproduction.
 
+Recorded particle simulation currently considers effects associated with selected
+characters, not every effect in the game world. Some of those recorded effects
+also need attachment providers, simulation behavior or renderers that are not yet
+supported. Gathering messages from a replay does not guarantee a visible result.
+When the early binding check finds no possible instance, a strict export stops
+before scene assembly and offers an explicit retry without effects. An explicitly
+selected partial export may continue and report the missing particles. Neither
+the check nor additional history makes unsupported effects render.
+
+For a failed export, send the support ZIP shown in the log or recovery window.
+It can contain a bounded particle preflight or rendering summary with the reasons
+for omissions. For a scene saved with warnings, send its coverage report as well.
+
 Recorded body poses also do not establish every client-only presentation detail,
 including the backward-dash body turn. Automatic ragdolls are outside scope;
 death animation can require user-authored work. Keep these limitations distinct

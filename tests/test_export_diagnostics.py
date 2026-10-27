@@ -213,6 +213,45 @@ def test_repeat_failures_preserve_existing_evidence_and_archives(tmp_path, suppo
     assert any("failure.json" in warning for warning in second["warnings"])
 
 
+def test_particle_coverage_summary_survives_large_scene_report_without_private_payload(tmp_path, support_logs):
+    work, effects = tmp_path/'work', tmp_path/'effects'
+    work.mkdir()
+    effects.mkdir()
+    (work/'scene.scene.json').write_bytes(b'x' * (diagnostics.MAX_FILE_BYTES + 1))
+    (work/'particle-preflight.json').write_text(json.dumps({'status': 'unavailable', 'checked_instances': 4}))
+    (effects/'coverage.json').write_text(json.dumps({'status': 'unavailable', 'reason': 'No instance completed',
+        'selected_recorded_instances': 4, 'attempted_instances': 0, 'rendered_instances': 0,
+        'instances': [{'private_scene': 'do not include'}],
+        'unsupported': [{'resource': f'particles/test{i}', 'reason': 'token=report-secret',
+                         'occurrences': 1, 'instance_examples': ['private-instance']}
+                        for i in range(60)]}))
+    support = diagnostics.ExportDiagnostics(SimpleNamespace(), lambda line: None)
+    support.work, support.effect_artifacts = work, effects
+    event = support.finalize(ValueError('fixture'))
+    assert event['status'] == 'saved'
+    files = read_archive(event['path'])
+    assert 'work/scene.scene.json' not in files
+    assert json.loads(files['work/particle-preflight.json'])['checked_instances'] == 4
+    summary = json.loads(files['work/particle-coverage-summary.json'])
+    assert summary['status'] == 'unavailable' and summary['attempted_instances'] == 0
+    assert len(summary['unsupported']) == 50 and summary['omitted_unsupported_groups'] == 10
+    assert b'report-secret' not in b''.join(files.values())
+    assert b'private-instance' not in b''.join(files.values())
+    assert b'do not include' not in b''.join(files.values())
+
+
+def test_oversized_particle_report_is_omitted_without_hiding_original_failure(tmp_path, support_logs):
+    effects = tmp_path/'effects'
+    effects.mkdir()
+    (effects/'coverage.json').write_bytes(b'x' * (diagnostics.MAX_PARTICLE_REPORT_BYTES + 1))
+    support = diagnostics.ExportDiagnostics(SimpleNamespace(), lambda line: None)
+    support.effect_artifacts = effects
+    event = support.finalize(ValueError('original'))
+    assert event['status'] == 'saved' and event['failure']['error'] == 'original'
+    assert any('particle report exceeds' in warning for warning in event['warnings'])
+    assert 'work/particle-coverage-summary.json' not in read_archive(event['path'])
+
+
 def test_archive_name_collision_never_replaces_or_deletes_original(tmp_path, support_logs, monkeypatch):
     open_file = Path.open
     originals = []

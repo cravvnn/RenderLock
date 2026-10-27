@@ -1,3 +1,9 @@
+# 0.3.0b18 - Nurse portrait and particle diagnostics
+
+- Load Nurse Harrow's portrait from the selected Deadlock installation using the same character-tray color, sizing and selection behavior as the existing portraits. If the installed image cannot be read, retain the initials fallback.
+- Check recorded particle bindings before lengthy scene creation. When no instance can pass the supported binding checks, strict exports stop early and offer the existing explicit recovery choices; an explicitly selected partial export can continue. A possible binding still requires successful simulation and rendering.
+- Include bounded particle binding and rendering summaries in failed-export support ZIPs when available. This release does not add new particle effect or world-effect rendering support.
+
 # 0.3.0b17 - Responsive export recovery
 
 - Keep export recovery controls visible and clickable after the Windows dialog is resized. Choosing a retry still requires an explicit selection, and closing the dialog never starts a job.

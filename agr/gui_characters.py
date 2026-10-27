@@ -187,6 +187,24 @@ def _hero_teams(metadata):
 
 _SOURCES = {}   # (hero_id, size) -> premultiplied float RGBA at that size, or None
 _IMAGES = {}    # (hero_id, size, angle, selected) -> PhotoImage
+_INSTALLED_PORTRAITS = {}  # hero_id -> (source side, raw RGBA), never bundled game data
+
+
+def set_installed_portrait(hero_id, portrait):
+    """Refresh one missing portrait without changing the designer's portraits."""
+    if hero_id in gui_assets.HERO_ICONS:
+        raise ValueError('Installed portraits cannot replace a designer portrait')
+    if portrait is None:
+        _INSTALLED_PORTRAITS.pop(hero_id, None)
+    else:
+        n, rgba = portrait
+        if type(n) is not int or not 0 < n <= 512 or not isinstance(rgba, bytes) or len(rgba) != n*n*4:
+            raise ValueError('Invalid installed portrait pixels')
+        _INSTALLED_PORTRAITS[hero_id] = (n, rgba)
+    for key in [key for key in _SOURCES if key[0] == hero_id]:
+        del _SOURCES[key]
+    for key in [key for key in _IMAGES if key[1] == hero_id]:
+        del _IMAGES[key]
 
 
 def _box_weights(n_in, n_out):
@@ -205,11 +223,16 @@ def _source(hero_id, size):
     key = (hero_id, size)
     if key not in _SOURCES:
         blob = getattr(gui_assets, "HERO_ICONS", {}).get(hero_id)
-        if blob is None or np is None:
+        installed = _INSTALLED_PORTRAITS.get(hero_id)
+        if np is None or blob is None and installed is None:
             _SOURCES[key] = None
         else:
-            n = gui_assets.HERO_ICON_SIZE
-            raw = np.frombuffer(zlib.decompress(base64.b64decode(blob)), np.uint8).reshape(n, n, 4).copy()
+            if blob is not None:
+                n = gui_assets.HERO_ICON_SIZE
+                pixels = zlib.decompress(base64.b64decode(blob))
+            else:
+                n, pixels = installed
+            raw = np.frombuffer(pixels, np.uint8).reshape(n, n, 4).copy()
             raw[:, :, :3] = gui_theme.screen_pixels(raw[:, :, :3])
             rgba = raw.astype(np.float32) / 255.0
             rgba[:, :, :3] *= rgba[:, :, 3:4]
@@ -617,6 +640,11 @@ class CharacterChecklist(tk.Frame):
     def set_busy(self, busy: bool):
         self._busy = bool(busy)
         self._set_states()
+
+    def refresh_portraits(self):
+        """Redraw existing trays after an installed portrait finishes loading."""
+        for group in self._groups:
+            group.refresh()
 
     def _set_states(self):
         self.all_button.configure(state="disabled" if self._busy else "normal")

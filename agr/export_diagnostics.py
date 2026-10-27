@@ -18,6 +18,7 @@ from . import __version__
 EVENT_PREFIX = "RENDERLOCK_DIAGNOSTICS "
 MAX_FILE_BYTES = 128 * 1024
 MAX_ARCHIVE_BYTES = 2 * 1024 * 1024  # Uncompressed contents, not a cache-size estimate.
+MAX_PARTICLE_REPORT_BYTES = 4 * 1024 * 1024
 _OPTION_NAMES = (
     "demo", "segment", "output", "assets", "game_install", "asset_cache", "blender",
     "blender_python", "source2viewer", "start_tick", "end_tick", "heroes", "fps",
@@ -113,12 +114,56 @@ def _read_evidence(path: Path, root: Path, *, tail=False):
     return _json(_safe(json.loads(text)))
 
 
+def _particle_coverage_summary(root: Path):
+    """Keep only bounded aggregate particle outcomes, not plans or scene data."""
+    path = root / 'coverage.json'
+    for item in (root, path):
+        if item.is_symlink() or getattr(item, 'is_junction', lambda: False)():
+            raise ValueError('linked particle report omitted')
+    if not path.is_file():
+        return None
+    with path.open('rb') as stream:
+        if os.fstat(stream.fileno()).st_size > MAX_PARTICLE_REPORT_BYTES:
+            raise ValueError('particle report exceeds summary input limit')
+        raw = stream.read(MAX_PARTICLE_REPORT_BYTES + 1)
+    if len(raw) > MAX_PARTICLE_REPORT_BYTES:
+        raise ValueError('particle report exceeds summary input limit')
+    report = json.loads(raw)
+    if not isinstance(report, dict):
+        raise ValueError('invalid particle report')
+    fields = ('status', 'stage', 'backend', 'reason', 'selected_recorded_instances',
+              'candidate_instances', 'attempted_instances', 'rendered_instances',
+              'objects', 'particle_tracks', 'point_lights', 'history_start_tick',
+              'pre_shot_rendered_instances', 'unsupported_occurrences',
+              'candidate_by_birth_scope', 'unsupported_by_birth_scope')
+    result = {key: _safe(report[key]) for key in fields if key in report}
+    unsupported = report.get('unsupported', [])
+    if isinstance(unsupported, list):
+        rows = []
+        for item in unsupported[:50]:
+            if isinstance(item, dict):
+                row = {key: item[key] for key in ('resource', 'reason', 'occurrences', 'by_birth_scope')
+                       if key in item}
+                for key in ('resource', 'reason'):
+                    if isinstance(row.get(key), str):
+                        row[key] = row[key][:1024]
+                rows.append(_safe(row))
+        result['unsupported'] = rows
+        result['omitted_unsupported_groups'] = max(0, len(unsupported) - 50)
+    result['scope'] = 'Aggregate diagnostic summary; simulation plans, scene data and instance examples are excluded.'
+    content = _json(result)
+    if len(content) > MAX_FILE_BYTES:
+        raise ValueError('particle summary exceeds support ZIP size limit')
+    return content
+
+
 class ExportDiagnostics:
     """Finalize failure evidence without replacing the original export exception."""
 
     def __init__(self, args, log):
         self.args, self.log = args, log
         self.work = None
+        self.effect_artifacts = None
         self.context = {"stage": "preflight", "timings": []}
 
     def _emit(self, message):
@@ -165,7 +210,7 @@ class ExportDiagnostics:
                 except Exception as exc:
                     warnings.append("Could not save work failure.json: " + _redact(str(exc)))
                 self._emit(f"Diagnostic files retained at: {self.work}")
-                for relative in ("installed_asset_report.json", "asset_diagnostic.json",
+                for relative in ("installed_asset_report.json", "asset_diagnostic.json", "particle-preflight.json",
                                  "installed-assets/animation_asset_report.json",
                                  "extracted/animation_provenance.json", "scene.scene.json",
                                  "publish-report.json", "extracted/extraction.log"):
@@ -175,6 +220,13 @@ class ExportDiagnostics:
                             entries["work/" + relative] = content
                     except Exception as exc:
                         warnings.append(relative + " omitted: " + _redact(str(exc)))
+            if self.effect_artifacts:
+                try:
+                    content = _particle_coverage_summary(self.effect_artifacts)
+                    if content is not None:
+                        entries['work/particle-coverage-summary.json'] = content
+                except Exception as exc:
+                    warnings.append('Particle coverage summary omitted: ' + _redact(str(exc)))
             directory = log_directory()
             event["log_directory"] = str(directory)
             startup = Path(os.environ["RENDERLOCK_STARTUP_LOG"]).expanduser().resolve() if os.environ.get("RENDERLOCK_STARTUP_LOG") else directory / "startup.log"

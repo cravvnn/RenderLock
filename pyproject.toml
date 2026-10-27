@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "renderlock"
-version = "0.3.0b17"
+version = "0.3.0b18"
 description = "RenderLock: offline character and animation export from Deadlock replays"
 requires-python = ">=3.12"
 dependencies = ["numpy>=1.26,<3", "boon-deadlock==0.15.0", "polars==1.44.1", "python-snappy==0.7.3"]

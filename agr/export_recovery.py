@@ -46,7 +46,7 @@ _LIGHTING_OPTIONS = frozenset({
     '--cubemap-decoder', '--character-shader',
 })
 _OPTIONAL_STAGES = frozenset({
-    '', 'prepare_installed_assets', 'build_blender_scene',
+    '', 'prepare_installed_assets', 'particle_preflight', 'build_blender_scene',
     'validate_blender_completion',
 })
 _EXCEPTION_LINE = re.compile(r'^\s*(?:[\w.]*Error|[\w.]*Exception|ERROR):\s*(.+)$')
