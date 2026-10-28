@@ -1,4 +1,7 @@
-# 0.3.0b20 - Optional simplified map viewport
+# 0.3.0b20 - Map textures and optional simplified viewport
+
+- Connect all 1,556 referenced images from the current downloaded map automatically, verifying the unchanged map manifest and supplied PNG files before expensive replay work. Missing or changed files stop the requested map instead of publishing an apparently successful pink map. The images remain external; retain the extracted folder or explicitly pack resources in Blender. Previously qualified older libraries keep their manual texture workflow.
+- Provide `agr/blender_map_textures.py` as a standalone Blender repair command for existing scenes. It reconnects missing map image nodes, including nested groups, and optionally embeds the exact supplied PNG bytes without replacing geometry or animation. Preserve packed images and working artist replacements, isolate shared images, and refuse shared materials/groups before mutation.
 
 - Add an opt-in untextured viewport proxy for the currently supported downloaded Midtown map. The full map remains unchanged for rendering, shadows and reflections. The proxy uses 25 cm spatial clustering, combines source meshes by map cell and omits collapsed faces; it is an approximation for framing, not a replacement for detailed geometry.
 - Keep the full map inside the scene: the proxy adds export time and file size and does not eliminate the map's file-open memory. Manual map edits and cuts do not update an existing proxy. If proxy preparation fails, an explicitly chosen retry retains the full map and the other export settings.

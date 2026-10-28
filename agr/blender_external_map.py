@@ -1,4 +1,4 @@
-"""Append the qualified map without relinking textures or changing replay poses."""
+"""Append the qualified map and connect its textures without changing replay poses."""
 from __future__ import annotations
 
 import json
@@ -115,16 +115,23 @@ def _append_external_map(scene, path, coordinates):
     # Blender reports one bookkeeping user even for a fully local append.
     # Actual ID.library references decide whether a Library record is unused.
     remove_unused_library_records()
+    textures = None
+    if library.get('texture_manifest_sha256'):
+        from .blender_map_textures import connect_map_textures
+        textures = connect_map_textures(scene, collection, path)
     result = dict(status='appended', package_id=definition['package_id'],
                   library_sha256=library['sha256'], collection=collection.name,
                   character_collection=CHAR_COLLECTION, imported_objects=len(objects),
                   mesh_objects=len(meshes), vertices=sum(len(o.data.vertices) for o in meshes),
                   coordinate_matrix=[list(row) for row in basis.matrix_world],
-                  texture_relink='manual', map_cutting='manual', linked_libraries=len(bpy.data.libraries),
+                  texture_relink='automatic' if textures is not None else 'manual',
+                  map_cutting='manual', linked_libraries=len(bpy.data.libraries),
                   limits=['Map snapshot revision was not supplied; geometry can differ from a replay or later game update.',
-                          'Relink map textures with File > External Data > Find Missing Files, then cut manually with the separate Map Optimizer.',
+                          'Map textures stay external; retain the extracted Textures folder or pack the resources in Blender. Cut manually with the separate Map Optimizer.',
                           'The rebatching bakes ambient map props to a static pose; authored fan, sign and similar animations are not replayed.',
                           'The map supplies no Source lighting data, recorded destruction or cloth collision.'])
+    if textures is not None:
+        result['textures'] = textures
     validate_map_completion(result, library, coordinates)
     scene['renderlock_external_map'] = json.dumps(result)
     return result

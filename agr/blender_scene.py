@@ -995,7 +995,7 @@ def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime
     from agr.blender_external_map import group_renderlock_content, append_external_map
     group_renderlock_content(scene)
     # Pack only generated character/lighting/effect resources. The external map
-    # remains a separate manual texture-relink workflow, including missing images.
+    # keeps its large texture files external and connects them after append.
     bpy.data.orphans_purge(do_local_ids=True, do_linked_ids=True, do_recursive=True)
     bpy.ops.file.pack_all()
     report["unpacked_images"] = [image.name for image in bpy.data.images if image.source == "FILE" and not image.packed_file]

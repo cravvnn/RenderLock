@@ -59,8 +59,15 @@ def validate_map_library(path):
         definition = map_definition({'sha256': digest})
         if after.st_size != definition['bytes']:
             raise ValueError('Map library size differs from its qualified identity.')
-        return dict(path=str(path), sha256=digest, package_id=definition['package_id'])
+        library = dict(path=str(path), sha256=digest, package_id=definition['package_id'])
+        if digest == MAP_BLEND_SHA256:
+            from .blender_map_textures import texture_package
+            package = texture_package(path)
+            library['texture_manifest_sha256'] = package['manifest_sha256']
+        return library
     except (OSError, RuntimeError, ValueError) as exc:
+        if str(exc).startswith('External map: '):
+            raise
         raise ValueError('External map: ' + str(exc)) from exc
 
 
@@ -81,9 +88,16 @@ def validate_map_completion(result, library, coordinates=None):
                     library_sha256=library['sha256'], collection=MAP_COLLECTION,
                     character_collection=CHAR_COLLECTION, imported_objects=definition['objects'],
                     mesh_objects=definition['meshes'], vertices=definition['vertices'],
-                    texture_relink='manual', map_cutting='manual', linked_libraries=0)
+                    map_cutting='manual', linked_libraries=0)
     if not isinstance(result, dict) or any(result.get(k) != v for k, v in expected.items()):
         raise RuntimeError('External map: Blender completion lacks the requested map hierarchy or identity; the scene was not published.')
+    if result.get('texture_relink') not in {'manual', 'automatic'}:
+        raise RuntimeError('External map: Blender completion lacks the texture outcome; the scene was not published.')
+    if library.get('texture_manifest_sha256') is not None:
+        from .blender_map_textures import validate_texture_completion
+        validate_texture_completion(result.get('textures'), library['texture_manifest_sha256'])
+        if result['texture_relink'] != 'automatic':
+            raise RuntimeError('External map: requested textures were not connected; the scene was not published.')
     try:
         matrix = np.asarray(result.get('coordinate_matrix'), dtype=float)
     except (TypeError, ValueError) as exc:

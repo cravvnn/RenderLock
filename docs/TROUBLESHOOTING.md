@@ -106,8 +106,15 @@ Use the [supported download](https://maps.allevilmc.com/download), extract the
 entire ZIP and choose its unchanged `RenderLockMap.blend` on **Map**. The raw
 contributor ZIP/glTF is not the supported automatic-append library.
 
-Map textures remain external. In Blender, use **File > External Data > Find Missing
-Files** on the downloaded `Textures` folder. Set the external optimizer's **Map**
+The refreshed b20 build connects the current map's textures automatically. Extract
+the entire ZIP, retaining `map-package.json` and `Textures` beside the library.
+Map images remain external: keep that folder in place or pack resources and save
+before moving the scene. To fix a scene exported earlier without exporting again,
+use the [map texture repair script](../MAP_WORKFLOW.md#repair-an-existing-scene).
+Older map packages can use **File > External Data > Find Missing Files** on their
+matching `Textures` folder. The simplified viewport proxy is deliberately
+untextured; inspect the full map in Material Preview or Rendered mode.
+Set the external optimizer's **Map**
 selector to **RenderLockMap**; hiding characters alone does not scope cutting.
 For large merged cells, **Precise Cut** gives a closer boundary than **Entire
 Objects**. Keep the downloaded library unchanged and edit the final scene.

@@ -23,6 +23,8 @@ def test_map_library_checks_blender_before_expensive_preparation(version, valid)
 
 
 def test_library_identity_requires_original_bytes_and_rejects_zip(monkeypatch, tmp_path):
+    from agr import blender_map_textures
+    monkeypatch.setattr(blender_map_textures, 'texture_package', lambda path: {'manifest_sha256': 'fixture'})
     path = tmp_path / 'RenderLockMap.blend'
     original = b'qualified fixture bytes'
     path.write_bytes(original)
@@ -180,7 +182,10 @@ def test_cli_passes_requested_library_and_publishes_only_completed_map(export_jo
     from blender_fixture import write_blender_completion
     args, _ = export_job
     args.external_map = args.output.parent / 'RenderLockMap.blend'
-    library = dict(path=str(args.external_map), sha256=maps.MAP_BLEND_SHA256)
+    from test_map_textures import texture_result
+    from agr.blender_map_textures import MANIFEST_SHA256
+    library = dict(path=str(args.external_map), sha256=maps.MAP_BLEND_SHA256,
+                   texture_manifest_sha256=MANIFEST_SHA256)
     monkeypatch.setattr(maps, 'validate_map_library', lambda path: library)
     monkeypatch.setattr('agr.blender_runtime.check_blender', lambda *a, **k: {'fixture': True, 'version': [5, 2, 1]})
     calls = []
@@ -188,7 +193,8 @@ def test_cli_passes_requested_library_and_publishes_only_completed_map(export_jo
         calls.append(command)
         assert command[command.index('--external-map') + 1] == str(args.external_map)
         assert '--character-only' in command and '--disable-autoexec' in command and '--partial' not in command
-        return write_blender_completion(command, **({'external_map': map_result()} if completed else {}))
+        result = dict(map_result(), texture_relink='automatic', textures=texture_result())
+        return write_blender_completion(command, **({'external_map': result} if completed else {}))
     monkeypatch.setattr(cli.subprocess, 'run', execute)
     if completed:
         cli.convert(args)
