@@ -85,7 +85,10 @@ not a general workaround for an unsupported effect. See the report.
 | `shot.agr-report.json` | Coverage, warnings, selected options, compatibility evidence and timings |
 
 Character textures are normally packed into the `.blend`. The separately appended
-map uses external textures until you relink/pack them. Elagrimm groups/materials
+map keeps its large textures external; the refreshed b20 build connects the current
+download automatically. Retain the extracted folder or pack resources and save
+before moving the scene. Older scenes can use the [texture repair steps](../MAP_WORKFLOW.md#repair-an-existing-scene).
+Elagrimm groups/materials
 are embedded in the final scene; a separate shader file beside the output is not
 expected. Select a character mesh to inspect materials, not the replay-root Empty.
 The in-scene `AGR_README` also describes applied features and limitations.

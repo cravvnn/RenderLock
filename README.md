@@ -64,7 +64,9 @@ and cache. For a stopped export, start with [troubleshooting](docs/TROUBLESHOOTI
   Elagrimm + Source. The Elagrimm library is a separate download; these looks do
   not reproduce every game shader or lighting effect.
 - **Map in the final scene.** Download the separate map, include it on **Map**, and
-  let RenderLock append and align it. Relink textures and cut the map manually.
+  let RenderLock append, align and connect the current download's textures.
+  Keep the extracted texture folder in place or pack resources before moving the
+  scene. Existing scenes can use the map guide's repair tool. Cut the map manually.
 - **Recovery and reuse.** Recognized failures offer specific, explicit retry
   choices. Verified generated assets can be reused between exports, and failed
   exports try to retain a support ZIP beside the normal logs.

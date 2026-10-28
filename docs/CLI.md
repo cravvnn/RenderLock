@@ -48,7 +48,7 @@ packages do not embed every model, lighting input or external map.
 
 | Option | Meaning |
 | --- | --- |
-| `--external-map "maps\RenderLockMap.blend"` | Append the qualified download; textures/cutting manual, independent of Source lighting |
+| `--external-map "maps\RenderLockMap.blend"` | Append the qualified download and connect current-package textures; cutting manual, independent of Source lighting |
 | `--secondary-motion` or `--cloth` | Request supported approximate cloth |
 | `--partial-cloth` | Accept unavailable/failed cloth only; character data remains strict |
 | `--partial-lighting` | Accept partial reference-lighting limits; character data remains strict |

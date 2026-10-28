@@ -909,7 +909,7 @@ def parser():
     cv.add_argument('--source-npr-lighting',action='store_true',help='Partial NPR indirect with reference assumptions; requires --source-hero-lighting and explicit lighting consent (--partial-lighting preserves strict character data)')
     cv.add_argument('--character-shader',type=Path,help='Qualified user-supplied Elagrimm BLENDER-Deadlock-Shader.blend; partial Eevee Source-lighting bridge and artistic rim; requires --source-npr-lighting')
     cv.add_argument('--character-only',action='store_true',help='Omit map geometry from the Blender scene while retaining prepared lighting assets and coordinates for a separate map')
-    cv.add_argument('--external-map',type=Path,help='Append the supported downloaded RenderLockMap.blend; texture relinking and cutting remain manual, independently of Source lighting')
+    cv.add_argument('--external-map',type=Path,help='Append the supported downloaded RenderLockMap.blend and connect current-package textures; cutting remains manual, independently of Source lighting')
     cv.add_argument('--map-viewport-proxy',action='store_true',help='With the current downloaded map, add an approximate untextured viewport proxy while keeping the full map for rendering')
     cv.add_argument('--source-hero-lighting',action='store_true',help='Experimental partial hero probes/reflections; unit intensity/tint and viewer normalization assumptions; requires --source-lighting')
     cv.add_argument('--probe-atlas-decoder',type=Path,help='Qualified ProbeAtlasDecode.dll for --source-hero-lighting')
