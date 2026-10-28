@@ -84,6 +84,10 @@ shot. Keep broad partial character export separate.
 - **Shader not applied:** check the qualified library, Elagrimm + Source look,
   included follow target, installed lighting inputs and explicit lighting consent.
   Source/NPR refusal before Blender cannot produce an appended shader.
+- **NPR texture rejected:** the support ZIP identifies the material and texture
+  when a selected input fails the layout check. For recognized layout errors,
+  recovery can explicitly retry without NPR and its character shader while
+  retaining Source probe lighting and character animation.
 - **Emission texture present but no glow:** supported static cases can use
   **Emission and glass repairs (experimental)**. This is not universal Source
   emission recovery, and it does not require Elagrimm.

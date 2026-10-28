@@ -33,6 +33,9 @@ def installed(tmp_path,monkeypatch):
             m_intParams=[dict(m_name='F_USE_NPR_LIGHTING',m_nValue=1)],
             m_textureParams=[dict(m_name=key,m_pValue='textures/input.vtex') for key in source_npr_assets.PARAMETERS])
     provider=SimpleNamespace(resources=resources,install_path=tmp_path/'game',cache_dir=tmp_path/'cache',snapshot={})
+    data=struct.pack('<HH4fHHHBBIII',1,0,.1,.2,.3,0,4,4,1,20,1,0,0,0)
+    metadata=struct.pack('<IHHII',28+len(data),12,1,8,1)+struct.pack('<4sII',b'DATA',8,len(data))+data
+    (tmp_path/'source').write_bytes(metadata+bytes(16))
     provider.resolve=lambda name:SimpleNamespace(sha256='hash:'+name,local_path=tmp_path/'source')
     class Decoder:
         identity={};root=tmp_path/'cache';stats={'cache_hits':0,'conversions':0}
@@ -106,6 +109,19 @@ def test_npr_without_constant_overrides_proceeds_and_passes_one_reusable_plan(in
     assert not installed.verify_calls and installed.calls[-2:]==['animation','extensions']
     assert len(installed.passed)==1 and installed.passed[0]['status']=='planned_requires_decode'
     assert len(installed.passed[0]['entities'])==2
+
+
+def test_bad_selected_texture_reports_identity_before_animation(installed):
+    (installed.tmp/'source').write_bytes(b'incomplete')
+    with pytest.raises(ConversionError) as caught:
+        installed.prepare()
+    assert 'animation' not in installed.calls and 'extensions' not in installed.calls
+    details=caught.value.details
+    assert details['code']=='npr_texture_decode_preflight_failed'
+    assert details['material']=='materials/a.vmat_c' and details['resource']=='textures/input.vtex_c'
+    assert details['stage']=='selected_npr_material_preflight'
+    report=json.loads((installed.tmp/'work'/'installed_asset_report.json').read_text())
+    assert report['npr_material_preflight']['details']['resource']=='textures/input.vtex_c'
 
 
 def test_unbound_runtime_expression_keeps_explicit_reference_without_evaluator_gate(installed):

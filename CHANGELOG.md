@@ -1,3 +1,8 @@
+# 0.3.0b19 - Nurse NPR texture compatibility
+
+- Accept complete 4K ATI2N/BC5 NPR mask textures when every stored mip is aligned for the bundled decoder and the exact uncompressed payload follows DATA. Preserve source identity, 2D, dimension, mip, decoded-memory and output checks; unqualified layouts remain unavailable.
+- Check NPR texture layout while selected materials are planned, before animation and scene preparation. A failed texture records its material, parameter and resource in diagnostics. Known NPR texture-layout refusals offer an explicit retry without NPR and its dependent character shader while retaining Source probe lighting and animation.
+
 # 0.3.0b18 - Nurse portrait and particle diagnostics
 
 - Load Nurse Harrow's portrait from the selected Deadlock installation using the same character-tray color, sizing and selection behavior as the existing portraits. If the installed image cannot be read, retain the initials fallback.

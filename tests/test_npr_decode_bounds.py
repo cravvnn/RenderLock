@@ -5,9 +5,13 @@ from agr import source_npr_assets as assets
 from agr.asset_converter import ConversionError
 
 
-def source(path,*,width=4096,height=4096,depth=1,fmt=20,mips=11,flags=0):
-    data=struct.pack('<HH4fHHHBBIII',1,flags,.1,.2,.3,0,width,height,depth,fmt,mips,0,0,0)
-    metadata=struct.pack('<IHHII',28+len(data),12,1,8,1)+struct.pack('<4sII',b'DATA',8,len(data))+data
+def source(path,*,width=4096,height=4096,depth=1,fmt=20,mips=11,flags=0,extra=None,data_tail=b''):
+    data=struct.pack('<HH4fHHHBBIII',1,flags,.1,.2,.3,0,width,height,depth,fmt,mips,0,8 if extra else 0,1 if extra else 0)
+    if extra:
+        kind,payload=extra
+        data+=struct.pack('<III',kind,8,len(payload))+payload
+    metadata=(struct.pack('<IHHII',28+len(data)+len(data_tail),12,1,8,1)+
+              struct.pack('<4sII',b'DATA',8,len(data))+data+data_tail)
     payload=sum(max(1,((width>>i)+3)//4)*max(1,((height>>i)+3)//4)*16 for i in range(mips))
     with path.open('wb') as stream:
         stream.write(metadata);stream.truncate(len(metadata)+payload)
@@ -20,6 +24,31 @@ def test_complete_4k_bc7_is_bounded_before_decoding(tmp_path):
     plan=assets.validate_npr_decode_source(path)
     assert (plan['width'],plan['height'],plan['depth'],plan['format'],plan['mips'])==(4096,4096,1,20,11)
     assert plan['decoded_float_bytes']==256*1024*1024
+
+
+def test_complete_aligned_4k_bc5_is_bounded_before_decoding(tmp_path):
+    path=source(tmp_path/'fourk-bc5.vtex_c',fmt=21)
+    plan=assets.validate_npr_decode_source(path)
+    assert (plan['stored_size'],plan['format'],plan['mips'])==([4096,4096],21,11)
+    assert plan['decoded_float_bytes']==256*1024*1024
+
+
+@pytest.mark.parametrize('kwargs',[
+    {'width':4095}, {'mips':12}, {'data_tail':bytes(4)},
+    {'extra':(4,struct.pack('<III',1,8,0))},
+])
+def test_unqualified_large_bc5_layouts_stay_withheld(tmp_path,kwargs):
+    path=source(tmp_path/'unqualified-bc5.vtex_c',fmt=21,**kwargs)
+    with pytest.raises(ConversionError,match='BC5 source requires aligned'):
+        assets.validate_npr_decode_source(path)
+
+
+@pytest.mark.parametrize('delta',[-1,1])
+def test_large_bc5_requires_exact_complete_mip_bytes(tmp_path,delta):
+    path=source(tmp_path/'bc5-truncated.vtex_c',fmt=21)
+    with path.open('r+b') as stream:stream.truncate(path.stat().st_size+delta)
+    with pytest.raises(ConversionError,match='exact bounded'):
+        assets.validate_npr_decode_source(path)
 
 
 @pytest.mark.parametrize('mutation',[
@@ -50,6 +79,23 @@ def test_source_identity_failure_precedes_any_decoder_operation(tmp_path,monkeyp
         textures={k:dict(resource='a.vtex_c',source_sha256='original') for k in assets.PARAMETERS})])
     with pytest.raises(ConversionError,match='source changed'):
         assets.decode_npr_material_assets(plan,provider,decoder)
+    assert calls==[]
+
+
+def test_rejected_texture_reports_exact_resource_and_material_before_decode(tmp_path,monkeypatch):
+    path=source(tmp_path/'unsafe-bc5.vtex_c',fmt=21,mips=12)
+    calls=[]
+    monkeypatch.setattr(assets,'sha',lambda p:'verified')
+    monkeypatch.setattr(assets,'QUALIFIED_DECODER_PAIRS',{('verified','skia')})
+    decoder=SimpleNamespace(executable='decoder.exe',identity={'companions':{'libSkiaSharp.dll':'skia'}},
+                            _entry=lambda *a:calls.append('decode'))
+    provider=SimpleNamespace(resolve=lambda resource:SimpleNamespace(sha256='verified',local_path=path))
+    plan=dict(status='sources_resolved_not_decoded',materials=[dict(material='nurse.vmat_c',source_sha256='verified',
+        textures={name:dict(resource='nurse-mask.vtex_c',source_sha256='verified') for name in assets.PARAMETERS})])
+    with pytest.raises(ConversionError) as caught:
+        assets.decode_npr_material_assets(plan,provider,decoder)
+    assert caught.value.details=={'code':'npr_texture_decode_preflight_failed','material':'nurse.vmat_c',
+        'parameter':assets.PARAMETERS[0],'resource':'nurse-mask.vtex_c'}
     assert calls==[]
 
 

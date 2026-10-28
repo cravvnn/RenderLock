@@ -11,6 +11,7 @@ def setup(monkeypatch):
     document=dict(materials=[dict(extras=dict(vmat=vmat))],meshes=[dict(primitives=[dict(material=0),dict(material=0)])])
     source=dict(m_shaderName='pbr.vfx',m_intParams=[dict(m_name='F_USE_NPR_LIGHTING',m_nValue=1)],m_textureParams=[dict(m_name=k,m_pValue=v) for k,v in textures.items()])
     monkeypatch.setattr(assets,'dump_map_data',lambda *args:source)
+    monkeypatch.setattr(assets,'validate_npr_decode_source',lambda path:{'fixture':True})
     provider=SimpleNamespace(resolve=lambda resource:SimpleNamespace(sha256='hash:'+resource,local_path=resource))
     return document,source,provider
 
@@ -21,6 +22,17 @@ def test_source_plan_accounts_for_used_material_once(monkeypatch):
     assert result['status']=='sources_resolved_not_decoded'
     assert len(result['materials'])==1
     assert result['materials'][0]['textures']['g_tNprTransmissiveColor']['resource']=='textures/0.vtex_c'
+
+
+def test_source_plan_reports_bad_texture_before_animation_or_decoding(monkeypatch):
+    doc,source,provider=setup(monkeypatch)
+    def reject(path):
+        raise ConversionError('Extended NPR BC5 source requires aligned, uncompressed mip data after DATA')
+    monkeypatch.setattr(assets,'validate_npr_decode_source',reject)
+    with pytest.raises(ConversionError) as caught:
+        assets.plan_npr_material_assets(doc,provider,None)
+    assert caught.value.details==dict(code='npr_texture_decode_preflight_failed',
+        material='models/a.vmat_c',parameter='g_tNprTransmissiveColor',resource='textures/0.vtex_c')
 
 
 def test_generic_pbr_does_not_fabricate_npr_inputs_and_records_dynamic_gap(monkeypatch):

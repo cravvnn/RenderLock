@@ -142,6 +142,9 @@ def _problem(failure, log_text):
                              'Material expression evaluator module requires requalification',
                              'NPR shader requires requalification',
                              'NPR texture decoder requires requalification',
+                             'Extended NPR source requires exact bounded BC7 mip payload',
+                             'Extended NPR source requires exact bounded BC7 or BC5 mip payload',
+                             'Extended NPR BC5 source requires aligned, uncompressed mip data after DATA',
                              'Unsupported bounded NPR texture resource header',
                              'Combined NPR/unlit permutation requires qualification',
                              'Material family requires a qualified Source route')):

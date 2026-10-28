@@ -137,6 +137,9 @@ def test_equals_lighting_values_are_removed_without_losing_map_or_other_helpers(
     'Material expression evaluator module requires requalification',
     'NPR shader requires requalification',
     'NPR texture decoder requires requalification',
+    'Extended NPR source requires exact bounded BC7 mip payload',
+    'Extended NPR source requires exact bounded BC7 or BC5 mip payload',
+    'Extended NPR BC5 source requires aligned, uncompressed mip data after DATA',
     'Combined NPR/unlit permutation requires qualification',
 ])
 def test_npr_failure_keeps_source_probe_lighting_and_removes_dependent_shader(error):
