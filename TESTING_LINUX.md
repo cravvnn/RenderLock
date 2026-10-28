@@ -1,4 +1,4 @@
-# Linux test kit: 0.3.0b17.dev3
+# Linux test kit: 0.3.0b17.dev4
 
 This is **experimental source**, not a self-contained Linux binary release or an
 update to Windows b16. Extract it into a new folder beside your working copy.
@@ -13,7 +13,7 @@ explicit, so there is no copying of Windows binaries or silent replacement of
 the old installation. No dependency download or game process is required.
 
 ```sh
-cd /path/to/RenderLock-0.3.0b17.dev3-Linux-test-source
+cd /path/to/RenderLock-0.3.0b17.dev4-Linux-test-source
 OLD="$HOME/Applications/RenderLock"
 python3 tools/run_linux_test.py --tools-from "$OLD" -- --help
 ```
@@ -61,6 +61,16 @@ so those images are reported as declared limits and the result is `PARTIAL`
 (exit 2). Pass `--external-map-images` when you deliberately keep the map
 textures external and want the verifier to accept that instead of returning
 `PARTIAL`; character images are still required to be packed.
+
+## Nurse NPR follow-up
+
+After the strict Standard control succeeds, try a short Nurse range with NPR
+lighting and your already-qualified Linux helpers. The kit now accepts the
+aligned 4K BC5 tint-mask layout that previously triggered a BC7-only error.
+Keep explicit partial-lighting consent and the decoder identity checks. Report
+the support ZIP if another texture or the native decoder is refused; do not
+bypass the check. This fix was validated against the Windows decoder and a
+three-frame Windows scene, not a native Linux export.
 
 ## Map follow-up
 

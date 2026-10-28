@@ -18,11 +18,13 @@ PARAMETERS=('g_tNprTransmissiveColor','g_tTintMaskRimLightMask')
 
 
 def validate_npr_decode_source(path):
-    """Bound 2D output before decoding, including complete4K BC7 mip chains.
+    """Bound 2D output before decoding, including qualified 4K BC7/BC5 mips.
 
     The former16MiB whole-file cap excluded valid4096-square BC7 textures,
-    whose appended mip chain alone is about21.3MiB. Only that typed extension
-    is accepted; other formats retain the former source-file budget.
+    whose appended mip chain alone is about21.3MiB. ATI2N/BC5 has the same
+    16-byte blocks, but the bundled decoder requires each stored mip to be
+    4-texel aligned and the DATA block to end at the start of the pixel chain.
+    Other formats retain the former source-file budget.
     """
     size=Path(path).stat().st_size
     if not 16<=size<=32*1024*1024:raise ConversionError('NPR source texture exceeds decode bound')
@@ -54,6 +56,7 @@ def validate_npr_decode_source(path):
         raise ConversionError('NPR texture requires bounded2D DATA1 dimensions/mips')
     storage_width,storage_height=width,height
     extra_offset,extra_count=struct.unpack_from('<II',metadata,start+32)
+    extra_types=set()
     if extra_count:
         extra=start+32+extra_offset
         if extra_count>64 or extra<start+40 or extra+12*extra_count>start+data_length:
@@ -61,6 +64,7 @@ def validate_npr_decode_source(path):
         crop=None
         for index in range(extra_count):
             at=extra+12*index;kind,relative,length=struct.unpack_from('<III',metadata,at)
+            extra_types.add(kind)
             payload=at+4+relative
             if payload<extra+12*extra_count or payload+length>start+data_length:
                 raise ConversionError('NPR texture extra payload exceeds DATA')
@@ -80,8 +84,16 @@ def validate_npr_decode_source(path):
     if size>16*1024*1024:
         expected=sum(max(1,((storage_width>>level)+3)//4)*max(1,((storage_height>>level)+3)//4)*16
                      for level in range(mips))
-        if fmt!=20 or size!=metadata_size+expected:
-            raise ConversionError('Extended NPR source requires exact bounded BC7 mip payload')
+        if fmt not in (20,21) or size!=metadata_size+expected:
+            raise ConversionError('Extended NPR source requires exact bounded BC7 or BC5 mip payload')
+        # VRF 20.1 calculates ATI2N storage as width*height, without block
+        # rounding. Only use layouts where that is exactly the BC5 size at
+        # every mip. Compressed-mip tables and DATA with later blocks need
+        # separate qualification before relying on the decoder's offsets.
+        if fmt==21 and (start+data_length!=metadata_size or 4 in extra_types or
+                any((storage_width>>level)<4 or (storage_height>>level)<4 or
+                    (storage_width>>level)%4 or (storage_height>>level)%4 for level in range(mips))):
+            raise ConversionError('Extended NPR BC5 source requires aligned, uncompressed mip data after DATA')
     return dict(width=width,height=height,depth=depth,format=fmt,mips=mips,
                 stored_size=[storage_width,storage_height],source_bytes=size,decoded_float_bytes=decoded_bytes)
 
@@ -94,6 +106,18 @@ def png_dimensions(path):
     if not 1<=width<=4096 or not 1<=height<=4096:
         raise ConversionError('NPR decoded texture exceeds supported dimensions')
     return [width,height]
+
+
+def _checked_texture_layout(resolved, resource, material, parameter):
+    """Preserve the exact input identity when a texture is withheld."""
+    try:
+        return validate_npr_decode_source(resolved.local_path)
+    except ConversionError as exc:
+        details=getattr(exc,'details',None)
+        exc.details=dict(details) if isinstance(details,dict) else {}
+        exc.details.update(code='npr_texture_decode_preflight_failed',
+                           material=material,parameter=parameter,resource=resource)
+        raise
 
 
 def decode_npr_material_assets(plan,provider,decoder):
@@ -109,10 +133,10 @@ def decode_npr_material_assets(plan,provider,decoder):
             raise ConversionError('NPR material source changed since planning')
         expected=set(PARAMETERS) if material.get('route',NPR_ROUTE)==NPR_ROUTE else set()
         if set(material['textures'])!=expected:raise ConversionError('Incomplete typed material texture plan')
-        for row in material['textures'].values():
+        for parameter,row in material['textures'].items():
             resource=row['resource'];resolved=provider.resolve(resource)
             if resolved.sha256!=row['source_sha256']:raise ConversionError('NPR texture source changed since planning')
-            layouts[resource]=validate_npr_decode_source(resolved.local_path)
+            layouts[resource]=_checked_texture_layout(resolved,resource,material['material'],parameter)
             sources[resource]=resolved
     decoded={}
     for resource,resolved in sorted(sources.items()):
@@ -190,6 +214,7 @@ def plan_npr_material_assets(document,provider,decoder):
             if not isinstance(converted,str) or safe_resource_path(compiled(converted))!=texture:
                 raise ConversionError('Converted texture identity differs: '+parameter)
             payload=provider.resolve(texture)
+            _checked_texture_layout(payload,texture,resource,parameter)
             selected[parameter]=dict(resource=texture,source_sha256=payload.sha256,path=str(payload.local_path))
         row=dict(material=resource,material_index=index,source_sha256=resolved.sha256,
                  textures=selected,authored=source,**contract)

@@ -3,7 +3,7 @@
 [All user guides](docs/README.md) · [Building](docs/BUILDING.md)
 
 Linux support is being developed separately from the Windows portable release.
-The experimental **0.3.0b17.dev3 source test kit** is described in
+The experimental **0.3.0b17.dev4 source test kit** is described in
 [TESTING_LINUX.md](TESTING_LINUX.md). It reuses a tester's existing native tools;
 there is no self-contained supported Linux binary release or Linux updater yet. Do not treat
 the Windows ZIP as a native Linux installer.
@@ -16,6 +16,9 @@ The supplied reports and renders are not a replacement for decoder qualification
 
 ## Changes on this branch
 
+- NPR input preflight accepts complete aligned 4K BC5 masks used by Nurse and
+  reports unsupported texture identities earlier. Linux decoder/native pairs
+  still require qualification; this path has not been tested on native Linux.
 - Helper-kit copies and cache identities include `.so`, numbered `.so` files and
   `.dylib` companions. Changing a Linux native decoder invalidates its cache key.
   Companions resolving outside the chosen helper directory are refused.

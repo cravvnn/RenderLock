@@ -1,3 +1,11 @@
+# 0.3.0b17.dev4 - NPR BC5 source test
+
+- Accept complete, aligned 4K ATI2N/BC5 NPR masks when the bundled decoder's
+  mip-offset conditions are met. Unsupported layouts remain rejected.
+- Check selected NPR texture layouts earlier, preserve the offending material
+  and texture in diagnostics, and offer an explicit retry without NPR for
+  recognized texture-layout failures. Native Linux remains unverified.
+
 # 0.3.0b17.dev3 - Map scene settings and camera checks
 
 - Raise EEVEE's shadow pool to 2048 MiB when the downloaded map is appended. About 6,500 map meshes overflow the 512 MiB default and Blender silently drops shadows; the setting is only widened, an explicitly larger value is kept, and the change is recorded and warned about because it trades GPU memory for correct shadows.
