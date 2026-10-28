@@ -1329,6 +1329,8 @@ def _build_map(app, page):
                      info='Download and extract the separate map once. RenderLock appends and aligns it; texture relinking and cutting stay manual.')
     _check(app, body, 'Include downloaded map', app.values['external_map_enabled'])
     _path_row(app, body, 'Map .blend', 'external_map', app._browse_external_map)
+    _check(app, body, 'Simplified map in viewport', app.values['map_viewport_proxy'],
+           info='When the current downloaded map is included, build an approximate, untextured map for framing. The full map stays in the file and renders normally, so this does not reduce its loading memory. It adds export time and may omit small details.')
     buttons = tk.Frame(body, background=gui_theme.CARD)
     buttons.grid(row=_next_row(body), column=0, columnspan=3, sticky='w', pady=_pad((0, ROW_GAP)))
     RoundedButton(buttons, text='Download map', style='quiet', command=app._open_map_link,

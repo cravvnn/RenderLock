@@ -15,7 +15,9 @@ Blender appending; they do not gain support by changing a saved library path.
 1. Open **Map** and select **Download map**. Extract the ZIP once and retain its `Textures` folder.
 2. Choose the extracted `RenderLockMap.blend`, then enable **Include downloaded map**. Use Blender 5.2 or newer; Blender 5.2.1 LTS is the tested installation.
 3. Export the selected characters and range as usual. The map does not require enabling Source lighting, NPR or Elagrimm. Those optional looks still need their own installed lighting inputs and explicit lighting consent.
-4. The final `.blend` has two master collections: `RenderLockChar` for generated characters, cameras, lights and effects, and `RenderLockMap` for the appended map. Character poses, camera motion and existing visibility settings are retained.
+4. The final `.blend` has master collections `RenderLockChar` for generated characters, cameras, lights and effects, and `RenderLockMap` for the appended map. Character poses, camera motion and existing visibility settings are retained.
+
+To make the viewport lighter, optionally enable **Simplified map in viewport** on Map before exporting. RenderLock creates an untextured, approximate `RenderLockProxy` collection, disables the full map in viewports and keeps the proxy out of renders. The original `RenderLockMap` is still used for the render, including its shadows and reflections. This option currently supports the current downloaded Midtown map. It adds preparation time and makes the scene file larger: the full map is still loaded, so this is not a fix for running out of memory while opening the file. Small details and surfaces may differ in the proxy; check framing against the full map before a final render.
 
 The map picker remembers its location; disabling inclusion retains that location. Keep the downloaded library unchanged. Edit and cut the final exported scene instead. Requested map identity, hierarchy and placement are checked before the scene is published. A recognized map failure can offer **Continue without downloaded map**; it does not enable partial character animation or retry automatically.
 
@@ -30,6 +32,8 @@ The map picker remembers its location; disabling inclusion retains that location
 Appending can spend several minutes making the full map local. The Linux test branch announces this step and reports its duration separately; it does not claim an append speedup. Keep disk space for both the downloaded library and the larger combined scene, plus temporary files and backups. A short replay does not reduce full-map loading cost.
 
 The export raises EEVEE's shadow pool to 2048 MiB when a map is present, because the default 512 MiB overflows across thousands of map meshes and Blender drops shadows without reporting it. It also hides the review grid and adds a `RenderLockChar` view layer that excludes `RenderLockMap` for characters-only work. That exclusion is a viewport/render convenience, not a memory fix: excluded map data stays resident. Only keeping the map in a separate file lowers character-scene memory.
+
+If a scene has `RenderLockProxy`, switch back to the full map while editing or cutting it: show the monitor restriction toggle in the Outliner's Filter menu, then click the monitor beside `RenderLockMap` to show the full map and the monitor beside `RenderLockProxy` to hide the proxy. The proxy is a snapshot and does not automatically follow cuts or other edits to the map. After cutting, remove the outdated proxy and work with the full map. A new export creates a proxy for the original downloaded map, before any manual cuts. The proxy's camera icon remains disabled so it does not render.
 
 ## Alignment and scope
 
@@ -48,6 +52,8 @@ Appending makes the scene larger and requires Blender to load the full map. Cutt
 ## CLI
 
 Add `--external-map "path/to/RenderLockMap.blend"` to the normal `agr convert` command. Installed map geometry is omitted when using this option, while requested installed character-lighting data can still be prepared. The external map is reported separately in the coverage report. The reusable `.agrscene` does not embed this large library; choose it again when rebuilding the scene.
+
+Add `--map-viewport-proxy` alongside `--external-map` to request the simplified viewport collection. The coverage report records the proxy separately from the full map.
 
 ## Other map workflows
 

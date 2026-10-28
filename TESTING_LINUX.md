@@ -1,4 +1,4 @@
-# Linux test kit: 0.3.0b17.dev4
+# Linux test kit: 0.3.0b17.dev5
 
 This is **experimental source**, not a self-contained Linux binary release or an
 update to Windows b16. Extract it into a new folder beside your working copy.
@@ -13,7 +13,7 @@ explicit, so there is no copying of Windows binaries or silent replacement of
 the old installation. No dependency download or game process is required.
 
 ```sh
-cd /path/to/RenderLock-0.3.0b17.dev4-Linux-test-source
+cd /path/to/RenderLock-0.3.0b17.dev5-Linux-test-source
 OLD="$HOME/Applications/RenderLock"
 python3 tools/run_linux_test.py --tools-from "$OLD" -- --help
 ```
@@ -78,6 +78,16 @@ Repeat the short control with `--external-map /path/to/RenderLockMap.blend` and 
 different output filename. For a later timing comparison, reuse the supplied
 321-frame range only after the short control succeeds. Preserve both reports;
 compare map counts/alignment, character poses and separate map timings.
+
+After that control succeeds, repeat it with `--map-viewport-proxy` and a new
+output filename. Check that `RenderLockProxy` is visible in the normal viewport,
+`RenderLockMap` is disabled there, and the full map remains visible in a render.
+The `RenderLockChar` view layer should exclude both map collections. The proxy
+is approximate: compare doorways and other framing points with the full map,
+and check a representative render and its shadows. If possible, compare viewport
+responsiveness and GPU memory at the same camera and shading mode. This keeps
+the full map in the file, adds export time and file size, and does not free the
+map's file-open memory. Cuts to the full map do not update the proxy.
 
 - The log now announces loading and localization **before** those long steps.
   Localization can still take several minutes; this kit claims no speedup.

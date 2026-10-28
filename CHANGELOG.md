@@ -1,3 +1,8 @@
+# 0.3.0b17.dev5 - Experimental simplified map viewport
+
+- Add an opt-in, untextured viewport approximation of the current downloaded Midtown map. The full map stays in the file for renders and shadows, so this does not remove its file-open memory. Manual cuts do not update the proxy. Windows Blender checks passed; native Linux still needs a retest.
+- Preserve the characters-only view layer by excluding the proxy there as well as the full map. A recognized proxy failure offers an explicit retry with the full map.
+
 # 0.3.0b17.dev4 - NPR BC5 source test
 
 - Accept complete, aligned 4K ATI2N/BC5 NPR masks when the bundled decoder's

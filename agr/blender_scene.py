@@ -741,7 +741,8 @@ def _review_setup(scene, positions):
 
 
 def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime=None, shot_hero=None,
-                character_shader=None, character_only=False, allow_partial_lighting=False, external_map=None):
+                character_shader=None, character_only=False, allow_partial_lighting=False, external_map=None,
+                map_viewport_proxy=False):
     _init_blender()
     started = time.monotonic()
     timings = []
@@ -1038,6 +1039,12 @@ def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime
             report['warnings'].append(
                 'EEVEE shadow pool raised to 2048 MiB for the downloaded map so map shadows are not '
                 'silently dropped; lower it in Render settings if GPU memory is tight.')
+    if map_viewport_proxy:
+        if external_map is None:
+            raise ValueError('Viewport proxy: choose the downloaded map before requesting a simplified viewport.')
+        from agr.blender_map_proxy import build_map_proxy
+        report['map_proxy'] = build_map_proxy(scene, report['external_map'])
+        mark('map_proxy')
     report["timings"] = timings
     for marker in data.get("markers", []):
         tick = marker.get("tick")
@@ -1099,10 +1106,12 @@ def main(argv=None):
     parser.add_argument('--character-shader',type=Path)
     parser.add_argument('--character-only',action='store_true')
     parser.add_argument('--external-map',type=Path)
+    parser.add_argument('--map-viewport-proxy',action='store_true')
     args = parser.parse_args(argv)
     attach_blender_log(args.output)
     return build_scene(args.segment, args.assets, args.output, args.fps, args.partial,args.particle_runtime,
-                       args.shot_hero,args.character_shader,args.character_only,args.partial_lighting,args.external_map)
+                       args.shot_hero,args.character_shader,args.character_only,args.partial_lighting,args.external_map,
+                       args.map_viewport_proxy)
 
 
 if __name__ == "__main__":

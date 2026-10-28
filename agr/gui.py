@@ -241,6 +241,8 @@ def build_convert_command(values: dict[str, str], *, partial: bool = False,
         if Path(map_path).resolve() == Path(output).resolve():
             raise ValueError('Choose an output different from the downloaded map library.')
         command += ['--external-map', map_path]
+        if values.get('map_viewport_proxy', '0') == '1':
+            command += ['--map-viewport-proxy']
     if values.get('source_hero_lighting','0') == '1' or character_lighting:
         if values.get('source_lighting','0') != '1':raise ValueError('Hero lighting requires Partial static diffuse lighting.')
         from .source_hero_lighting import validate_hero_decoder_paths
@@ -337,7 +339,7 @@ class AGRApp:
             "output": "", "start": "", "end": "", "fps": "64", "heroes": "", "heroes_empty": "0",
             "asset_source": "installed", "game_install": "", "source2viewer": "", "asset_cache": "",
             "map_enabled": "0", "map_name": "dl_midtown", "map_margin": "26",
-            "external_map_enabled": "0", "external_map": "",
+            "external_map_enabled": "0", "external_map": "", "map_viewport_proxy": "0",
             "source_lighting": "0", "world_region_probe": "", "lighting_dotnet": "",
             "source_hero_lighting": "0", "source_npr_lighting": "0", "probe_atlas_decoder": "", "cubemap_decoder": "",
             "character_shader": "", "character_only": "0",
