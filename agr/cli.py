@@ -167,7 +167,8 @@ def animation_mode(data, motion_only=False, saved_package=False, partial=False):
 
 
 def read_blender_completion(path, *, segment, output, data, fps, partial=False,
-                            requested_stages=(), shot_hero=None, partial_cloth=False, external_map=None):
+                            requested_stages=(), shot_hero=None, partial_cloth=False, external_map=None,
+                            map_viewport_proxy=False):
     """A scene file alone cannot establish which stages Blender completed."""
     try:
         report = json.loads(Path(path).read_text(encoding='utf-8'))
@@ -260,6 +261,9 @@ def read_blender_completion(path, *, segment, output, data, fps, partial=False,
         validate_map_completion(report.get('external_map'), external_map,
                                 data.get('metadata', {}).get('coordinate_system'))
         stages.add('external_map')
+    if map_viewport_proxy:
+        from .external_map import validate_map_proxy_completion
+        validate_map_proxy_completion(report.get('map_proxy'), report.get('external_map'))
     for key,stage in [('hero_lighting','hero_lighting'),('npr_runtime','npr_lighting'),('effects','effects')]:
         if data.get(key) is not None:stages.add(stage)
     allowed={'hero_lighting':{'partial'},'npr_lighting':{'partial'},'character_shader':{'partial'},
@@ -489,6 +493,12 @@ def _convert(args, diagnostics):
         if Path(external_map['path']) == output:
             raise ValueError('External map: output must differ from the downloaded map library.')
         args.character_only = True  # Read installed lighting if requested; do not duplicate map geometry.
+    if getattr(args, 'map_viewport_proxy', False):
+        from .external_map import MAP_BLEND_SHA256
+        if external_map is None:
+            raise ValueError('Viewport proxy: choose the downloaded map before requesting a simplified viewport.')
+        if external_map['sha256'] != MAP_BLEND_SHA256:
+            raise ValueError('Viewport proxy: only the current downloaded Midtown map supports this option.')
     if args.fps <= 0 or args.fps > 240:
         raise ValueError("Export FPS must be between 1 and 240.")
     if args.start_tick is not None and args.start_tick < 0:
@@ -753,6 +763,8 @@ def _convert(args, diagnostics):
             command += ['--character-shader',str(character_shader)]
         if external_map is not None:
             command += ['--external-map', external_map['path']]
+        if getattr(args, 'map_viewport_proxy', False):
+            command += ['--map-viewport-proxy']
         if getattr(args,'character_only',False):
             command += ['--character-only']
         if args.partial:
@@ -786,6 +798,7 @@ def _convert(args, diagnostics):
             segment=segment, output=scene_output, data=generated, fps=args.fps, partial=args.partial,
             requested_stages=requested_stages,shot_hero=getattr(args,'shot_hero',None),
             partial_cloth=bool(getattr(args,'partial_cloth',False)),
+            **({'map_viewport_proxy': True} if getattr(args, 'map_viewport_proxy', False) else {}),
             **({'external_map': external_map} if external_map is not None else {}))
         save_scene(generated, segment)
         log("[4/4] Saving the scene package and coverage report...")
@@ -822,6 +835,8 @@ def _convert(args, diagnostics):
             report['external_map'] = blender_report['external_map']
             report['map'] = dict(blender_report['external_map'], source='downloaded_library',
                                  prepared_lighting_assets=report['map'])
+        if getattr(args, 'map_viewport_proxy', False):
+            report['map_proxy'] = blender_report['map_proxy']
         report["secondary_motion"] = merge_secondary_motion_coverage(
             report["scene_extras"].get("secondary_motion", {"status": "not_requested"}),
             report.get("blender", {}).get("entities", []))
@@ -895,6 +910,7 @@ def parser():
     cv.add_argument('--character-shader',type=Path,help='Qualified user-supplied Elagrimm BLENDER-Deadlock-Shader.blend; partial Eevee Source-lighting bridge and artistic rim; requires --source-npr-lighting')
     cv.add_argument('--character-only',action='store_true',help='Omit map geometry from the Blender scene while retaining prepared lighting assets and coordinates for a separate map')
     cv.add_argument('--external-map',type=Path,help='Append the supported downloaded RenderLockMap.blend; texture relinking and cutting remain manual, independently of Source lighting')
+    cv.add_argument('--map-viewport-proxy',action='store_true',help='With the current downloaded map, add an approximate untextured viewport proxy while keeping the full map for rendering')
     cv.add_argument('--source-hero-lighting',action='store_true',help='Experimental partial hero probes/reflections; unit intensity/tint and viewer normalization assumptions; requires --source-lighting')
     cv.add_argument('--probe-atlas-decoder',type=Path,help='Qualified ProbeAtlasDecode.dll for --source-hero-lighting')
     cv.add_argument('--cubemap-decoder',type=Path,help='Qualified CubemapDecode.dll for --source-hero-lighting')

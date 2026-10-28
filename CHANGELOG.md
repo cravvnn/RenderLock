@@ -1,3 +1,8 @@
+# 0.3.0b20 - Optional simplified map viewport
+
+- Add an opt-in untextured viewport proxy for the currently supported downloaded Midtown map. The full map remains unchanged for rendering, shadows and reflections. The proxy uses 25 cm spatial clustering, combines source meshes by map cell and omits collapsed faces; it is an approximation for framing, not a replacement for detailed geometry.
+- Keep the full map inside the scene: the proxy adds export time and file size and does not eliminate the map's file-open memory. Manual map edits and cuts do not update an existing proxy. If proxy preparation fails, an explicitly chosen retry retains the full map and the other export settings.
+
 # 0.3.0b19 - Nurse NPR texture compatibility
 
 - Accept complete 4K ATI2N/BC5 NPR mask textures when every stored mip is aligned for the bundled decoder and the exact uncompressed payload follows DATA. Preserve source identity, 2D, dimension, mip, decoded-memory and output checks; unqualified layouts remain unavailable.

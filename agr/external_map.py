@@ -91,3 +91,23 @@ def validate_map_completion(result, library, coordinates=None):
     if (matrix.shape != (4, 4) or not np.isfinite(matrix).all()
             or not np.allclose(matrix, map_coordinate_matrix(coordinates), rtol=0, atol=1e-7)):
         raise RuntimeError('External map: Blender completion has a different map coordinate transform; the scene was not published.')
+
+
+def validate_map_proxy_completion(result, map_result):
+    """Do not silently publish a requested proxy that Blender did not finish."""
+    from .blender_map_proxy import PROXY_ALGORITHM, PROXY_COLLECTION
+    expected = dict(status='ready', collection=PROXY_COLLECTION, algorithm=PROXY_ALGORITHM,
+                    source_map_sha256=MAP_BLEND_SHA256, source_meshes=MAP_MESHES,
+                    source_vertices=MAP_VERTICES, full_map_hidden_in_viewport=True,
+                    proxy_hidden_in_render=True)
+    if (not isinstance(map_result, dict) or map_result.get('status') != 'appended'
+            or map_result.get('library_sha256') != MAP_BLEND_SHA256
+            or not isinstance(result, dict) or any(result.get(k) != v for k, v in expected.items())):
+        raise RuntimeError('Viewport proxy: Blender completion lacks the requested map proxy; the scene was not published.')
+    if result['full_map_hidden_in_viewport'] is not True or result['proxy_hidden_in_render'] is not True:
+        raise RuntimeError('Viewport proxy: Blender completion has invalid viewport or render visibility; the scene was not published.')
+    counts = ('source_faces', 'proxy_meshes', 'proxy_vertices', 'proxy_faces')
+    if (any(type(result.get(key)) is not int or result[key] <= 0 for key in counts)
+            or result['proxy_meshes'] > MAP_MESHES or result['proxy_vertices'] > MAP_VERTICES
+            or result['proxy_faces'] > result['source_faces']):
+        raise RuntimeError('Viewport proxy: Blender completion has invalid proxy geometry counts; the scene was not published.')
