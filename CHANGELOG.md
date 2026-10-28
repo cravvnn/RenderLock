@@ -1,3 +1,8 @@
+# 0.3.0b21 - Faster application startup
+
+- Validate Python syntax while packaging and record the exact source-hash inventory and Python interpreter. Startup still checks every manifest-owned file's size and SHA-256 before importing the application, but skips redundant compilation when the packaged qualification matches. Missing, changed or interpreter-mismatched qualifications retain the full syntax-check fallback. Verify up to four files concurrently and read small files only once.
+- Log the start and duration of portable-file verification and desktop construction so slow starts can be separated from conversion work. No settings, theme, assets or export validation are removed.
+
 # 0.3.0b20 - Map textures and optional simplified viewport
 
 - Connect all 1,556 referenced images from the current downloaded map automatically, verifying the unchanged map manifest and supplied PNG files before expensive replay work. Missing or changed files stop the requested map instead of publishing an apparently successful pink map. The images remain external; retain the extracted folder or explicitly pack resources in Blender. Previously qualified older libraries keep their manual texture workflow.

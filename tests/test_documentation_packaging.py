@@ -7,6 +7,19 @@ import pytest
 from agr.updater import owned_name
 
 
+def test_syntax_record_requires_compilable_source_bytes(tmp_path,packager):
+    from portable_launcher import python_syntax_record
+    root=tmp_path/'app';root.mkdir()
+    source=root/'module.py';source.write_bytes(b'def broken(:\n')
+    with pytest.raises(SyntaxError):
+        packager.write_manifest(root,'fixture','source')
+    assert not (root/'release_manifest.json').exists()
+    source.write_bytes(b'value = 1\n')
+    packager.write_manifest(root,'fixture','source')
+    manifest=json.loads((root/'release_manifest.json').read_text())
+    assert manifest['python_syntax']==python_syntax_record(manifest['files'])
+
+
 @pytest.fixture
 def packager(monkeypatch):
     folder = Path(__file__).parents[1] / 'tools'

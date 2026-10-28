@@ -6,6 +6,7 @@ output directory for each candidate; existing candidates are never overwritten.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.metadata as metadata
 import json
 import os
@@ -197,12 +198,20 @@ def stage_runtime(output):
 
 
 def write_manifest(root, version, kind, dependencies=None):
+    from portable_launcher import python_syntax_record
     items = []
     for path in sorted(root.rglob("*")):
         if path.is_file() and path.name != "release_manifest.json":
-            items.append(dict(path=path.relative_to(root).as_posix(), bytes=path.stat().st_size, sha256=digest(path)))
+            if path.suffix == '.py':
+                data = path.read_bytes()
+                compile(data, path.relative_to(root).as_posix(), 'exec', dont_inherit=True)
+                size, checksum = len(data), hashlib.sha256(data).hexdigest()
+            else:
+                size, checksum = path.stat().st_size, digest(path)
+            items.append(dict(path=path.relative_to(root).as_posix(), bytes=size, sha256=checksum))
     manifest = dict(version=version, kind=kind, profile="character-beta", game_assets_included=False,
                     files=items)
+    manifest['python_syntax'] = python_syntax_record(items)
     if dependencies is not None:
         manifest["runtime_dependencies"] = dependencies
     (root / "release_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")

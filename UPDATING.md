@@ -45,6 +45,13 @@ launch using an independent copy of the Python runtime. Keep the app's
 and journal. The previous update workspace is replaced when downloading a
 different update. An update cannot repair an incompatible game/replay skeleton.
 
+From b21, the packager also records successful Python syntax checks against the
+exact source hashes and interpreter. Every launch still reads and verifies every
+managed file. Matching records avoid compiling the same sources again; older or
+mismatched records fall back to startup syntax checks. No timestamp-only cache or
+user option disables file verification. The startup log identifies file-check
+and desktop-setup stages and their durations.
+
 ## Publishing a compatible update
 
 Publish the normal Windows ZIP as a release asset, with this exact convention

@@ -13,6 +13,7 @@ import signal
 import subprocess
 import sys
 import threading
+import time
 import traceback
 import tkinter as tk
 from tkinter import filedialog, ttk
@@ -1033,6 +1034,8 @@ class AGRApp:
 
 
 def main() -> int:
+    started = time.perf_counter()
+    print('RenderLock startup: building desktop window...', flush=True)
     from .console import configure_stdio
     configure_stdio()
     gui_theme.enable_dpi_awareness()  # before the first window, so text is sharp on scaled displays
@@ -1048,7 +1051,7 @@ def main() -> int:
         print(detail, file=sys.stderr, flush=True)
         app._append_log("AGR window error:\n" + detail)
     root.report_callback_exception = report_callback_exception
-    print("AGR window opened", flush=True)
+    print(f"AGR window opened - desktop setup {time.perf_counter()-started:.3f}s", flush=True)
     root.mainloop()
     return 0
 
