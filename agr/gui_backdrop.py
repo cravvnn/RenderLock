@@ -377,7 +377,7 @@ class Backdrop:
         return self.root
 
     def advance(self):
-        if self.frozen:
+        if self.frozen or not gui_theme.motion_enabled():
             return
         self.pose = self._rng.choice([i for i in range(POSES) if i != self.pose])
         self.step = (self.step + 1) % len(PHOTO_CYCLE)
@@ -387,6 +387,15 @@ class Backdrop:
                 self._draw_vectors(surface)
             else:
                 surface.dirty = True
+
+    def motion_changed(self):
+        """Discard unused opacity frames and repaint once in the new mode."""
+        if self._render_job is not None:
+            self.root.after_cancel(self._render_job)
+            self._render_job = None
+        self._queue = []
+        if not self.frozen:
+            self._schedule_render(0)
 
     def set_frozen(self, frozen, reason="drag"):
         """Hold the background still while the window is dragged or its size is settling; catch up

@@ -1,3 +1,8 @@
+# 0.3.0b17.dev7 - Disable UI animations
+
+- Add Setup > Accessibility > Disable UI animations. Apply and save it immediately; read it before any animation starts in the application or standalone updater/recovery window. Keep the existing palette, artwork and static interaction feedback.
+- Cancel background, sticker, portrait and updater-paper animation timers. Replace moving indeterminate progress with a static busy line while preserving status text and job polling. Re-enabling motion resumes active indicators only; the environment switch and Windows reduced-motion setting still take precedence.
+
 # 0.3.0b17.dev6 - Explicit effects diagnostics and recorded-backend retry
 
 - Add `--partial-effects` for explicitly incomplete simulation with the documented control-point scalar-expression capability warning. Retain original diagnostics and identify the omitted operator; preserve replay, seed, lifecycle, control-point, timing and numeric validation. Saved packages cannot grant consent. Prepare recorded layers separately without pruning simulator inputs; if simulation produces zero objects, use the available recorded layers instead of combining both backends. If neither backend renders, this option may save characters with effects explicitly unavailable. It does not implement the missing operator or establish full Paradox effect fidelity.

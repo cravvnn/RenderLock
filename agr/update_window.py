@@ -18,7 +18,7 @@ import zlib
 
 from . import gui_assets
 from . import gui_theme as theme
-from .gui_widgets import BOIL_INTERVAL_MS, COPY_SIZE, CopyButton, copy_text, draw_rounded, rgba_image
+from .gui_widgets import BOIL_INTERVAL_MS, COPY_SIZE, CopyButton, copy_text, draw_rounded, rgba_image, _ProgressMotion
 
 # Layout from the Figma pop-ups, in design px: window client size and where the paper card sits.
 LAYOUT = {"progress": ((560, 270), (14.7, 16.5)), "details": ((560, 369), (14.5, 19.0))}
@@ -244,7 +244,7 @@ class _CanvasText:
         return self.cget(key)
 
 
-class _PaperProgress:
+class _PaperProgress(_ProgressMotion):
     """The thin indeterminate progress line (ProgressLine's motion and ``start``/``stop``), drawn on
     the window canvas so the paper shows around the moving segment."""
 
@@ -260,39 +260,33 @@ class _PaperProgress:
         self._pos = 0.0
         self._interval = 12
         self._last = None
+        self._init_motion(canvas)
 
     def place(self, x, y):
         self._x, self._y = x, y
+        self._progress_resized()
 
-    def start(self, interval=12):
-        self._interval = max(8, int(interval))
-        if self._job is None:
-            self._last = None
-            self._tick()
-
-    def stop(self):
-        if self._job is not None:
-            self._canvas.after_cancel(self._job)
-            self._job = None
+    def _clear_progress(self):
         try:
             self._canvas.delete("progress")
         except tk.TclError:  # the window is already being destroyed
             pass
 
-    grid_remove = stop  # it used to be a gridded widget
+    grid_remove = _ProgressMotion.stop  # it used to be a gridded widget
 
-    def _tick(self):
+    def _draw_progress(self, animated):
         now = time.perf_counter()
         steps = 1.0 if self._last is None else min(4.0, (now - self._last) * 1000.0 / self.TICK_MS)
         self._last = now
         span = max(theme.px(60), self._width * 0.22)
-        self._pos = (self._pos + self._width / 140.0 * steps) % (self._width + span)
+        if animated:
+            self._pos = (self._pos + self._width / 140.0 * steps) % (self._width + span)
         self._canvas.delete("progress")
-        left, right = max(0, self._pos - span), min(self._width, self._pos)
+        left, right = ((max(0, self._pos - span), min(self._width, self._pos))
+                       if animated else (0, self._width))
         if right > left:
             self._canvas.create_rectangle(self._x + left, self._y, self._x + right, self._y + self._height,
                                           fill=theme.ACCENT, width=0, tags="progress")
-        self._job = self._canvas.after(self._interval, self._tick)
 
 
 class UpdateWindow:
@@ -344,9 +338,19 @@ class UpdateWindow:
         self.details = self.copy_button = None
         self._place()
         self.progress.start()
+        theme.watch_motion(self)
+        self.motion_changed()
+
+    def motion_changed(self):
+        self._queue = []
+        for name in ("_boil_job", "_build_job"):
+            job = getattr(self, name)
+            if job is not None:
+                self.canvas.after_cancel(job)
+                setattr(self, name, None)
         if theme.motion_enabled() and self._sources.get(self._mode) is not None:
             self._build_poses()
-            self._boil_job = c.after(PAPER_BEAT_MS, self._boil)
+            self._boil_job = self.canvas.after(PAPER_BEAT_MS, self._boil)
 
     def _paper_image(self):
         """The paper for the current mode and pose (the pose at rest is built right away)."""
@@ -386,6 +390,9 @@ class UpdateWindow:
 
     def _boil(self):
         """Snap the paper to another ready pose (never the same one twice in a row)."""
+        self._boil_job = None
+        if not theme.motion_enabled():
+            return
         ready = [i for i in range(len(PAPER_POSES)) if i != self._pose and (self._mode, i) in self._papers]
         if ready:
             self._pose = self._rng.choice(ready)

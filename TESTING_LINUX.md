@@ -1,4 +1,4 @@
-# Linux test kit: 0.3.0b17.dev6
+# Linux test kit: 0.3.0b17.dev7
 
 This is **experimental source**, not a self-contained Linux binary release or an
 update to Windows b16. Extract it into a new folder beside your working copy.
@@ -13,7 +13,7 @@ explicit, so there is no copying of Windows binaries or silent replacement of
 the old installation. No dependency download or game process is required.
 
 ```sh
-cd /path/to/RenderLock-0.3.0b17.dev6-Linux-test-source
+cd /path/to/RenderLock-0.3.0b17.dev7-Linux-test-source
 OLD="$HOME/Applications/RenderLock"
 python3 tools/run_linux_test.py --tools-from "$OLD" -- --help
 ```
@@ -181,3 +181,11 @@ Do not send private credentials or the entire map/replay unless requested.
 These changes were checked with focused Python tests and small background
 Blender fixtures on Windows. Native Linux export, Wayland UI, full-map memory,
 EEVEE behavior and fresh-machine setup still need this test round.
+
+## UI motion check (dev7)
+
+Open Setup > Accessibility and enable Disable UI animations. Backgrounds,
+stickers and portraits should stay still; an active job keeps a static progress
+line and live status messages. Toggle it during a job, then close/reopen to check
+the saved preference. Disabling the UI animation must not change export options
+or the exported animation. Native Linux behavior still needs a retest.

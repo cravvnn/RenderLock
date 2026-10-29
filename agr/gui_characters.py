@@ -275,6 +275,7 @@ class HeroGroup(tk.Canvas):
         self._cells = []
         self._hover = None
         self._pressed = None
+        self._press_job = None
         self._focus = 0
         self._focused = False
         self._busy = False
@@ -413,17 +414,29 @@ class HeroGroup(tk.Canvas):
 
     def _press(self, index):
         """Tactile feedback: the icon dips for a moment and springs back."""
+        if not gui_theme.motion_enabled():
+            return
+        if self._press_job is not None:
+            self.after_cancel(self._press_job)
         self._pressed = index
         self.refresh()
 
         def release():
+            self._press_job = None
             try:
                 if self._pressed == index and self.winfo_exists():
                     self._pressed = None
                     self.refresh()
             except tk.TclError:
                 pass  # the tray was replaced (a new recording) in the meantime
-        self.after(PRESS_MS, release)
+        self._press_job = self.after(PRESS_MS, release)
+
+    def motion_changed(self):
+        if not gui_theme.motion_enabled() and self._press_job is not None:
+            self.after_cancel(self._press_job)
+            self._press_job = None
+            self._pressed = None
+            self.refresh()
 
     def _step(self, step):
         if self._heroes:
@@ -478,6 +491,9 @@ class HeroGroup(tk.Canvas):
 
     def _destroyed(self, event):
         if event.widget is self:
+            if self._press_job is not None:
+                self.after_cancel(self._press_job)
+                self._press_job = None
             self._close_bubble()
             if self in BoilClock.members:  # the clock only prunes members while it ticks (motion on)
                 BoilClock.members.remove(self)

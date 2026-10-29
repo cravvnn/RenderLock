@@ -1205,7 +1205,59 @@ class CanvasDot:
     config = configure
 
 
-class CanvasProgress:
+class _ProgressMotion:
+    """One timer per active indicator; reduced motion draws a static busy line."""
+
+    def _init_motion(self, widget):
+        self._motion_widget = widget
+        self._running = False
+        gui_theme.watch_motion(self)
+        widget.bind("<Destroy>", self._motion_destroyed, add="+")
+
+    def _motion_destroyed(self, event):
+        if event.widget is self._motion_widget:
+            try:
+                self.stop()
+            except tk.TclError:
+                pass
+
+    def _cancel_tick(self):
+        if self._job is not None:
+            self._motion_widget.after_cancel(self._job)
+            self._job = None
+
+    def start(self, interval=12):
+        self._interval = max(8, int(interval))
+        if not self._running:
+            self._running = True
+            self.motion_changed()
+
+    def stop(self):
+        self._running = False
+        self._cancel_tick()
+        self._clear_progress()
+
+    def motion_changed(self):
+        self._cancel_tick()
+        self._last = None
+        if self._running:
+            self._tick()
+
+    def _tick(self):
+        self._job = None
+        if not self._running:
+            return
+        animated = gui_theme.motion_enabled()
+        self._draw_progress(animated)
+        if animated:
+            self._job = self._motion_widget.after(self._interval, self._tick)
+
+    def _progress_resized(self, _event=None):
+        if self._running and not gui_theme.motion_enabled():
+            self._draw_progress(False)
+
+
+class CanvasProgress(_ProgressMotion):
     """Thin indeterminate progress line with the ttk ``start``/``stop`` and grid show/hide API.
 
     A short accent segment glides across the slot set by ``place``. Showing or hiding it never
@@ -1222,36 +1274,32 @@ class CanvasProgress:
         self._visible = False
         self._box = (0, 0, 1)
         self.item = canvas.create_rectangle(0, 0, 0, 0, fill=self._theme["ACCENT"], width=0, state="hidden")
+        self._init_motion(canvas)
 
     def place(self, x0, x1, y):
         self._box = (x0, x1, y)
+        self._progress_resized()
 
     def grid(self, *_args, **_kw):
         self._visible = True
+        self._progress_resized()
 
     def grid_remove(self):
         self._visible = False
         self.canvas.itemconfigure(self.item, state="hidden")
 
-    def start(self, interval=12):
-        self._interval = max(8, int(interval))
-        if self._job is None:
-            self._tick()
-
-    def stop(self):
-        if self._job is not None:
-            self.canvas.after_cancel(self._job)
-            self._job = None
+    def _clear_progress(self):
         self.canvas.itemconfigure(self.item, state="hidden")
 
-    def _tick(self):
+    def _draw_progress(self, animated):
         x0, x1, y = self._box
         width = max(1, x1 - x0)
         span = max(px(60), width * 0.22)
-        self._pos = (self._pos + width / 140.0) % (width + span)
-        self.canvas.coords(self.item, x0 + max(0, self._pos - span), y, x0 + min(width, self._pos), y + self._height)
+        if animated:
+            self._pos = (self._pos + width / 140.0) % (width + span)
+        left, right = (max(0, self._pos - span), min(width, self._pos)) if animated else (0, width)
+        self.canvas.coords(self.item, x0 + left, y, x0 + right, y + self._height)
         self.canvas.itemconfigure(self.item, state="normal" if self._visible else "hidden")
-        self._job = self.canvas.after(self._interval, self._tick)
 
 
 class CanvasFocus:
@@ -1335,12 +1383,39 @@ class BoilClock:
     @classmethod
     def register(cls, member):
         cls.members.append(member)
+        gui_theme.watch_motion(cls)
         if cls.job is None and gui_theme.motion_enabled():
             cls.root = member.winfo_toplevel()
             cls.job = cls.root.after(BOIL_INTERVAL_MS, cls.tick)
 
     @classmethod
+    def motion_changed(cls):
+        if cls.job is not None:
+            try:
+                cls.root.after_cancel(cls.job)
+            except tk.TclError:
+                pass
+            cls.job = None
+        alive = []
+        for member in cls.members:
+            try:
+                if member.winfo_exists():
+                    alive.append(member)
+                    if hasattr(member, "motion_changed"):
+                        member.motion_changed()
+            except tk.TclError:
+                pass
+        cls.members = alive
+        if alive and gui_theme.motion_enabled():
+            cls.root = alive[0].winfo_toplevel()
+            cls.job = cls.root.after(BOIL_INTERVAL_MS, cls.tick)
+
+    @classmethod
     def tick(cls):
+        cls.job = None
+        if not gui_theme.motion_enabled():
+            cls.motion_changed()
+            return
         alive = []
         for member in cls.members:
             try:
@@ -1521,7 +1596,7 @@ class StatusDot(tk.Canvas):
 
     config = configure
 
-class ProgressLine(tk.Canvas):
+class ProgressLine(_ProgressMotion, tk.Canvas):
     """Thin indeterminate progress line with the ttk ``start``/``stop`` API.
 
     A short accent segment glides across the full width. Place it in a
@@ -1535,27 +1610,22 @@ class ProgressLine(tk.Canvas):
         self._interval = 12
         super().__init__(parent, height=px(height), background=background or theme["FIELD"],
                          highlightthickness=0, bd=0)
+        self._init_motion(self)
+        self.bind("<Configure>", self._progress_resized, add="+")
 
-    def start(self, interval=12):
-        self._interval = max(8, int(interval))
-        if self._job is None:
-            self._tick()
-
-    def stop(self):
-        if self._job is not None:
-            self.after_cancel(self._job)
-            self._job = None
+    def _clear_progress(self):
         self.delete("all")
 
-    def _tick(self):
+    def _draw_progress(self, animated):
         width = max(1, self.winfo_width())
         height = max(1, self.winfo_height())
         span = max(px(60), width * 0.22)
-        self._pos = (self._pos + width / 140.0) % (width + span)
+        if animated:
+            self._pos = (self._pos + width / 140.0) % (width + span)
         self.delete("all")
-        self.create_rectangle(max(0, self._pos - span), 0, min(width, self._pos), height,
+        left, right = (max(0, self._pos - span), min(width, self._pos)) if animated else (0, width)
+        self.create_rectangle(left, 0, right, height,
                               fill=self._theme["ACCENT"], width=0)
-        self._job = self.after(self._interval, self._tick)
 
 
 # --------------------------------------------------------------------------
