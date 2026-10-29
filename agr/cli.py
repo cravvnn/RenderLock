@@ -169,7 +169,7 @@ def animation_mode(data, motion_only=False, saved_package=False, partial=False):
 
 def read_blender_completion(path, *, segment, output, data, fps, partial=False,
                             requested_stages=(), shot_hero=None, partial_cloth=False, external_map=None,
-                            map_viewport_proxy=False):
+                            map_viewport_proxy=False, partial_effects=False):
     """A scene file alone cannot establish which stages Blender completed."""
     try:
         report = json.loads(Path(path).read_text(encoding='utf-8'))
@@ -292,6 +292,14 @@ def read_blender_completion(path, *, segment, output, data, fps, partial=False,
         if not isinstance(result,dict) or not isinstance(result.get('status'),str):
             raise RuntimeError(f'Blender completion report lacks requested {stage} outcome; the scene was not published.')
         status=result['status']
+        if stage == 'effects':
+            if result.get('accepted_simulator_diagnostics') and not partial_effects:
+                raise RuntimeError('Blender accepted incomplete particle simulation without explicit --partial-effects consent; the scene was not published.')
+            if (status == 'unavailable' and partial_effects
+                    and result.get('partial_effects_consent') is True
+                    and result.get('backend') == 'recorded_simulation_v1'):
+                warnings.append('Explicit partial-effects export: no simulated effects produced renderable objects; see coverage.')
+                continue
         if status in ('failed','unavailable') and partial:
             warnings.append(f"Requested {stage} {status}: {result.get('error') or result.get('reason') or 'See stage diagnostics'}")
             continue
@@ -479,6 +487,8 @@ def _convert(args, diagnostics):
     validate_conversion(args)
     started = time.monotonic()
     history_ticks = getattr(args, 'particle_history_ticks', 0)
+    if getattr(args,'partial_effects',False) and not getattr(args,'particle_probe',None):
+        raise ValueError('--partial-effects requires --particle-probe; character animation remains strict')
     if history_ticks < 0:
         raise ValueError('--particle-history-ticks must be nonnegative')
     if history_ticks and (not getattr(args, 'particle_probe', None) or args.start_tick is None):
@@ -668,6 +678,7 @@ def _convert(args, diagnostics):
                                              material_repairs=args.material_repairs,
                                              model_constraints=args.model_constraints,
                                              simulate_effects=bool(particle_probe),
+                                             **({'recorded_effect_fallback': True} if getattr(args,'partial_effects',False) else {}),
                                              include_map=args.include_map,
                                              map_margin=args.map_margin,
                                              source_lighting=source_lighting,
@@ -763,7 +774,8 @@ def _convert(args, diagnostics):
             # These plans, diagnostics and prepared states are part of the
             # effect audit, so they must survive normal temporary-work cleanup.
             effect_artifacts=Path(tempfile.mkdtemp(prefix=output.stem+'-effects-',dir=output.parent))
-            runtime.update(probe=str(particle_probe),dotnet=particle_dotnet,output_dir=str(effect_artifacts))
+            runtime.update(probe=str(particle_probe),dotnet=particle_dotnet,output_dir=str(effect_artifacts),
+                           partial_effects=bool(getattr(args,'partial_effects',False)))
             runtime_path=work/'particle-runtime.json'
             runtime_path.write_text(json.dumps(runtime),encoding='utf-8')
             command += ['--particle-runtime',str(runtime_path)]
@@ -784,6 +796,7 @@ def _convert(args, diagnostics):
             segment=segment, output=scene_output, data=generated, fps=args.fps, partial=args.partial,
             requested_stages=requested_stages,shot_hero=getattr(args,'shot_hero',None),
             partial_cloth=bool(getattr(args,'partial_cloth',False)),
+            **({'partial_effects': True} if getattr(args,'partial_effects',False) else {}),
             **({'map_viewport_proxy': True} if getattr(args, 'map_viewport_proxy', False) else {}),
             **({'external_map': external_map} if external_map is not None else {}))
         save_scene(generated, segment)
@@ -796,7 +809,8 @@ def _convert(args, diagnostics):
                   "backward_dash_facing": "not_validated"}
         report['blender_runtime'] = blender_capabilities
         report['export_policy'] = {'partial_animation': bool(args.partial),
-                                   'partial_cloth': bool(getattr(args,'partial_cloth',False))}
+                                   'partial_cloth': bool(getattr(args,'partial_cloth',False)),
+                                   'partial_effects': bool(getattr(args,'partial_effects',False))}
         report["particles"] = report["scene_extras"].get("particles", {"status": "not_requested"})
         report["map"] = report["scene_extras"].get("map", {"status": "not_requested"})
         report['hero_lighting'] = report['scene_extras'].get('hero_lighting',{'status':'not_requested'})
@@ -910,6 +924,7 @@ def parser():
     cv.add_argument('--cubemap-decoder',type=Path,help='Qualified CubemapDecode.dll for --source-hero-lighting')
     cv.add_argument("--no-effects", action="store_true", help="Skip recorded particle extraction and supported effect rendering")
     cv.add_argument("--particle-probe",type=Path,help="Experimental recorded-effect simulation using AGR ParticleProbe.dll or portable ParticleProbe.exe")
+    cv.add_argument('--partial-effects',action='store_true',help='Explicitly accept documented incomplete simulation; if it renders no objects, use supported recorded layers instead. Effects can still be unavailable; character animation and data checks stay strict.')
     cv.add_argument("--dotnet",help="Dotnet executable for --particle-probe")
     cv.add_argument("--material-repairs", action="store_true",
                     help="Apply experimental hero unlit/emission repairs and calibrated glass; Source shader parity is not implied")

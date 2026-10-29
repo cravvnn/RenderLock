@@ -295,7 +295,7 @@ def scene_completion_message(report):
         content.append('map')
     effects = stages['particles']
     if isinstance(effects, dict) and effects.get('objects', 0) > 0:
-        content.append('supported effects')
+        content.append('approximate effects' if effects.get('accepted_simulator_diagnostics') else 'supported effects')
     message = 'Scene saved' + (': ' + ' and '.join(content) + ' imported' if content else '') + '.'
     cloth = stages['secondary_motion']
     if isinstance(cloth, dict) and cloth.get('baked_entity_count', 0):
@@ -309,7 +309,11 @@ def scene_completion_message(report):
         message += ' Cloth simulation is approximate; see coverage limits.'
     if isinstance(cloth, dict) and cloth.get('unsupported_entity_count', 0):
         message += ' Some heroes have unsupported cloth; see coverage.'
-    if isinstance(effects, dict) and effects.get('status') == 'partial':
+    if isinstance(effects, dict) and effects.get('accepted_simulator_diagnostics'):
+        message += ' Some particle simulation operators were omitted by explicit choice; see coverage.'
+    elif isinstance(effects, dict) and effects.get('backend') == 'recorded_layers_fallback_v1':
+        message += ' Recorded layers were used because simulation produced no renderable effects; see coverage.'
+    elif isinstance(effects, dict) and effects.get('status') == 'partial':
         message += ' Additional effect layers remain unsupported; see coverage.'
     elif report.get('warnings'):
         message += ' Review the coverage warnings.'

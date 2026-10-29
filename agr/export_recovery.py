@@ -220,7 +220,7 @@ def recovery_summary(command: list[str], failure: dict, log_text: str = '') -> s
                  'You can explicitly keep supported approximate cloth and report omitted/failed cloth, '
                  'or continue without cloth. Character models and animation remain strict.',
         'effects': 'Requested particle effects could not be prepared or rendered. '
-                   'You can explicitly continue without effects while keeping the animation request.',
+                   'For simulation failures you can explicitly try recorded effects, accept the documented incomplete simulation, or continue without effects. Character animation stays requested.',
         'lighting': 'The requested Source lighting is incompatible with the installed data or supported layout. '
                     'You can explicitly continue without Source lighting; character animation stays requested.',
         'npr': 'The requested NPR lighting or material route is unsupported. '
@@ -277,13 +277,24 @@ def recovery_choices(command: list[str], failure: dict, log_text: str = '') -> l
             _rewrite(rows, {'--secondary-motion', '--cloth', '--partial-cloth'}), (('cloth_enabled', '0'),)))
         return choices
     if kind == 'effects' and '--no-effects' not in present:
-        return [RecoveryChoice(
+        choices = []
+        if '--particle-probe' in present:
+            choices.append(RecoveryChoice('recorded_effects', 'Retry with recorded effects',
+                'Use supported recorded visual layers instead of particle simulation. Simulation and its earlier history are disabled; character animation, output range and other requested features stay strict. Unsupported layers remain in coverage. Setting: Advanced > Particle simulation off; Export > Include supported particle effects on.',
+                _rewrite(rows, {'--particle-probe','--dotnet','--particle-history-ticks','--partial-effects'}),
+                (('effects_enabled','1'),('simulate_effects','0'),('particle_history_ticks','0'))))
+            if '--partial-effects' not in present:
+                choices.append(RecoveryChoice('partial_effects', 'Retry with incomplete effects',
+                    'Accept the omitted control-point scalar-expression operator and unavailable simulated instances. Counts, placement or appearance may differ. If simulation produces no objects, keep supported recorded layers instead; if neither backend works, effects remain unavailable. Invalid states, identity and character animation stay strict. Review coverage.',
+                    _rewrite(rows,add=('--partial-effects',))))
+        choices.append(RecoveryChoice(
             'without_effects', 'Continue without effects',
             'Retry without particle effects or particle simulation, including its earlier history. '
             'Character animation and the selected output tick range stay requested. '
             'Settings: Export > Output > Include supported particle effects; Advanced > Particle simulation.',
-            _rewrite(rows, {'--particle-probe', '--dotnet', '--particle-history-ticks'}, ('--no-effects',)),
-            (('effects_enabled', '0'), ('simulate_effects', '0'), ('particle_history_ticks', '0')))]
+            _rewrite(rows, {'--particle-probe', '--dotnet', '--particle-history-ticks','--partial-effects'}, ('--no-effects',)),
+            (('effects_enabled', '0'), ('simulate_effects', '0'), ('particle_history_ticks', '0'))))
+        return choices
     if kind == 'lighting' and present & (_LIGHTING_SWITCHES - {'--partial-lighting'}):
         return [RecoveryChoice(
             'without_source_lighting', 'Continue without Source lighting',

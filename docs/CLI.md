@@ -51,6 +51,7 @@ packages do not embed every model, lighting input or external map.
 | `--external-map "maps\RenderLockMap.blend"` | Append the qualified download; textures/cutting manual, independent of Source lighting |
 | `--secondary-motion` or `--cloth` | Request supported approximate cloth |
 | `--partial-cloth` | Accept unavailable/failed cloth only; character data remains strict |
+| `--partial-effects` with `--particle-probe` | Accept documented incomplete simulation; if it renders no objects, keep supported recorded layers instead. Character animation stays strict. |
 | `--partial-lighting` | Accept partial reference-lighting limits; character data remains strict |
 | `--partial` | Broader missing-model/animation compromises; validation remains active |
 | `--motion-only` | Explicit movement-only export without skeletal evaluation |

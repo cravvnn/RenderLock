@@ -340,7 +340,10 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
             'wearable_redirection':'not_reconstructed',
             'artifact_dir':str(out),
             'selected_recorded_instances':len(instances),'attempted_instances':0,
-            'rendered_instances':0,'objects':0,'particle_tracks':0,'point_lights':0,
+            'rendered_instances':0,'simulator_completed_instances':0,'zero_object_instances':0,
+            'objects':0,'particle_tracks':0,'point_lights':0,
+            'partial_effects_consent':runtime.get('partial_effects',False),
+            'accepted_simulator_diagnostics':[],
             'history_start_tick':motion_start,'pre_shot_rendered_instances':0,
             'unsupported':[],'instances':[],
             'limitations':['Fixed point-follow CPs and exact unnamed root-origin CP0 with model bones/literal controls',
@@ -349,7 +352,7 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
                 'Literal CPs require complete creation-time values and zero interpolation; entity-provider changes remain unqualified',
                 'Recorded non-immediate destruction preserves authored tails/endcaps; immediate destruction clears the entire tree',
                 'Earlier-than-recovered history is not simulated',
-                'Unresolved simulator diagnostics withhold that entire instance',
+                'Unresolved simulator diagnostics withhold that entire instance; explicit partial-effects consent can retain the documented scalar-expression omission',
                 'Repeatable AGR substitute seeds are used; the original engine seeds are unavailable',
                 'Blender particle shaders/lights and random seeds approximate Source behavior'],
             'probe_sha256':hashlib.sha256(Path(runtime['probe']).read_bytes()).hexdigest(),
@@ -478,7 +481,13 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
                 validate_model_response(simulation,instance['id'],model_provenance['bone_count'],
                     [0] if model_profile else [binding['control_point'] for binding in bindings])
             else:validate_control_response(simulation,instance['id'],bindings)
-            if simulation['warnings']:raise ValueError('Simulator diagnostics: '+'; '.join(simulation['warnings']))
+            report['simulator_completed_instances'] += 1
+            from .particle_diagnostics import simulation_diagnostics
+            diagnostics = simulation_diagnostics(simulation,
+                allow_partial_effects=runtime.get('partial_effects',False))
+            if diagnostics['status'] == 'partial':
+                report['accepted_simulator_diagnostics'].append(dict(id=instance['id'],
+                    resource=instance['resource'], **diagnostics))
             simulation['instances'][0]['entity_id']=instance['entity_id']
             names={s['name'].removesuffix('_c') for f in simulation['instances'][0]['frames'] for s in f['systems']}
             if model_profile and names!=set(REGEN_DEFINITIONS):
@@ -499,20 +508,50 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
                      'coverage_scope':'One recorded instance; automatic isolated simulation, approximate rendering. Other instances have separate coverage.'}
             if model_provenance:package['model_provider']=model_provenance
             package_path=out/f'{stem}.package.json';package_path.write_text(json.dumps(package),encoding='utf-8')
-            result=build_package_effects(package,data,package_path,scene,camera)
-            report['rendered_instances']+=1
+            result=build_package_effects(package,data,package_path,scene,camera,
+                allow_partial_effects=runtime.get('partial_effects',False))
+            if result.get('objects',0) > 0:
+                report['rendered_instances']+=1
+            else:
+                report['zero_object_instances']+=1
             entry={'id':instance['id'],'resource':instance['resource'],'package':str(package_path),'rendering':result}
             if model_provenance:entry['model_provider']=model_provenance
             report['instances'].append(entry)
             for key in ('objects','particle_tracks','point_lights'):report[key]+=result.get(key,0)
-            if instance['created_tick'] < data['start_tick']:
+            if result.get('objects',0) > 0 and instance['created_tick'] < data['start_tick']:
                 report['pre_shot_rendered_instances']+=1
         except (ValueError,KeyError,OSError,RuntimeError,subprocess.SubprocessError) as exc:
             reject(instance,str(exc))
     report['unsupported']=list(grouped.values())
     report['unsupported_occurrences']=sum(r['occurrences'] for r in report['unsupported'])
     report['unsupported_by_birth_scope'] = dict(rejected_scopes)
-    if not report['objects']:report.update(status='unavailable',reason='No recorded instance completed simulation and rendering')
+    if not report['objects']:report.update(status='unavailable',reason='No recorded instance produced renderable objects in this clip')
+    report = retain_recorded_fallback(report, data, manifest_dir, scene, camera, entity_objects,
+                                      allow_partial_effects=runtime.get('partial_effects',False))
     (out/'coverage.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
     scene['agr_simulated_effects_report']=json.dumps(report)
+    return report
+
+
+def retain_recorded_fallback(report, data, manifest_dir, scene, camera, entity_objects, *, allow_partial_effects=False):
+    """Use one backend at a time, only after a zero-object simulation outcome."""
+    descriptor = data.get('effects', {})
+    if (report.get('status') == 'unavailable' and not report['objects'] and allow_partial_effects is True
+            and descriptor.get('recorded_fallback')):
+        from .blender_effects import build_effects
+        fallback = build_effects(dict(data, effects=descriptor['recorded_fallback']), manifest_dir,
+                                scene, camera, entity_objects,
+                                scene.render.fps / scene.render.fps_base)
+        if fallback.get('status') == 'failed':
+            raise ValueError('Recorded effects fallback failed: ' + str(fallback.get('error', 'see effects report')))
+        if fallback.get('objects', 0) > 0:
+            simulation_report = report
+            report = dict(report, status='partial', backend='recorded_layers_fallback_v1',
+                simulation_attempt=simulation_report, recorded_layer_fallback=fallback,
+                objects=fallback['objects'], layers=fallback.get('layers', 0),
+                recorded_layer_objects=fallback['objects'],
+                limitations=report['limitations'] + ['Simulation produced no renderable objects. Explicit partial-effects consent retained supported recorded visual layers instead; backends were not combined.'])
+            report.pop('reason', None)
+        else:
+            report['recorded_layer_fallback'] = fallback
     return report

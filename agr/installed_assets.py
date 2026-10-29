@@ -124,6 +124,7 @@ def prepare_installed_assets(segment_path: Path, work_dir: Path, install_path: P
                              log=print, strict=True, map_name=None, need_animation=True,
                              include_effects=False, include_map=False, map_margin=26.0,
                              secondary_motion=False, material_repairs=False, simulate_effects=False,
+                             recorded_effect_fallback=False,
                              model_constraints=False, source_lighting=False,
                              lighting_probe=None, lighting_dotnet=None, source_hero_lighting=False,
                              atlas_probe=None, cube_probe=None, source_npr_lighting=False,
@@ -311,7 +312,8 @@ def prepare_installed_assets(segment_path: Path, work_dir: Path, install_path: P
                 prepare_npr_materials=source_npr_lighting,apply_npr_indirect=source_npr_lighting,
                 npr_material_plan=npr_material_plan,
                 character_only=character_only,
-                secondary_motion=secondary_motion, log=log,simulate_effects=simulate_effects)
+                secondary_motion=secondary_motion, log=log,simulate_effects=simulate_effects,
+                **({'recorded_effect_fallback': True} if recorded_effect_fallback else {}))
             segment = json.loads(segment_path.read_text(encoding='utf-8'))
         segment.setdefault('coverage', {})['asset_source'] = 'installed_game'
         segment['coverage']['installed_model_bindings'] = len(converted)

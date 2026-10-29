@@ -253,14 +253,14 @@ def collect_system_samples(simulation):
     return systems
 
 
-def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254):
+def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254, *, allow_partial_effects=False):
     import bpy
     from mathutils import Vector, Quaternion
     from .blender_effects import _linear
     if simulation.get('schema_version') != 1 or not simulation.get('backend'):
         raise ValueError('Particle simulation schema/backend identity missing')
-    if simulation.get('warnings'):
-        raise ValueError('Particle simulation has unresolved diagnostics')
+    from .particle_diagnostics import simulation_diagnostics
+    diagnostics = simulation_diagnostics(simulation, allow_partial_effects=allow_partial_effects)
     output_fps = scene.render.fps / scene.render.fps_base
     frame_step = output_fps / simulation['tick_rate']
     tracks=collect_particle_tracks(simulation)
@@ -502,6 +502,9 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
             if facing_helper is not None:_linear(facing_helper)
     report={'status':'experimental','instances':len(simulation['instances']),'particle_tracks':len(tracks),'objects':len(objects),'point_lights':sum(o.type=='LIGHT' for o in objects),'textures':len(images),'backend':simulation['backend'],'omissions':sorted(set(omissions)),
             'limitations':['Blender shader approximation; no Source bloom/depth intersection pass','Light intensity calibrated to Blender units; not measured engine radiometry','Random engine seed is not available in the demo','Only the supplied recorded instances/control-point history are simulated']}
+    report['simulator_diagnostics'] = diagnostics
+    if diagnostics['status'] == 'partial':
+        report['limitations'].append(diagnostics['limitation'])
     report.update(camera_binding='live_constraints',camera_object=camera.name,billboard_helpers=len(billboard_helpers))
     if rope_objects:
         live_constraints=bool(billboard_helpers or any(c.type=='LOCKED_TRACK' for o in objects for c in o.constraints))

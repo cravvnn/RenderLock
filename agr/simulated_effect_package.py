@@ -55,7 +55,7 @@ def scene_identity(scene, entity_ids):
     return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(',', ':'), allow_nan=False).encode()).hexdigest()
 
 
-def validate_package(package, scene):
+def validate_package(package, scene, *, allow_partial_effects=False):
     if package.get('schema_version') != 1 or package.get('backend') != 'simulated_states_v1':
         raise ValueError('Unsupported simulated effect package')
     if not isinstance(package.get('coverage_scope'), str) or not package['coverage_scope'].strip():
@@ -80,8 +80,10 @@ def validate_package(package, scene):
     if ('simulation_request_sha256' in package
             and sim.get('request_sha256') != package['simulation_request_sha256']):
         raise ValueError('Prepared particles have a mismatched simulator request identity')
-    if sim.get('schema_version') != 1 or not sim.get('backend') or sim.get('warnings'):
+    if sim.get('schema_version') != 1 or not sim.get('backend'):
         raise ValueError('Particle simulation has an unsupported schema or unresolved diagnostics')
+    from .particle_diagnostics import simulation_diagnostics
+    simulation_diagnostics(sim, allow_partial_effects=allow_partial_effects)
     for field in ('start_tick', 'end_tick', 'tick_rate'):
         if sim[field] != scene[field]:
             raise ValueError('Particle simulation timing mismatch: ' + field)
@@ -113,10 +115,10 @@ def validate_package(package, scene):
         raise ValueError('Empty prepared particle package')
 
 
-def build_package_effects(package, data, manifest_file, scene, camera):
+def build_package_effects(package, data, manifest_file, scene, camera, *, allow_partial_effects=False):
     import bpy
     from .blender_simulated_effects import build_simulated_effects
-    validate_package(package, data)
+    validate_package(package, data, allow_partial_effects=allow_partial_effects)
     assets = copy.deepcopy(package['assets'])
     for texture in assets.get('textures', {}).values():
         directory = Path(texture['directory'])
@@ -125,7 +127,8 @@ def build_package_effects(package, data, manifest_file, scene, camera):
     groups = ('objects', 'collections', 'meshes', 'materials', 'lights', 'images', 'actions', 'node_groups', 'texts')
     before = {key: set(getattr(bpy.data, key)) for key in groups}
     try:
-        report = build_simulated_effects(package['simulation'], assets, scene, camera)
+        report = build_simulated_effects(package['simulation'], assets, scene, camera,
+                                        allow_partial_effects=allow_partial_effects)
     except Exception:
         created = [item for key in groups for item in set(getattr(bpy.data, key)) - before[key]]
         bpy.data.batch_remove(created)

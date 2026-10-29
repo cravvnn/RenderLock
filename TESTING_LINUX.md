@@ -1,4 +1,4 @@
-# Linux test kit: 0.3.0b17.dev5
+# Linux test kit: 0.3.0b17.dev6
 
 This is **experimental source**, not a self-contained Linux binary release or an
 update to Windows b16. Extract it into a new folder beside your working copy.
@@ -13,7 +13,7 @@ explicit, so there is no copying of Windows binaries or silent replacement of
 the old installation. No dependency download or game process is required.
 
 ```sh
-cd /path/to/RenderLock-0.3.0b17.dev5-Linux-test-source
+cd /path/to/RenderLock-0.3.0b17.dev6-Linux-test-source
 OLD="$HOME/Applications/RenderLock"
 python3 tools/run_linux_test.py --tools-from "$OLD" -- --help
 ```
@@ -61,6 +61,48 @@ so those images are reported as declared limits and the result is `PARTIAL`
 (exit 2). Pass `--external-map-images` when you deliberately keep the map
 textures external and want the verifier to accept that instead of returning
 `PARTIAL`; character images are still required to be packed.
+
+## Effects warning follow-up: Paradox muzzle flash
+
+First repeat the known strict Standard control. Keep your working helpers and
+cache. This kit changes Python policy, not the ParticleProbe binary.
+
+For the reported Paradox case, reuse your existing command/range, changing only the
+source kit and output filename. There are two separate options:
+
+- **Recorded effects:** remove `--particle-probe`, `--dotnet` and
+  `--particle-history-ticks`; leave effects enabled. This selects the recorded
+  visual-layer backend instead of simulation. It does not merge both backends
+  or promise every effect. This is also offered as **Retry with recorded effects**
+  after a simulation failure. Keep character animation strict; do not add `--partial`.
+- **Explicit incomplete simulation:** retain the helper arguments and add
+  `--partial-effects`. This may retain states with the specific
+  `C_OP_SetControlPointFieldToScalarExpression` capability warning. The original
+  warnings and omitted operator remain in the package/report; particle counts,
+  positions and appearance can differ. A saved package cannot grant this consent
+  on its own. Unknown warnings still withhold the affected instance. Identity,
+  seed, creation history, control-point dependencies, sample timing and finite
+  state validation stay enabled. No renderable instances may remain; this option
+  also prepares recorded visual layers separately. If simulation produces zero
+  objects, those supported layers are used instead. The backends are never added
+  on top of each other. If neither backend can render anything, this option
+  permits saving the characters with particle coverage explicitly unavailable.
+
+This is not an implementation of that operator or proof the reported muzzle
+flashes match the game. In the current installed definitions it writes CP10,
+which the warp child reads for emission count. A static Windows helper study
+reproduced the warning and an unsupplied CP10 dependency; that dependency remains
+rejected even with `--partial-effects`. Increasing history blindly is not a fix.
+
+For a retest, send the new export log/report and effects `coverage.json`. Note
+whether effects came from simulation or `recorded_layers_fallback_v1` and compare
+the selected range and character animation. Retain the previous diagnostics and
+do not increase history just to force another attempt. No full Blender scene is
+needed unless a saved-scene issue appears.
+
+Native Linux/Wayland and the original replay still need a retest. Background Windows
+Blender fixtures exercise consent, package validation, rendering and saved
+coverage; a text report alone cannot establish the replay's actual bindings.
 
 ## Nurse NPR follow-up
 

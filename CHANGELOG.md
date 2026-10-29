@@ -1,3 +1,9 @@
+# 0.3.0b17.dev6 - Explicit effects diagnostics and recorded-backend retry
+
+- Add `--partial-effects` for explicitly incomplete simulation with the documented control-point scalar-expression capability warning. Retain original diagnostics and identify the omitted operator; preserve replay, seed, lifecycle, control-point, timing and numeric validation. Saved packages cannot grant consent. Prepare recorded layers separately without pruning simulator inputs; if simulation produces zero objects, use the available recorded layers instead of combining both backends. If neither backend renders, this option may save characters with effects explicitly unavailable. It does not implement the missing operator or establish full Paradox effect fidelity.
+- Offer an explicit retry using recorded visual layers, disabling simulation/history without disabling effects, plus the existing without-effects choice. Do not automatically merge backends or retry.
+- Separate completed simulator responses, instances producing renderable objects and zero-object results so an empty effect is not counted as rendered.
+
 # 0.3.0b17.dev5 - Experimental simplified map viewport
 
 - Add an opt-in, untextured viewport approximation of the current downloaded Midtown map. The full map stays in the file for renders and shadows, so this does not remove its file-open memory. Manual cuts do not update the proxy. Windows Blender checks passed; native Linux still needs a retest.

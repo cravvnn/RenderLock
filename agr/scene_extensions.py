@@ -19,7 +19,7 @@ def _write(path, data):
 def prepare_scene_extensions(segment_path, pack, provider, decoder, bindings, *,
                              demo=None, include_effects=True, include_map=False,
                              map_name=None, map_margin=26.0, secondary_motion=False, log=print,
-                             simulate_effects=False, source_lighting=False,
+                             simulate_effects=False, source_lighting=False, recorded_effect_fallback=False,
                              lighting_probe=None, lighting_dotnet=None, source_hero_lighting=False,
                              atlas_probe=None, cube_probe=None, prepare_npr_materials=False, apply_npr_indirect=False,
                              character_only=False, npr_material_plan=None):
@@ -113,7 +113,21 @@ def prepare_scene_extensions(segment_path, pack, provider, decoder, bindings, *,
                 _write(segment_path, selected)
                 log(f"Saved particle resources: {resolution['newly_resolved']} names repaired; "
                     f"{resolution['unresolved_after']} remain unresolved.")
-            return prepare_installed_effects(segment_path, pack, provider, decoder, log=log,attachments_only=simulate_effects)
+            result = prepare_installed_effects(segment_path, pack, provider, decoder, log=log,attachments_only=simulate_effects)
+            if simulate_effects and recorded_effect_fallback:
+                # Prepare separately: lifetime pruning for visual layers must
+                # not erase simulation instances or their attachment inventory.
+                folder = Path(pack) / 'recorded-effect-fallback'
+                folder.mkdir(parents=True, exist_ok=True)
+                fallback_segment = folder / 'segment.json'
+                _write(fallback_segment, _read(segment_path))
+                fallback = prepare_installed_effects(fallback_segment, folder, provider, decoder, log=log)
+                selected = _read(segment_path)
+                selected['effects']['recorded_fallback'] = _read(fallback_segment)['effects']
+                _write(segment_path, selected)
+                from .coverage_diagnostics import preparation_summary
+                result['recorded_fallback_preparation'] = preparation_summary(fallback)
+            return result
         stage("particles", particles)
     if include_map:
         def map_geometry():

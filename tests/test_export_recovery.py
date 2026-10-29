@@ -90,7 +90,7 @@ def test_existing_partial_consent_is_preserved_without_enabling_another_policy()
 ])
 def test_effects_choice_removes_simulator_arguments_with_values(extra):
     retained = BASE + LIGHTING + MAP + ['--secondary-motion']
-    choice = single(retained + extra, EFFECTS)
+    choice = single(retained + extra, EFFECTS, choice_id='without_effects')
     assert choice.command == tuple(retained + ['--no-effects'])
     assert dict(choice.values_overrides) == {
         'effects_enabled': '0', 'simulate_effects': '0', 'particle_history_ticks': '0'}
@@ -277,7 +277,7 @@ def test_empty_failure_uses_only_final_exception_and_not_traceback_source_lines(
 def test_generic_blender_failure_uses_last_nested_exception():
     failure = {'stage': 'build_blender_scene', 'error': 'Blender failed with exit code 1',
                'blender_log_tail': 'ValueError: Particle simulation has unresolved diagnostics\n'}
-    choice = single(BASE + ['--particle-probe', 'D:/p.exe'], failure)
+    choice = single(BASE + ['--particle-probe', 'D:/p.exe'], failure, choice_id='without_effects')
     assert choice.id == 'without_effects'
     assert choice.command == tuple(BASE + ['--no-effects'])
 
@@ -287,7 +287,7 @@ def test_actual_blender_subprocess_error_uses_its_nested_failure_only_at_blender
     error = subprocess.CalledProcessError(1, ['blender.exe', '--background', '--python', 'blender_scene.py'])
     failure = dict(stage='build_blender_scene', error=str(error), type=type(error).__name__,
                    blender_log_tail='ValueError: Particle simulation has unresolved diagnostics\n')
-    assert single(BASE + ['--particle-probe', 'D:/p.exe'], failure).id == 'without_effects'
+    assert single(BASE + ['--particle-probe', 'D:/p.exe'], failure, choice_id='without_effects').id == 'without_effects'
     assert recovery_choices(BASE + ['--particle-probe', 'D:/p.exe'], dict(failure, stage='publish_scene')) == []
 
 
