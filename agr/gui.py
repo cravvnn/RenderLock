@@ -102,13 +102,7 @@ def discover_lighting_kit() -> dict[str, str]:
 
 def settings_path() -> Path:
     """Keep per-user paths out of the distributable program directory."""
-    if sys.platform == "win32":
-        base = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
-    elif sys.platform == "darwin":
-        base = Path.home() / "Library" / "Application Support"
-    else:
-        base = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
-    return base / "RenderLock" / "settings.json"
+    return gui_theme.settings_path()
 
 
 def asset_source_mode(values: dict[str, str]) -> str:
@@ -348,7 +342,7 @@ class AGRApp:
             "character_look": "standard",
             "map_workflow_revision": MAP_WORKFLOW_REVISION,
             "effects_enabled": "1", "cloth_enabled": "1", "material_repairs": "0", "model_constraints": "0",
-            "check_updates": "1",
+            "check_updates": "1", "disable_ui_animations": "0",
             "simulate_effects": "0", "particle_probe": "", "particle_dotnet": "", "shot_hero": "", "particle_history_ticks": "0",
         }.items()}
         self.partial = tk.BooleanVar(value=False)
@@ -385,6 +379,7 @@ class AGRApp:
             if not self.values[key].get().strip():
                 self.values[key].set(found)
         self._build_ui()
+        self.values["disable_ui_animations"].trace_add("write", self._motion_changed)
         from .update_ui import UpdateUI
         self.update_ui = UpdateUI(self, PROGRAM_ROOT)
         for key in ("input", "mode"):
@@ -397,6 +392,10 @@ class AGRApp:
     def _build_ui(self) -> None:
         from .gui_layout import build
         build(self)
+
+    def _motion_changed(self, *_args) -> None:
+        gui_theme.set_motion_disabled(self.values["disable_ui_animations"].get() == "1")
+        self._save_settings()
 
     def _mode_changed(self) -> None:
         self.inspect_button.configure(text="Inspect replay" if self.values["mode"].get() == "replay"

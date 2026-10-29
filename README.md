@@ -17,7 +17,7 @@ Blender scene for cinematics, edits and stills, with coverage reports for option
 cloth, effects and character lighting. A separately downloaded map can be appended
 and aligned in the same scene.
 
-**Current source: 0.3.0b20 · Windows x64 · character beta.** The portable ZIP
+**Current source: 0.3.0b22 · Windows x64 · character beta.** The portable ZIP
 includes Python, the asset converter and helper tools. Install Blender separately
 and supply your own Deadlock installation and replay.
 
@@ -30,7 +30,7 @@ recordings can still require compatibility work.
 
 ## Quick start
 
-1. Download **RenderLock-0.3.0b20-Windows-x64.zip**, or the newer Windows ZIP on
+1. Download **RenderLock-0.3.0b22-Windows-x64.zip**, or the newer Windows ZIP on
    [Releases](https://github.com/cravvnn/RenderLock/releases/latest), and extract it
    completely. Keep the runtime, tools and other files beside **RenderLock.exe**.
 2. Open **RenderLock.exe**. In **Setup**, select Blender and your Deadlock folder.

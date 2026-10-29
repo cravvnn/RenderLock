@@ -28,6 +28,17 @@ Custom addon/mod mounts are excluded and logged, while installed mods and game
 configuration are left unchanged. Files modified directly inside base archives
 are not certified by this path policy; missing/corrupt required assets still fail.
 
+## Disable UI animations
+
+In **Setup > Accessibility**, check **Disable UI animations** to keep the
+background, buttons, portraits and updater paper still. Moving progress lines
+become static busy indicators; status messages continue to update. The choice
+applies immediately, including during a job, and is remembered next time.
+
+Uncheck it to allow motion again. Windows **Animation effects** being off or
+`D2B_UI_MOTION=0` still keeps motion disabled. This preference controls the
+RenderLock interface; it does not change exported character or particle animation.
+
 ## First preview
 
 1. In **Export**, browse to the `.dem`. If typing a path, select **Inspect replay**.

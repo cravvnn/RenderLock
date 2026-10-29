@@ -1,3 +1,8 @@
+# 0.3.0b22 - Disable UI animations
+
+- Add Setup > Accessibility > Disable UI animations. Apply and save it immediately; read it before any animation starts in the application or standalone updater/recovery window. Keep the existing palette, artwork and static interaction feedback.
+- Cancel background, sticker, portrait and updater-paper animation timers. Replace moving indeterminate progress with a static busy line while preserving status text and job polling. Re-enabling motion resumes active indicators only; the environment switch and Windows reduced-motion setting still take precedence.
+
 # 0.3.0b21 - Faster application startup
 
 - Validate Python syntax while packaging and record the exact source-hash inventory and Python interpreter. Startup still checks every manifest-owned file's size and SHA-256 before importing the application, but skips redundant compilation when the packaged qualification matches. Missing, changed or interpreter-mismatched qualifications retain the full syntax-check fallback. Verify up to four files concurrently and read small files only once.

@@ -9,6 +9,10 @@ from __future__ import annotations
 
 import os
 import sys
+import json
+from pathlib import Path
+from weakref import WeakSet
+from tkinter import TclError
 from tkinter import font as tkfont
 from tkinter import ttk
 
@@ -206,10 +210,52 @@ def style_title_bar(root):
     return dark or caption
 
 
-def motion_enabled():
-    """False when Windows "Animation effects" are off or D2B_UI_MOTION=0; decorative motion then stays still."""
-    if os.environ.get("D2B_UI_MOTION", "1") == "0":
+_motion_disabled = False
+_motion_listeners = WeakSet()
+
+
+def settings_path() -> Path:
+    """Shared with the standalone updater, without importing the application."""
+    if sys.platform == "win32":
+        base = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
+    elif sys.platform == "darwin":
+        base = Path.home() / "Library" / "Application Support"
+    else:
+        base = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+    return base / "RenderLock" / "settings.json"
+
+
+def saved_motion_disabled():
+    try:
+        saved = json.loads(settings_path().read_text(encoding="utf-8"))
+        return isinstance(saved, dict) and saved.get("disable_ui_animations") == "1"
+    except (OSError, ValueError):
         return False
+
+
+def watch_motion(listener):
+    """Observe changes without keeping a window or widget alive."""
+    _motion_listeners.add(listener)
+
+
+def set_motion_disabled(disabled):
+    global _motion_disabled
+    _motion_disabled = bool(disabled)
+    for listener in list(_motion_listeners):
+        try:
+            listener.motion_changed()
+        except TclError:  # a window may already have been destroyed
+            _motion_listeners.discard(listener)
+
+
+def motion_enabled():
+    """The app switch, environment and Windows accessibility preference can each stop motion."""
+    if _motion_disabled or os.environ.get("D2B_UI_MOTION", "1") == "0":
+        return False
+    return _system_motion_enabled()
+
+
+def _system_motion_enabled():
     if sys.platform != "win32":
         return True
     import ctypes
@@ -370,9 +416,10 @@ def palette():
     return dict(_ACTIVE or SKINS[globals().get("SKIN_NAME", DEFAULT_SKIN)])
 
 
-def initialize(root, *, game_install=None):
+def initialize(root, *, game_install=None, disable_motion=None):
     """Apply the selected skin and return its palette."""
     global _COLOR_MATRIX
+    set_motion_disabled(saved_motion_disabled() if disable_motion is None else disable_motion)
     _COLOR_MATRIX = _display_matrix()
     _COLOR_CACHE.clear()
     name = os.environ.get("D2B_UI_SKIN", DEFAULT_SKIN)

@@ -302,7 +302,7 @@ def _path_row(app, parent, label, key, command, button=True):
         app.mutable_widgets.append(browse)
 
 
-def _check(app, parent, text, variable, onvalue="1", offvalue="0", pady=(0, 1), *, installed_only=False, info=""):
+def _check(app, parent, text, variable, onvalue="1", offvalue="0", pady=(0, 1), *, installed_only=False, info="", mutable=True):
     """A checkbox row; ``info`` adds an info icon whose hover text describes the option."""
     holder = parent
     if info:
@@ -313,7 +313,8 @@ def _check(app, parent, text, variable, onvalue="1", offvalue="0", pady=(0, 1), 
         check.pack(side="left")
         InfoIcon(holder, text=info, theme=gui_theme.palette(), size=12).pack(side="left", padx=(px(2), 0))
     (holder if info else check).grid(row=_next_row(parent), column=0, columnspan=3, sticky="w", pady=_pad(pady))
-    app.mutable_widgets.append(check)
+    if mutable:
+        app.mutable_widgets.append(check)
     if installed_only:
         if not hasattr(app, "installed_only_widgets"):
             app.installed_only_widgets = []
@@ -864,7 +865,11 @@ def _build_export(app, page):
 
 
 def _build_setup(app, page):
-    body, row = _card(app, page, 0, "Local tools", label_column=WIDE_LABEL_COLUMN,
+    body, row = _card(app, page, 0, "Accessibility")
+    _check(app, body, "Disable UI animations", app.values["disable_ui_animations"], mutable=False)
+    _note(body, "Keep backgrounds, buttons and portraits still; show progress without motion. "
+                "Applies immediately and is remembered next time.", pady=(8, 0))
+    body, row = _card(app, page, row, "Local tools", label_column=WIDE_LABEL_COLUMN,
                       info="Choose these once. Conversion reads installed files without launching Deadlock.")
     _path_row(app, body, "Blender executable", "blender", app._browse_blender)
 
@@ -1194,7 +1199,8 @@ def build(app):
     beta = character_beta()
     app.beta = beta
     root = app.root
-    gui_theme.initialize(root, game_install=app.values['game_install'].get())
+    gui_theme.initialize(root, game_install=app.values['game_install'].get(),
+                         disable_motion=app.values['disable_ui_animations'].get() == '1')
     root.configure(background=gui_theme.BACKDROP)
     root.title(f"RenderLock | {__version__}" + (" · Character beta" if beta else " · Development"))
 
