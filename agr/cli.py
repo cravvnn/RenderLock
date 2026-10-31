@@ -264,7 +264,7 @@ def read_blender_completion(path, *, segment, output, data, fps, partial=False,
         stages.add('external_map')
     if map_viewport_proxy:
         from .external_map import validate_map_proxy_completion
-        validate_map_proxy_completion(report.get('map_proxy'), report.get('external_map'))
+        validate_map_proxy_completion(report.get('map_proxy'), report.get('external_map'), external_map)
     for key,stage in [('hero_lighting','hero_lighting'),('npr_runtime','npr_lighting'),('effects','effects')]:
         if data.get(key) is not None:stages.add(stage)
     allowed={'hero_lighting':{'partial'},'npr_lighting':{'partial'},'character_shader':{'partial'},
@@ -501,6 +501,8 @@ def _convert(args, diagnostics):
     if getattr(args, 'external_map', None) is not None:
         from .external_map import validate_map_library
         external_map = validate_map_library(args.external_map)
+        if external_map.get('format') == 'renderlock-map-v2' and getattr(args, 'map_viewport_proxy', None) is None:
+            args.map_viewport_proxy = True
         if Path(external_map['path']) == output:
             raise ValueError('External map: output must differ from the downloaded map library.')
         args.character_only = True  # Read installed lighting if requested; do not duplicate map geometry.
@@ -508,7 +510,7 @@ def _convert(args, diagnostics):
         from .external_map import MAP_BLEND_SHA256
         if external_map is None:
             raise ValueError('Viewport proxy: choose the downloaded map before requesting a simplified viewport.')
-        if external_map['sha256'] != MAP_BLEND_SHA256:
+        if external_map['sha256'] != MAP_BLEND_SHA256 and external_map.get('format') != 'renderlock-map-v2':
             raise ValueError('Viewport proxy: only the current downloaded Midtown map supports this option.')
     if args.fps <= 0 or args.fps > 240:
         raise ValueError("Export FPS must be between 1 and 240.")
@@ -597,7 +599,7 @@ def _convert(args, diagnostics):
                                          character_shader=character_shader is not None)
     if external_map is not None:
         from .external_map import validate_map_blender
-        validate_map_blender(blender_capabilities)
+        validate_map_blender(blender_capabilities, external_map)
     heroes = args.heroes
     log("Hero selection: all heroes in the range." if heroes is None else
         "Hero selection: explicit IDs " + ", ".join(map(str, heroes)))
@@ -761,6 +763,8 @@ def _convert(args, diagnostics):
             command += ['--character-shader',str(character_shader)]
         if external_map is not None:
             command += ['--external-map', external_map['path']]
+            if external_map.get('format') == 'renderlock-map-v2':
+                command += ['--map-project-scene', str(output)]
         if getattr(args, 'map_viewport_proxy', False):
             command += ['--map-viewport-proxy']
         if getattr(args,'character_only',False):
@@ -836,9 +840,13 @@ def _convert(args, diagnostics):
             report['map']=dict(status='not_requested',reason='Separate map geometry',
                                prepared_lighting_assets=report['map'])
         if external_map is not None:
-            report['map_workflow']['status'] = 'external_blend_appended'
+            report['map_workflow']['status'] = blender_report['external_map'].get('workflow', 'external_blend_appended')
             report['external_map'] = blender_report['external_map']
-            report['map'] = dict(blender_report['external_map'], source='downloaded_library',
+            map_source = 'downloaded_library'
+            if external_map.get('format') == 'renderlock-map-v2':
+                from .external_map import map_definition
+                map_source = map_definition(external_map)['source']['kind']
+            report['map'] = dict(blender_report['external_map'], source=map_source,
                                  prepared_lighting_assets=report['map'])
         report['map_workflow']['collection'] = report['map'].get('collection')
         report['map_workflow']['timings_seconds'] = report['map'].get('timings_seconds')
@@ -865,7 +873,10 @@ def _convert(args, diagnostics):
         log(f"Coverage: {report_path}")
         log(report["summary"])
         if external_map is not None:
-            log('Map appended in RenderLockMap. In Blender, cut in Solid view first with the separate Map Optimizer (Map = RenderLockMap), remove unused map materials/images, then relink retained textures with File > External Data > Find Missing Files. Inspect camera placement before rendering. See MAP_WORKFLOW.md for memory and EEVEE limits. This snapshot may differ from the replay revision.')
+            if external_map.get('format') == 'renderlock-map-v2':
+                log('Prepared map included with its lighting and portable textures. Keep RenderLockMapAssets beside the exported scene when moving the project. The full map supplies renders; the simplified map is for the viewport.')
+            else:
+                log('Map included in RenderLockMap. Older map packages still require manual texture relinking; retain the extracted texture folder. Hide RenderLockChar while cutting with the separate Map Optimizer. This map snapshot may differ from the replay revision.')
         if report["status"] == "converted_with_warnings":
             for warning in report["warnings"]:
                 log("WARNING: " + warning)
@@ -897,6 +908,12 @@ def parser():
     compat.add_argument("--game-install", type=Path, required=True)
     compat.add_argument("--map-name")
     compat.add_argument("--asset-cache", type=Path)
+    prepare = sub.add_parser('prepare-map', help='Build and cache the full Midtown map from installed game files')
+    prepare.add_argument('--game-install', type=Path)
+    prepare.add_argument('--blender', required=True)
+    prepare.add_argument('--asset-cache', type=Path)
+    prepare.add_argument('--map-name', default='dl_midtown')
+    prepare.add_argument('--keep-work', action='store_true', help='Retain intermediate build files for diagnostics')
     cv = sub.add_parser("convert", help="Build a new scene from a replay or saved scene package")
     source = cv.add_mutually_exclusive_group(required=True)
     source.add_argument("--demo", type=Path)
@@ -917,8 +934,12 @@ def parser():
     cv.add_argument('--source-npr-lighting',action='store_true',help='Partial NPR indirect with reference assumptions; requires --source-hero-lighting and explicit lighting consent (--partial-lighting preserves strict character data)')
     cv.add_argument('--character-shader',type=Path,help='Qualified user-supplied Elagrimm BLENDER-Deadlock-Shader.blend; partial Eevee Source-lighting bridge and artistic rim; requires --source-npr-lighting')
     cv.add_argument('--character-only',action='store_true',help='Omit map geometry from the Blender scene while retaining prepared lighting assets and coordinates for a separate map')
-    cv.add_argument('--external-map',type=Path,help='Append the supported downloaded RenderLockMap.blend; texture relinking and cutting remain manual, independently of Source lighting')
-    cv.add_argument('--map-viewport-proxy',action='store_true',help='With the current downloaded map, add an approximate untextured viewport proxy while keeping the full map for rendering')
+    cv.add_argument('--external-map',type=Path,help='Include a qualified prepared map with automatic textures, or an older downloaded map with manual relinking; cutting remains manual')
+    proxy = cv.add_mutually_exclusive_group()
+    proxy.add_argument('--map-viewport-proxy',dest='map_viewport_proxy',action='store_true',default=None,
+                       help='Use the simplified viewport map; enabled by default for new prepared map packages')
+    proxy.add_argument('--no-map-viewport-proxy',dest='map_viewport_proxy',action='store_false',
+                       help='Show the full prepared map in the viewport too')
     cv.add_argument('--source-hero-lighting',action='store_true',help='Experimental partial hero probes/reflections; unit intensity/tint and viewer normalization assumptions; requires --source-lighting')
     cv.add_argument('--probe-atlas-decoder',type=Path,help='Qualified ProbeAtlasDecode.dll for --source-hero-lighting')
     cv.add_argument('--cubemap-decoder',type=Path,help='Qualified CubemapDecode.dll for --source-hero-lighting')
@@ -982,6 +1003,16 @@ def main(argv=None):
             report = check_game_install(args.game_install, args.asset_cache, args.map_name)
             print(json.dumps(report, indent=2))
             return 0
+        elif args.command == 'prepare-map':
+            from .map_builder import prepare_map
+            if args.game_install is None:
+                from .game_assets import discover_installations
+                found = discover_installations()
+                if len(found) != 1:
+                    raise ValueError('Choose the Deadlock installation with --game-install or in Setup.')
+                args.game_install = found[0]
+            prepare_map(args.game_install, executable(args.blender), args.asset_cache or default_asset_cache(),
+                        map_name=args.map_name, keep_work=args.keep_work)
         elif args.command == 'render-npr':
             from .npr_render_sequence import render_sequence
             render_sequence(args.blender,args.scene,args.segment,args.output,args.frames,allow_partial=args.partial)

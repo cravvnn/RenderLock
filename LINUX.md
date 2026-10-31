@@ -3,7 +3,7 @@
 [All user guides](docs/README.md) · [Building](docs/BUILDING.md)
 
 Linux support is being developed separately from the Windows portable release.
-The experimental **0.3.0b17.dev5 source test kit** is described in
+The experimental **0.3.0b17.dev8 source test kit** is described in
 [TESTING_LINUX.md](TESTING_LINUX.md). It reuses a tester's existing native tools;
 there is no self-contained supported Linux binary release or Linux updater yet. Do not treat
 the Windows ZIP as a native Linux installer.
@@ -13,6 +13,18 @@ lighting and Elagrimm exports using native tools, after local dependency and
 decoder-gate changes. Its scope is one Haze replay/range, with partial export
 options selected. It establishes a useful test lead, not general compatibility.
 The supplied reports and renders are not a replacement for decoder qualification.
+
+## New prepared-map workflow (dev8)
+
+The new optional Midtown path targets Blender 5.2 LTS. Download the prepared
+package or use Map > Build from game; new exports reuse a cached viewport proxy
+and keep map textures beside the scene in RenderLockMapAssets. Older libraries
+retain manual texture relinking. See [the map guide](MAP_WORKFLOW.md) and the
+dev8 test steps in [TESTING_LINUX.md](TESTING_LINUX.md).
+
+The local builder downloads pinned Linux x64 tools separately, including complete
+GPL upstream source and notices. Native Linux execution has not been qualified;
+the common code and Windows Blender checks are not a Linux runtime result.
 
 ## Changes on this branch
 

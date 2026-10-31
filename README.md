@@ -14,11 +14,11 @@
 
 Choose a recording, characters and a tick range. RenderLock exports an animated
 Blender scene for cinematics, edits and stills, with coverage reports for optional
-cloth, effects and character lighting. A separately downloaded map can be appended
-and aligned in the same scene.
+cloth, effects and character lighting. Prepared maps can be downloaded or built locally for Blender 5.2 LTS, with
+a cached viewport proxy. Native Linux execution of this new path needs testing.
 
-**This branch: 0.3.0b17.dev5 - experimental Linux source test kit.**
-See [TESTING_LINUX.md](TESTING_LINUX.md). **Published Windows: 0.3.0b16.** Its portable ZIP
+**This branch: 0.3.0b17.dev8 - experimental Linux source test kit.**
+See [TESTING_LINUX.md](TESTING_LINUX.md). The separate Windows portable ZIP
 includes Python, the asset converter and helper tools. Install Blender separately
 and supply your own Deadlock installation and replay.
 

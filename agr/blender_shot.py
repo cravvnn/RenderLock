@@ -137,7 +137,8 @@ def frame_actor(scene, root):
                 clear = 0
                 for aim in aims:
                     origin = target + offset
-                    clear += int(_clear_ray(scene, deps, origin, aim, actor))
+                    visible, _blocker, _distance = _clear_ray(scene, deps, origin, aim, actor)
+                    clear += int(visible)
                 scores.append(clear / len(aims))
             candidates.append((min(scores), sum(scores), direction.dot(preferred_view), -index, offset, rotation))
         chosen = max(candidates, key=lambda c: c[:4])

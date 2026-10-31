@@ -26,6 +26,10 @@ Other unmerged research or test results do not establish a supported user workfl
 
 ## Which files to keep
 
+New prepared-map exports keep textures and volume data in `RenderLockMapAssets`
+beside the scene. Move that folder with the project. The older downloaded-map
+workflow below retains its manual texture requirements; see [the map guide](../MAP_WORKFLOW.md).
+
 Keep the exported `.blend`, `.agrscene` directory and `.agr-report.json` together.
 For an external map, retain the downloaded `Textures` folder until you have relinked
 and packed the needed images. Keep failure diagnostics until an issue is resolved.

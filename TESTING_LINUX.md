@@ -1,9 +1,39 @@
-# Linux test kit: 0.3.0b17.dev7
+# Linux test kit: 0.3.0b17.dev8
 
 This is **experimental source**, not a self-contained Linux binary release or an
 update to Windows b16. Extract it into a new folder beside your working copy.
 Keep the old app, its native tools, caches and successful scenes unchanged.
 Read [LINUX.md](LINUX.md) for dependencies and pending qualification gates.
+
+## New map check (dev8)
+
+Use Blender 5.2 LTS. Keep a working old installation and its existing native
+helpers. First repeat a known short strict Standard character control, with
+effects and cloth off. Then add the **new prepared map package**, leaving
+**Simplified map in viewport** on. Older map packages still need manual texture
+relinking; they do not become the upgraded map by selecting them in this kit.
+
+For the new map, check the character animation and selected tick range, full-map
+textures, and a small render. The full map supplies renders; the proxy is only
+for editing. Select the RenderLockChar view layer to exclude both map collections.
+Toggle to the full map for framing/obstruction inspection: new prepared maps do
+not yet run the older library's automatic camera-obstruction check. Move the
+exported project together with RenderLockMapAssets and reopen it independently.
+
+After the hosted package works, optionally test one local build:
+
+```sh
+python3 tools/run_linux_test.py --tools-from "$OLD" -- prepare-map \
+  --game-install "$GAME" --blender /path/to/blender-5.2 \
+  --asset-cache /path/to/map-cache --map-name dl_midtown
+```
+
+The first build needs internet, substantial free RAM and at least 32 GB free
+working space. Let it finish; it reads installed files without running the game.
+The final RENDERLOCK_MAP_READY line identifies the prepared library. Later exports
+reuse it. If a stage fails, retain the first log/request/output; do not remove
+validation gates or repeatedly launch full builds. Native Linux tools, rendering,
+UI and performance remain the test request, not a claimed fix.
 
 ## Reuse a working Linux installation
 
@@ -13,7 +43,7 @@ explicit, so there is no copying of Windows binaries or silent replacement of
 the old installation. No dependency download or game process is required.
 
 ```sh
-cd /path/to/RenderLock-0.3.0b17.dev7-Linux-test-source
+cd /path/to/RenderLock-0.3.0b17.dev8-Linux-test-source
 OLD="$HOME/Applications/RenderLock"
 python3 tools/run_linux_test.py --tools-from "$OLD" -- --help
 ```

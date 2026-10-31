@@ -1331,31 +1331,31 @@ def build(app):
 
 
 def _build_map(app, page):
-    body, row = _card(app, page, 0, "Downloaded map", label_column=WIDE_LABEL_COLUMN,
-                     info='Download and extract the separate map once. RenderLock appends and aligns it; texture relinking and cutting stay manual.')
-    _check(app, body, 'Include downloaded map', app.values['external_map_enabled'])
+    body, row = _card(app, page, 0, "Full map", label_column=WIDE_LABEL_COLUMN,
+                     info='Download a prepared map or build one from your installed game. New packages include map materials, lighting, textures and a cached viewport proxy. Requires Blender 5.2 LTS.')
+    _check(app, body, 'Include map', app.values['external_map_enabled'])
     _path_row(app, body, 'Map .blend', 'external_map', app._browse_external_map)
     _check(app, body, 'Simplified map in viewport', app.values['map_viewport_proxy'],
-           info='When the current downloaded map is included, build an approximate, untextured map for framing. The full map stays in the file and renders normally, so this does not reduce its loading memory. It adds export time and may omit small details.')
+           info='Use an approximate, untextured map while editing. New packages reuse a cached proxy. The full textured map supplies renders and still needs loading and render memory. Small viewport details may be omitted.')
     buttons = tk.Frame(body, background=gui_theme.CARD)
     buttons.grid(row=_next_row(body), column=0, columnspan=3, sticky='w', pady=_pad((0, ROW_GAP)))
     RoundedButton(buttons, text='Download map', style='quiet', command=app._open_map_link,
                   theme=gui_theme.palette(), height=34).pack(side='left', padx=_pad((0, 8)))
+    app.map_build_button = RoundedButton(buttons, text='Build from game', style='quiet', command=app._prepare_full_map,
+                  theme=gui_theme.palette(), height=34)
+    app.map_build_button.pack(side='left', padx=_pad((0, 8)))
     RoundedButton(buttons, text='Map Optimizer', style='quiet', command=lambda: app._open_map_link(True),
                   theme=gui_theme.palette(), height=34).pack(side='left')
-    map_note = wrap_to_width(_label(body, 'Extract the ZIP and choose RenderLockMap.blend. Characters, cameras, lights and effects stay in RenderLockChar; '
-               'the appended map is in RenderLockMap. In Blender, cut in Solid view first with the separate Map Optimizer '
-               '(Map = RenderLockMap), remove unused map materials/images, then relink the retained Textures folder with '
-               'File > External Data > Find Missing Files. Whole-map relinking uses substantial RAM; resolve missing images before EEVEE. '
-               'This map snapshot can differ from a later game or replay. Source lighting is optional and configured separately.',
+    map_note = wrap_to_width(_label(body, 'Extract the full download and choose RenderLockMap.blend, or use Build from game to prepare and select it automatically. '
+               'The first local build takes time; exports reuse the prepared map. New exports put portable map resources in RenderLockMapAssets beside the scene; keep that folder when moving the project. '
+               'Characters, cameras and effects remain editable in RenderLockChar, with the full map in RenderLockMap. '
+               'Older map packages remain usable with their original texture folder and manual relinking. Hide RenderLockChar while cutting with the separate Map Optimizer. '
+               'Map snapshots can differ from a replay or later game update.',
                color=gui_theme.DIM, font=gui_theme.FONT_SMALL, justify='left', anchor='w', wraplength=px(TEXT_WRAP)))
     map_note.grid(row=_next_row(body), column=0, columnspan=3, sticky='ew', pady=_pad((SECTION_GAP, 0)))
-    body, row = _card(app, page, row, "Installed lighting region", label_column=WIDE_LABEL_COLUMN,
-                      info="The lighting tools read one prepared region of the installed map. "
-                           "Prepared regions are cached by map content and export bounds. "
-                           + ("This beta omits installed geometry conversion; downloaded maps are appended separately above." if character_beta()
-                              else "Map geometry can be omitted from the Blender scene."))
-    app.map_prepare_check = _check(app, body, "Prepare installed map region", app.values["map_enabled"], pady=(0, CHECK_GAP),
+    body, row = _card(app, page, row, "Character lighting (advanced)", label_column=WIDE_LABEL_COLUMN,
+                      info="Optional installed-game lighting data for character looks. The prepared full-map package already includes its map lighting.")
+    app.map_prepare_check = _check(app, body, "Prepare installed lighting region", app.values["map_enabled"], pady=(0, CHECK_GAP),
            installed_only=True)
     app.map_look_note = tk.StringVar()
     wrap_to_width(_label(body, '', textvariable=app.map_look_note, justify='left', anchor='w', wraplength=px(TEXT_WRAP))).grid(
@@ -1364,14 +1364,11 @@ def _build_map(app, page):
     _path_row(app, body, "Extra margin (metres)", "map_margin", None, button=False)
     _path_row(app, body, "Regional exporter", "world_region_probe", app._browse_world_region_probe)
     _path_row(app, body, ".NET executable", "lighting_dotnet", app._browse_lighting_dotnet)
-    if character_beta():
-        _note(body, "The beta omits converted installed geometry; the downloaded map above is appended separately.")
-    else:
+    if not character_beta():
         _check(app, body, "Characters only; omit prepared map geometry", app.values["character_only"])
-    _note(body, "Source/NPR lighting needs data from the installed map. Character-only exports retain "
-                "that lighting data so you can add your own map separately in Blender. Preparing lighting "
-                "does not require importing map geometry into your final scene. "
-                "New map and lighting preparation uses Installed game on Setup.", pady=(SECTION_GAP, 0))
+    _note(body, "These tools prepare data for the character look selected on Export. Full-map inclusion is chosen above. "
+                "Character-lighting coverage and remaining limits are listed in the export report. "
+                "Lighting preparation reads the game installation selected in Setup.", pady=(SECTION_GAP, 0))
     refresh_character_look(app)
     return row
 

@@ -1,3 +1,14 @@
+# 0.3.0b17.dev8 - Prepared maps and cached viewport proxy
+
+- Fix the hero-follow camera caller to use the visibility boolean from its detailed ray result; the previous tuple-to-integer conversion stopped short exports before map composition.
+
+- Add Blender 5.2 LTS prepared Midtown packages with reconstructed map materials, lighting, reflections, fog and portable external resources. Keep host download and installed-game build as two sources of the same package format; keep qualified older maps usable.
+- Build maps with pinned, separately executed deadlockrigs/Source2Viewer tools, preserving their source and licenses. Verify source identity and completed extraction checkpoints; isolate caches from the game and retain interrupted outputs. Report unsupported Blender versions, changed inputs and long Windows cache paths before proceeding.
+- Open the cached map directly and compose editable replay data into it. Keep geometry/UVs, animation keys and packed resources exact, and verify evaluated matrices within a narrow float32 tolerance. Copy map resources beside exported scenes with relative paths and preserve artist-modified managed files.
+- Cache an approximate untextured viewport proxy once per prepared map, enabled for fresh settings and by default for new-map CLI exports. Keep the full map in renders, shadows and reflections; this does not remove file-open/render RAM requirements. No camera-frustum deletion or game-render parity claim.
+
+- Preserve Linux characters-only view-layer exclusions, reference-grid hiding and the existing EEVEE shadow-pool policy. Prepared-map camera obstruction checks remain explicit manual inspection. Native Linux map/tool execution is not yet qualified.
+
 # 0.3.0b17.dev7 - Disable UI animations
 
 - Add Setup > Accessibility > Disable UI animations. Apply and save it immediately; read it before any animation starts in the application or standalone updater/recovery window. Keep the existing palette, artwork and static interaction feedback.

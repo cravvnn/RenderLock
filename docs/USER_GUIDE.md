@@ -8,6 +8,12 @@ Python runtime, converter and helper tools; install Blender separately.
 
 ## Install and check Setup
 
+Experimental dev8 adds Blender 5.2 LTS prepared maps, from the host or installed
+game files. New exports connect map resources automatically and keep them beside
+the scene in `RenderLockMapAssets`; move that folder with the project. Older map
+packages retain manual texture relinking. Read [the map workflow](../MAP_WORKFLOW.md)
+and [native Linux test steps](../TESTING_LINUX.md) before using the new path.
+
 1. Download the Windows x64 ZIP from [Releases](https://github.com/cravvnn/RenderLock/releases/latest)
    and extract the entire folder into a writable location. Do not launch from
    inside the ZIP or move only the executable.

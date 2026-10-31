@@ -33,7 +33,14 @@ Third-party shader libraries remain separate downloads, under their authors' ter
 
 ## Map workflow
 
-The optional downloaded Midtown map is separate from the application package.
+The optional Midtown map is separate from the application package. New prepared
+maps use [Sirsyorrz / deadlockrigs](https://github.com/Sirsyorrz/deadlockrigs)' map
+export, rebatching and material/lighting reconstruction pipeline, pinned to
+`0d1958ab553630df997a93fda06d3ab9ed6994c3`. Its GPL source and notices remain in
+the optional tools cache. RenderLock's standalone bridge is also GPL-3.0-or-later;
+the application-side package, composition and proxy adapters are separate code.
+Source2Viewer/ValveResourceFormat supplies the pinned converter for this path.
+The ready-made hosted map and local build both retain these credits.
 The manual cutting workflow links to
 [Miruneko0 / Deadlock Map Optimizer](https://github.com/Miruneko0/Deadlock-Map-Optimizer).
 RenderLock does not bundle, install or run that add-on. See the
