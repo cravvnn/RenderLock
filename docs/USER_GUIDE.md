@@ -19,8 +19,8 @@ Python runtime, converter and helper tools; install Blender separately.
    are discovered automatically; choose external overrides only when needed.
 
 Blender 5.2.1 LTS is the tested installation. RenderLock probes required Blender
-capabilities rather than requiring that exact patch version. The downloaded-map
-library needs Blender 5.2 or newer. A successful capability probe does not qualify
+capabilities rather than requiring that exact patch version. New prepared maps require Blender 5.2 LTS; older downloaded libraries retain their
+existing Blender 5.2-or-newer path. A successful capability probe does not qualify
 every cloth solver, material or render engine behavior.
 
 Installed exports use base Citadel/Core assets and an explicitly selected map.
@@ -67,7 +67,7 @@ installed models even when the hero is selectable.
 | **Export** | Replay, characters, range, follow camera and effect inclusion |
 | **Setup** | Blender, installed/prepared asset source, converter and cache |
 | **Advanced** | Cloth, model bone rules, material repairs, particle simulation and output policy |
-| **Map** | Download/include the separate map and open the external Map Optimizer link |
+| **Map** | Download a full map or build from installed game files; choose the viewport proxy |
 | **Lighting lab** | Standard, Source, Elagrimm + Source or Custom; lighting-only consent |
 | **Updates** | Published Windows app updates and release notes |
 
@@ -95,10 +95,11 @@ not a general workaround for an unsupported effect. See the report.
 | `shot.agrscene/` | Reusable recorded scene data, including `manifest.json` and evaluated pose/skeleton files |
 | `shot.agr-report.json` | Coverage, warnings, selected options, compatibility evidence and timings |
 
-Character textures are normally packed into the `.blend`. The separately appended
-map keeps its large textures external; the refreshed b20 build connects the current
-download automatically. Retain the extracted folder or pack resources and save
-before moving the scene. Older scenes can use the [texture repair steps](../MAP_WORKFLOW.md#repair-an-existing-scene).
+Character textures are normally packed into the `.blend`. New prepared-map
+exports connect textures automatically and copy external map assets into
+`RenderLockMapAssets` beside the scene. Move this folder with your project.
+Older map libraries retain their original texture-folder requirements; older
+scenes can use the [texture repair steps](../MAP_WORKFLOW.md#repair-an-older-exported-scene).
 Elagrimm groups/materials
 are embedded in the final scene; a separate shader file beside the output is not
 expected. Select a character mesh to inspect materials, not the replay-root Empty.

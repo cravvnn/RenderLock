@@ -64,3 +64,21 @@ The Windows portable candidate bundles these components under `tools/`:
 
 Replays, game assets and third-party shader libraries remain excluded from
 both archives.
+
+## Optional prepared-map builder
+
+New maps are built by the separately executed
+[Sirsyorrz/deadlockrigs](https://github.com/Sirsyorrz/deadlockrigs/tree/0d1958ab553630df997a93fda06d3ab9ed6994c3)
+source, pinned to commit `0d1958ab553630df997a93fda06d3ab9ed6994c3`, under
+GPL-3.0-or-later. The complete unmodified source archive and LICENSE remain in the
+map-tools cache. `tools/map_builder/bridge.py` is RenderLock's standalone GPL
+helper; its complete source, COPYING and README.txt are included with the app and
+source package. It invokes upstream tools and does not relicense them as MIT.
+The application-side adapter does not import upstream shader Python modules.
+
+This optional path uses the separate Source2Viewer release `s2v-f030654ff`
+(ValveResourceFormat commit `f030654ff81b352fd1bcb44d631c563f51c7dcd1`). Its
+download retains its own third-party/native notices and is kept separate from
+the application's existing converter. Pinned archives and executable identities
+are recorded in `agr/map_builder.py`. Game-derived map geometry and textures are
+not part of the public source or application archives.

@@ -251,12 +251,12 @@ def recovery_choices(command: list[str], failure: dict, log_text: str = '') -> l
         return [RecoveryChoice('without_map_proxy', 'Continue with full map',
             'Retry without the simplified viewport map. The full map, character animation, effects and lighting stay requested. '
             'Setting: Map > Simplified map in viewport.',
-            _rewrite(rows, {'--map-viewport-proxy'}), (('map_viewport_proxy', '0'),))]
+            _rewrite(rows, {'--map-viewport-proxy'}, ('--no-map-viewport-proxy',)), (('map_viewport_proxy', '0'),))]
     if kind == 'external_map' and '--external-map' in present:
-        return [RecoveryChoice('without_external_map', 'Continue without downloaded map',
-            'Retry without appending the downloaded map. Character models, animation, effects and lighting stay requested. '
-            'Setting: Map > Include downloaded map.',
-            _rewrite(rows, {'--external-map', '--map-viewport-proxy'}, ('--character-only',)),
+        return [RecoveryChoice('without_external_map', 'Continue without map',
+            'Retry without including the selected map. Character models, animation, effects and lighting stay requested. '
+            'Setting: Map > Include map.',
+            _rewrite(rows, {'--external-map', '--map-viewport-proxy', '--no-map-viewport-proxy'}, ('--character-only',)),
             (('external_map_enabled', '0'), ('map_viewport_proxy', '0'), ('character_only', '1')))]
     if kind == 'cloth' and present & {'--secondary-motion', '--cloth'}:
         choices = []

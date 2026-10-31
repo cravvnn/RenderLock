@@ -48,7 +48,7 @@ packages do not embed every model, lighting input or external map.
 
 | Option | Meaning |
 | --- | --- |
-| `--external-map "maps\RenderLockMap.blend"` | Append the qualified download and connect current-package textures; cutting manual, independent of Source lighting |
+| `--external-map "maps\RenderLockMap.blend"` | Include a qualified downloaded or locally prepared map; connect textures and align it; cutting manual |
 | `--secondary-motion` or `--cloth` | Request supported approximate cloth |
 | `--partial-cloth` | Accept unavailable/failed cloth only; character data remains strict |
 | `--partial-lighting` | Accept partial reference-lighting limits; character data remains strict |
@@ -82,3 +82,21 @@ otherwise unsupported operations. The report lists actual completed layers.
 
 For normal use the GUI is the easier way to select the look, bundled helpers,
 consent and recovery. The exact selected command and outcomes remain in diagnostics.
+
+## Prepare a full map once
+
+```powershell
+python -m agr prepare-map `
+  --game-install "D:\SteamLibrary\steamapps\common\Deadlock" `
+  --blender "D:\Apps\Blender 5.2\blender.exe" `
+  --asset-cache "D:\RenderLockCache" --map-name dl_midtown
+```
+
+This needs Blender 5.2 LTS, substantial free RAM, at least 32 GB free working
+space and internet access for the first pinned-tool download. It does not need a
+replay. The log prints `RENDERLOCK_MAP_READY=` with the resulting library path.
+Use that path with `convert --external-map`. New packages reuse a cached
+viewport proxy by default; pass `--no-map-viewport-proxy` to show the full map
+while editing. Older downloaded libraries retain their existing proxy behavior.
+Keep the complete prepared package; move exported scenes with their adjacent
+`RenderLockMapAssets` folder. See the [map guide](../MAP_WORKFLOW.md).

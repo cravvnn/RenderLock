@@ -742,8 +742,18 @@ def _review_setup(scene, positions):
 
 def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime=None, shot_hero=None,
                 character_shader=None, character_only=False, allow_partial_lighting=False, external_map=None,
-                map_viewport_proxy=False):
+                map_viewport_proxy=False, map_project_scene=None):
     _init_blender()
+    if external_map is not None:
+        from agr.external_map import validate_map_library
+        library = validate_map_library(external_map)
+        if library.get('format') == 'renderlock-map-v2':
+            from agr.blender_map_scene import build_map_first
+            return build_map_first(build_scene, segment, assets, output, library=library,
+                project_scene=map_project_scene, fps=fps, partial=partial,
+                particle_runtime=particle_runtime, shot_hero=shot_hero,
+                character_shader=character_shader, character_only=character_only,
+                allow_partial_lighting=allow_partial_lighting, map_viewport_proxy=map_viewport_proxy)
     started = time.monotonic()
     timings = []
 
@@ -1075,11 +1085,12 @@ def main(argv=None):
     parser.add_argument('--character-only',action='store_true')
     parser.add_argument('--external-map',type=Path)
     parser.add_argument('--map-viewport-proxy',action='store_true')
+    parser.add_argument('--map-project-scene',type=Path,help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     attach_blender_log(args.output)
     return build_scene(args.segment, args.assets, args.output, args.fps, args.partial,args.particle_runtime,
                        args.shot_hero,args.character_shader,args.character_only,args.partial_lighting,args.external_map,
-                       args.map_viewport_proxy)
+                       args.map_viewport_proxy,args.map_project_scene)
 
 
 if __name__ == "__main__":

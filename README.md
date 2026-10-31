@@ -14,10 +14,10 @@
 
 Choose a recording, characters and a tick range. RenderLock exports an animated
 Blender scene for cinematics, edits and stills, with coverage reports for optional
-cloth, effects and character lighting. A separately downloaded map can be appended
-and aligned in the same scene.
+cloth, effects and character lighting. Download a prepared map or build one from installed game files, then include it
+with a lighter viewport proxy in the same editable scene.
 
-**Current source: 0.3.0b22 · Windows x64 · character beta.** The portable ZIP
+**Current source: 0.3.0b23 · Windows x64 · character beta.** The portable ZIP
 includes Python, the asset converter and helper tools. Install Blender separately
 and supply your own Deadlock installation and replay.
 
@@ -30,12 +30,12 @@ recordings can still require compatibility work.
 
 ## Quick start
 
-1. Download **RenderLock-0.3.0b22-Windows-x64.zip**, or the newer Windows ZIP on
+1. Download **RenderLock-0.3.0b23-Windows-x64.zip**, or the newer Windows ZIP on
    [Releases](https://github.com/cravvnn/RenderLock/releases/latest), and extract it
    completely. Keep the runtime, tools and other files beside **RenderLock.exe**.
 2. Open **RenderLock.exe**. In **Setup**, select Blender and your Deadlock folder.
-   Blender 5.2.1 LTS is the tested installation; the downloaded-map workflow needs
-   Blender 5.2 or newer. The converter and helper paths are discovered from the ZIP.
+   Blender 5.2.1 LTS is the tested installation; new prepared maps use
+   Blender 5.2 LTS. The converter and helper paths are discovered from the ZIP.
 3. In **Export**, select a `.dem`, inspect it and choose a character for a short
    preview. Use **Standard materials** and turn off optional effects, cloth and map
    for the first animation check.
@@ -63,10 +63,11 @@ and cache. For a stopped export, start with [troubleshooting](docs/TROUBLESHOOTI
 - **Character looks.** Choose Standard materials, partial Source lighting, or
   Elagrimm + Source. The Elagrimm library is a separate download; these looks do
   not reproduce every game shader or lighting effect.
-- **Map in the final scene.** Download the separate map, include it on **Map**, and
-  let RenderLock append, align and connect the current download's textures.
-  Keep the extracted texture folder in place or pack resources before moving the
-  scene. Existing scenes can use the map guide's repair tool. Cut the map manually.
+- **Full map and lighter viewport.** Download a separate prepared map or build
+  one from installed game files using Blender 5.2 LTS. New maps include materials,
+  lighting and a cached viewport proxy; the full map supplies renders. Exported
+  map assets stay beside the scene, ready to move with the project. Older maps
+  keep their original compatibility path. Cut the full map manually.
 - **Recovery and reuse.** Recognized failures offer specific, explicit retry
   choices. Verified generated assets can be reused between exports, and failed
   exports try to retain a support ZIP beside the normal logs.

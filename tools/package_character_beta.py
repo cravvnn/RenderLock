@@ -94,7 +94,8 @@ def stage_source(root, output):
             relative = path.relative_to(root)
             if not path.is_file() or SKIP_PARTS.intersection(relative.parts[1:]):
                 continue
-            if "licenses" not in relative.parts and path.suffix.lower() not in {".py", ".rs", ".toml", ".lock", ".md", ".txt", ".patch", ".png", ".ico", ".gif"}:
+            if ("licenses" not in relative.parts and relative.as_posix() != 'tools/map_builder/COPYING'
+                    and path.suffix.lower() not in {".py", ".rs", ".toml", ".lock", ".md", ".txt", ".patch", ".png", ".ico", ".gif"}):
                 continue
             if folder == "tools" and relative.name in STALE_TOOLS:
                 # Superseded 0.2.x packaging scripts; the current flow uses
@@ -299,6 +300,8 @@ def package(root, output, native_helper, source2viewer_dir=None, lighting_kit=No
     for folder in ("agr",):
         shutil.copytree(source / folder, portable / folder)
     stage_documentation(source, portable)
+    for name in ('bridge.py', 'COPYING', 'README.txt'):
+        copy_file(source / 'tools/map_builder' / name, portable / 'tools/map_builder' / name)
     for name in ("Launch_RenderLock.cmd", "portable_launcher.py", "release_profile.json"):
         copy_file(source / name, portable / name)
     copy_file(native_helper, portable / "bin/agr-extract.exe")

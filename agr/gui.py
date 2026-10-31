@@ -126,6 +126,25 @@ def migrate_scene_settings(values: dict[str, str]) -> dict[str, str]:
     return migrate_look_settings(migrated)
 
 
+def build_map_command(values: dict[str, str]) -> list[str]:
+    values = normalize_gui_paths(values)
+    blender = values.get('blender', '').strip()
+    if not blender or not Path(blender).is_file():
+        raise ValueError('Choose Blender 5.2 LTS in Setup before preparing the map.')
+    install = values.get('game_install', '').strip()
+    if install and not Path(install).is_dir():
+        raise ValueError('Choose the current Deadlock installation folder in Setup.')
+    cache = values.get('asset_cache', '').strip()
+    if cache and Path(cache).exists() and not Path(cache).is_dir():
+        raise ValueError('Choose a folder for the generated asset cache.')
+    command = [sys.executable, '-m', 'agr', 'prepare-map', '--blender', blender,
+               '--map-name', values.get('map_name', '').strip() or 'dl_midtown',
+               '--asset-cache', cache or str(default_asset_cache())]
+    if install:
+        command += ['--game-install', install]
+    return command
+
+
 def build_convert_command(values: dict[str, str], *, partial: bool = False,
                           overwrite: bool = False, partial_cloth: bool = False,
                           lighting_consent: bool = False) -> list[str]:
@@ -235,6 +254,8 @@ def build_convert_command(values: dict[str, str], *, partial: bool = False,
         command += ['--external-map', map_path]
         if values.get('map_viewport_proxy', '0') == '1':
             command += ['--map-viewport-proxy']
+        else:
+            command += ['--no-map-viewport-proxy']
     if values.get('source_hero_lighting','0') == '1' or character_lighting:
         if values.get('source_lighting','0') != '1':raise ValueError('Hero lighting requires Partial static diffuse lighting.')
         from .source_hero_lighting import validate_hero_decoder_paths
@@ -335,7 +356,8 @@ class AGRApp:
             "output": "", "start": "", "end": "", "fps": "64", "heroes": "", "heroes_empty": "0",
             "asset_source": "installed", "game_install": "", "source2viewer": "", "asset_cache": "",
             "map_enabled": "0", "map_name": "dl_midtown", "map_margin": "26",
-            "external_map_enabled": "0", "external_map": "", "map_viewport_proxy": "0",
+            "external_map_enabled": "0", "external_map": "", "map_viewport_proxy": "1",
+            "prepared_map_proxy_default_applied": "0",
             "source_lighting": "0", "world_region_probe": "", "lighting_dotnet": "",
             "source_hero_lighting": "0", "source_npr_lighting": "0", "probe_atlas_decoder": "", "cubemap_decoder": "",
             "character_shader": "", "character_only": "0",
@@ -501,6 +523,25 @@ class AGRApp:
             filetypes=[('Blender map library', '*.blend'), ('All files', '*')])
         if path:
             self.values['external_map'].set(path)
+            self._apply_prepared_map_defaults(path)
+
+    def _apply_prepared_map_defaults(self, path) -> None:
+        applied = self.values.get('prepared_map_proxy_default_applied')
+        if applied is None or applied.get() == '1':
+            return
+        try:
+            manifest = Path(path).parent / 'map-package.json'
+            if manifest.stat().st_size > 4 * 1024**2:
+                return
+            document = json.loads(manifest.read_bytes())
+            if not isinstance(document,dict) or document.get('format') != 'renderlock-map-v2':
+                return
+        except (OSError, ValueError):
+            return
+        # Upgrade the previous opt-in default once when a new map is selected.
+        # Subsequent explicit off/on choices remain the user's preference.
+        self.values['map_viewport_proxy'].set('1')
+        applied.set('1')
 
     def _open_map_link(self, optimizer=False) -> None:
         import webbrowser
@@ -512,6 +553,17 @@ class AGRApp:
         except (webbrowser.Error, OSError):
             pass
         self._append_log('Open this map workflow link:\n' + url + '\n')
+
+    def _prepare_full_map(self) -> None:
+        if self.busy:
+            return
+        try:
+            command = build_map_command(self._current_values())
+        except ValueError as exc:
+            self.status.set(str(exc))
+            self._append_log(str(exc) + '\n')
+            return
+        self._start(command, 'prepare_map')
 
     def _open_character_shader_download(self) -> None:
         import webbrowser
@@ -610,6 +662,8 @@ class AGRApp:
 
     def _set_busy(self, busy: bool) -> None:
         self.busy = busy
+        if hasattr(self, 'map_build_button'):
+            self.map_build_button.configure(state='disabled' if busy else 'normal')
         for widget in self.mutable_widgets:
             widget.configure(state="disabled" if busy else "normal")
         self.asset_source_combo.configure(state="disabled" if busy else "readonly")
@@ -630,14 +684,15 @@ class AGRApp:
     def _start(self, command: list[str], operation: str, report_path: Path | None = None) -> None:
         if operation == "inspect":
             self._inspect_source = self._input_identity()
-        else:
+        elif operation == 'convert':
             self._conversion_command = list(command)
             self._conversion_identity = self._input_identity()
         self.cancel_requested.clear()
         self.termination_done.set()
         self._set_busy(True)
-        self.status.set("Inspecting input…" if operation == "inspect" else "Converting…")
-        self._append_log("\n" + ("Inspecting input" if operation == "inspect" else "Starting conversion") + "…\n")
+        label = {'inspect':'Inspecting input', 'prepare_map':'Preparing map', 'convert':'Converting'}[operation]
+        self.status.set(label + '…')
+        self._append_log('\n' + label + '…\n')
         threading.Thread(target=self._run, args=(command, operation, report_path), daemon=True).start()
 
     def _run(self, command: list[str], operation: str, report_path: Path | None = None) -> None:
@@ -664,10 +719,12 @@ class AGRApp:
                 self.events.put(("log", line))
                 if operation == "inspect":
                     output.append(line)
+                elif operation == 'prepare_map' and line.startswith('RENDERLOCK_MAP_READY='):
+                    output.append(line)
                 else:
                     conversion_log = (conversion_log + line)[-65536:]
             code = process.wait()
-            if operation == 'convert' and code != 0:
+            if operation in {'convert','prepare_map'} and code != 0:
                 output.append(conversion_log)
             if operation == "convert" and code == 0 and report_path is not None:
                 # Read the result off the Tk thread. A successful export can
@@ -835,10 +892,22 @@ class AGRApp:
                     elif code != 0:
                         from .gui_layout import set_log_visible
                         set_log_visible(self, True)
-                        self.status.set(f"{operation.capitalize()} failed (exit {code}); see the log for details.")
+                        label = 'Map preparation' if operation == 'prepare_map' else operation.capitalize()
+                        self.status.set(f"{label} failed (exit {code}); see the log for details.")
                         self._status_tint("error")
                         if operation == 'convert' and not self.close_when_done:
                             self._show_conversion_failure(output)
+                    elif operation == 'prepare_map':
+                        ready = [line.split('=',1)[1].strip() for line in output.splitlines()
+                                 if line.startswith('RENDERLOCK_MAP_READY=')]
+                        if ready and Path(ready[-1]).is_file():
+                            self.values['external_map'].set(ready[-1])
+                            self.values['external_map_enabled'].set('1')
+                            self._apply_prepared_map_defaults(ready[-1])
+                            self.status.set('Map prepared and selected. Its cached viewport proxy and textures are ready for export.')
+                            self._save_settings()
+                        else:
+                            self.status.set('Map preparation ended without a verified library path; see the log.')
                     elif operation == "inspect":
                         try:
                             metadata = json.loads(output)
