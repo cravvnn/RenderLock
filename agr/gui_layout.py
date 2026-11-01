@@ -46,7 +46,7 @@ PAGE_DETAILS = {
     PAGE_SETUP: "Point RenderLock at Blender and your game files. Conversion never launches Deadlock.",
     PAGE_ADVANCED: "Experimental character options and output policy.",
     PAGE_LIGHTING: "Partial Source lighting and Elagrimm character look.",
-    PAGE_MAP: "Append the downloaded map; keep lighting setup separate.",
+    PAGE_MAP: "Download or build the full map; tune character lighting separately.",
     PAGE_UPDATES: "Review release notes and install RenderLock updates.",
 }
 
@@ -1366,7 +1366,7 @@ def _build_map(app, page):
     _path_row(app, body, ".NET executable", "lighting_dotnet", app._browse_lighting_dotnet)
     if not character_beta():
         _check(app, body, "Characters only; omit prepared map geometry", app.values["character_only"])
-    _note(body, "These tools prepare data for the character look selected on Export. Full-map inclusion is chosen above. "
+    _note(body, "These tools prepare data for the character look selected in Lighting lab. Full-map inclusion is chosen above. "
                 "Character-lighting coverage and remaining limits are listed in the export report. "
                 "Lighting preparation reads the game installation selected in Setup.", pady=(SECTION_GAP, 0))
     refresh_character_look(app)
