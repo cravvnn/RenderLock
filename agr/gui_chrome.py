@@ -76,6 +76,7 @@ LINK_PATHS = {
 }
 
 _GWL_STYLE, _GWL_EXSTYLE, _GWLP_WNDPROC = -16, -20, -4
+_GWLP_HWNDPARENT = -8
 _WS_CAPTION, _WS_THICKFRAME, _WS_SYSMENU = 0x00C00000, 0x00040000, 0x00080000
 _WS_MINIMIZEBOX, _WS_MAXIMIZEBOX = 0x00020000, 0x00010000
 _WS_EX_TOOLWINDOW, _WS_EX_APPWINDOW = 0x00000080, 0x00040000
@@ -325,6 +326,12 @@ class WindowChrome:
         user32 = api.user32
         hidden = False
         try:
+            # override-redirect discards Tk's native transient ownership. Keep
+            # the Tcl relationship and restore the real owner after restyling;
+            # otherwise a grabbed dialog can be covered by its own main window.
+            transient = root.transient()
+            owner = root.nametowidget(transient) if transient else None
+            owner_hwnd = int(owner.wm_frame(), 16) if owner is not None else None
             hwnd = api.wintypes.HWND(int(root.wm_frame(), 16))
             user32.ShowWindow(hwnd, 0)  # SW_HIDE: the taskbar only notices the new style on re-show
             hidden = True
@@ -337,7 +344,11 @@ class WindowChrome:
             else:
                 style &= ~(_WS_THICKFRAME | _WS_MAXIMIZEBOX)
             ex_style = user32.GetWindowLongPtrW(hwnd, _GWL_EXSTYLE)
-            ex_style = (ex_style & ~_WS_EX_TOOLWINDOW) | _WS_EX_APPWINDOW
+            ex_style &= ~_WS_EX_TOOLWINDOW
+            if owner_hwnd is None:
+                ex_style |= _WS_EX_APPWINDOW
+            else:
+                ex_style &= ~_WS_EX_APPWINDOW
             old = user32.GetWindowLongPtrW(hwnd, _GWLP_WNDPROC)
             if not old:
                 raise OSError("no window procedure")
@@ -346,6 +357,13 @@ class WindowChrome:
             proc_address = api.ctypes.cast(self._proc, api.ctypes.c_void_p).value
             user32.SetWindowLongPtrW(hwnd, _GWL_STYLE, style)
             user32.SetWindowLongPtrW(hwnd, _GWL_EXSTYLE, ex_style)
+            if owner_hwnd is not None:
+                api.ctypes.set_last_error(0)
+                previous = user32.SetWindowLongPtrW(hwnd, _GWLP_HWNDPARENT, owner_hwnd)
+                if not previous and api.ctypes.get_last_error():
+                    raise OSError('Could not restore the dialog owner')
+                if user32.GetWindowLongPtrW(hwnd, _GWLP_HWNDPARENT) != owner_hwnd:
+                    raise OSError('Dialog owner did not remain attached')
             user32.SetWindowLongPtrW(hwnd, _GWLP_WNDPROC, proc_address)
             self.hwnd = hwnd
             self.content = api.wintypes.HWND(root.winfo_id())     # Tk's window inside the frame

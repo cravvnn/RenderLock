@@ -1,3 +1,12 @@
+# 0.3.0b24 - Reachable recovery and error windows
+
+- Restore native Windows ownership for branded transient dialogs, keeping export
+  recovery and error messages above their main window when returning to the app.
+- Keep owned dialogs out of separate taskbar entries and preserve their owner's
+  minimize/restore behavior, including errors created while the app is minimized.
+- Preserve Kara's existing design and explicit recovery choices; closing a dialog
+  still cancels it without starting an export.
+
 # 0.3.0b23 - Prepared maps and cached viewport proxy
 
 - Add Blender 5.2 LTS prepared Midtown packages with reconstructed map materials, lighting, reflections, fog and portable external resources. Keep host download and installed-game build as two sources of the same package format; keep qualified older maps usable.

@@ -47,7 +47,7 @@ class _MessageDialog:
         window.title(caption)
         window.configure(background=theme.BACKDROP)
         # A transient of a withdrawn owner cannot become visible on some Tk builds.
-        if parent.winfo_viewable():
+        if parent.winfo_viewable() or parent.state() == 'iconic':
             window.transient(parent)
         window.resizable(False, False)
         window.icon = theme.brand_window(window)
