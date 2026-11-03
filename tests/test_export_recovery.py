@@ -384,3 +384,28 @@ def test_cloth_report_identity_requires_the_exact_stage_and_prefix():
     error = 'Requested cloth preparation did not complete: Hero 81: Generated cloth proxy lacks an explicit vertex-map identity'
     assert recovery_choices(BASE + ['--cloth'], dict(CLOTH, stage='model_coverage', error=error)) == []
     assert recovery_choices(BASE + ['--cloth'], dict(CLOTH, error='Generated cloth proxy lacks an explicit vertex-map identity')) == []
+
+
+def test_optional_bone_rule_retry_removes_only_that_requested_feature():
+    command = BASE + LIGHTING + MAP + ['--secondary-motion', '--particle-probe', 'D:/probe.dll', '--dotnet', 'D:/dotnet.exe']
+    failure = dict(stage='prepare_installed_assets', error='Requested model bone rules could not be prepared: models/heroes_wip/inferno/inferno.vmdl_c: Constraint bone hash is absent from model')
+    before = deepcopy((command, failure))
+    choice = single(command, failure)
+    assert choice.id == 'without_model_constraints'
+    assert choice.command == tuple(a for a in command if a != '--model-constraints')
+    assert dict(choice.values_overrides) == {'model_constraints': '0'}
+    assert choice.partial_override is None
+    assert '--partial' not in choice.command and '--motion-only' not in choice.command
+    assert 'recorded' in recovery_summary(command, failure).lower()
+    assert (command, failure) == before
+    assert recovery_choices(list(choice.command), failure) == []
+
+
+@pytest.mark.parametrize('stage,error', [
+    ('model_coverage', 'Requested model bone rules could not be prepared: missing bone'),
+    ('prepare_installed_assets', 'Constraint bone hash is absent from model'),
+    ('prepare_installed_assets', 'Authored constraint source/preparation identity mismatch'),
+    ('prepare_installed_assets', 'Requested model bone rules could not be prepared: checksum mismatch'),
+])
+def test_optional_bone_rules_do_not_offer_bypassing_other_validation(stage, error):
+    assert recovery_choices(BASE, dict(stage=stage, error=error)) == []

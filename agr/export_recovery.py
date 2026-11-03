@@ -140,6 +140,8 @@ def _problem(failure, log_text):
             ))):
         return 'strict', error
     if stage in _OPTIONAL_STAGES:
+        if stage in ('', 'prepare_installed_assets') and error.startswith('Requested model bone rules could not be prepared: '):
+            return 'model_constraints', error
         if error.startswith(('Installed game compatibility check failed for NPR lighting before asset preparation: ',
                              'Material expression evaluator module requires requalification',
                              'NPR shader requires requalification',
@@ -221,6 +223,9 @@ def recovery_summary(command: list[str], failure: dict, log_text: str = '') -> s
                  'or continue without cloth. Character models and animation remain strict.',
         'effects': 'Requested particle effects could not be prepared or rendered. '
                    'You can explicitly continue without effects while keeping the animation request.',
+        'model_constraints': 'The optional model bone rules refer to an unavailable model bone. '
+                             'You can explicitly retry without those authored adjustments; '
+                             'recorded character animation and its validation remain requested.',
         'lighting': 'The requested Source lighting is incompatible with the installed data or supported layout. '
                     'You can explicitly continue without Source lighting; character animation stays requested.',
         'npr': 'The requested NPR lighting or material route is unsupported. '
@@ -276,6 +281,14 @@ def recovery_choices(command: list[str], failure: dict, log_text: str = '') -> l
             'Setting: Advanced > Character options > Cloth / secondary motion (experimental).',
             _rewrite(rows, {'--secondary-motion', '--cloth', '--partial-cloth'}), (('cloth_enabled', '0'),)))
         return choices
+    if kind == 'model_constraints' and '--model-constraints' in present:
+        return [RecoveryChoice(
+            'without_model_constraints', 'Continue without model bone rules',
+            'Retry without optional authored model bone adjustments. Recorded skeletal animation, '
+            'selected heroes, clip range, camera and all other export settings stay requested. '
+            'Model/rig identity and animation validation remain strict. '
+            'Setting: Advanced > Character options > Model bone rules (experimental).',
+            _rewrite(rows, {'--model-constraints'}), (('model_constraints', '0'),))]
     if kind == 'effects' and '--no-effects' not in present:
         return [RecoveryChoice(
             'without_effects', 'Continue without effects',

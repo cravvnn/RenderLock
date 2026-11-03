@@ -1,3 +1,13 @@
+# 0.3.0b25 - Explicit recovery for unsupported model bone rules
+
+- Explain a missing authored constraint bone as an optional Model bone rules
+  preparation failure, with the affected model and the setting to change.
+- Offer an explicit retry that turns off only those optional authored adjustments.
+  Recorded skeletal animation, selected heroes, clip settings and strict rig
+  validation remain requested; other optional features retain their own limits.
+- This does not add support for the missing-bone point constraint itself and
+  never silently skips it when Model bone rules is enabled.
+
 # 0.3.0b24 - Reachable recovery and error windows
 
 - Restore native Windows ownership for branded transient dialogs, keeping export

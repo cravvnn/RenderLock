@@ -54,6 +54,22 @@ def controller(tmp_path):
     return app, starts
 
 
+def test_optional_bone_rule_retry_updates_only_its_checkbox_and_keeps_full_animation(tmp_path):
+    app, starts = controller(tmp_path)
+    interpreter = app.values['input']._root
+    app.values['model_constraints'] = tk.StringVar(interpreter, value='1')
+    app._conversion_command = gui.build_convert_command(app._current_values())
+    failure = dict(stage='prepare_installed_assets', error='Requested model bone rules could not be prepared: models/inferno.vmdl_c: Constraint bone hash is absent from model')
+    choice = recovery_choices(app._conversion_command, failure)[0]
+    before = {key: value.get() for key, value in app.values.items()}
+    app._retry_conversion(choice)
+    assert len(starts) == 1 and starts[0][0] == list(choice.command)
+    assert app.values['model_constraints'].get() == '0'
+    assert {key: value.get() for key, value in app.values.items() if key != 'model_constraints'} == {
+        key: value for key, value in before.items() if key != 'model_constraints'}
+    assert not app.partial.get() and not app.partial_cloth.get()
+
+
 def test_explicit_cloth_retry_preserves_full_animation_and_other_job_arguments(tmp_path):
     app, starts = controller(tmp_path)
     choices = recovery_choices(app._conversion_command, dict(error=ERROR, stage='validate_cloth_preparation'))

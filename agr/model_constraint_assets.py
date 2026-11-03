@@ -27,8 +27,16 @@ def prepare_model_constraints(decoder, resource, provider):
         if 'attachments' in spec and spec.get('attachment_source') != {
                 'resource': resource, 'sha256': resolved.sha256}:
             raise ConversionError('Authored constraint attachment source identity mismatch')
-        ModelConstraints(spec['names'], spec['parents'], spec['definitions'],
-                         attachments=spec.get('attachments'),binding_policy=spec['binding_policy'])
+        try:
+            ModelConstraints(spec['names'], spec['parents'], spec['definitions'],
+                             attachments=spec.get('attachments'),binding_policy=spec['binding_policy'])
+        except ValueError as exc:
+            if str(exc) != 'Constraint bone hash is absent from model':
+                raise
+            raise ConversionError(
+                f'Requested model bone rules could not be prepared: {resource}: {exc}. '
+                'Turn off Advanced > Model bone rules (experimental) to retry without '
+                'the optional authored adjustments; recorded animation remains requested.') from exc
 
     def build(temp):
         proc = subprocess.run([str(decoder.executable), '-i', str(resolved.local_path), '-b', 'DATA'],

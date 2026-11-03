@@ -63,3 +63,16 @@ def test_missing_attachment_bone_refused_before_metadata_publication(tmp_path,mo
     with pytest.raises(ValueError,match='influence bone'):
         prepare_model_constraints(decoder,'models/hero.vmdl',provider)
     assert not list(decoder.root.glob('*/constraints.json'))
+
+
+def test_missing_authored_bone_has_explicit_optional_recovery_and_no_cached_success(tmp_path, monkeypatch):
+    decoder, provider, source, tables, calls = fixture(tmp_path, monkeypatch)
+    def missing(*args, **kwargs):
+        raise ValueError('Constraint bone hash is absent from model')
+    monkeypatch.setattr('agr.model_constraint_assets.ModelConstraints', missing)
+    with pytest.raises(ConversionError, match='Requested model bone rules could not be prepared: models/hero.vmdl_c'):
+        prepare_model_constraints(decoder, 'models/hero.vmdl', provider)
+    assert not list(decoder.root.glob('*/constraints.json'))
+    # Independently valid attachment metadata may be cached before binding fails.
+    assert all('constraints.json' not in json.loads(p.read_text())['files']
+               for p in decoder.root.glob('*/conversion.json'))
