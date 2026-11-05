@@ -1,3 +1,9 @@
+# 0.3.0b26 - Patched replay helper TLS dependency
+
+- Rebuild the Windows replay helper with rustls 0.23.46, fixing
+  GHSA-h2v8-394m-p7vv, GHSA-c8m5-c952-6cm4, GHSA-w44r-93j7-qv28 and
+  GHSA-vp88-798v-h67f. No animation or optional-feature validation is relaxed.
+
 # 0.3.0b25 - Explicit recovery for unsupported model bone rules
 
 - Explain a missing authored constraint bone as an optional Model bone rules
