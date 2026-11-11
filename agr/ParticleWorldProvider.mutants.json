@@ -1,0 +1,8 @@
+[
+ {"name":"admit-world-without-qualified-inputs","replace":[["MutSkipWorld == FALSE","MutSkipWorld == TRUE"]],"expect":"WorldAdmission"},
+ {"name":"ignore-world-helper-ack","replace":[["MutSkipAck == FALSE","MutSkipAck == TRUE"]],"expect":"AckBinding"},
+ {"name":"reuse-package-after-source-changes","replace":[["MutSkipSource == FALSE","MutSkipSource == TRUE"]],"expect":"SourceBinding"},
+ {"name":"overwrite-existing-output","replace":[["MutOverwriteExisting == FALSE","MutOverwriteExisting == TRUE"]],"expect":"NoOverwrite"},
+ {"name":"reuse-stale-helper-request","replace":[["MutSkipRequest == FALSE","MutSkipRequest == TRUE"]],"expect":"SourceBinding"},
+ {"name":"publish-partial-output","replace":[["MutPublishPartial == FALSE","MutPublishPartial == TRUE"]],"expect":"NoPartialSuccess"}
+]

@@ -171,6 +171,44 @@ def test_recorded_events_survive_effect_preparation_failure(tmp_path, monkeypatc
     assert saved["entities"] == original["entities"]
 
 
+def test_normal_capture_retains_unowned_world_birth_through_preparation_failure(tmp_path, monkeypatch):
+    from agr import particle_events, installed_effects
+    from agr.vendor.resource_hash import resource_id
+    original = scene()
+    original["entities"][0].update(entity_index=84, entity_serial=333)
+    original.pop("particle_instances")
+    manifest = save_scene(original, tmp_path / "segment.json")
+    resource = "particles/abilities/vampirebat/vampirebat_batswarm_explosion.vpcf"
+    payloads = [
+        ("CREATE", dict(create_particle=dict(particle_name_index=str(resource_id(resource)),
+            attach_type=8, entity_handle=0xffffff, cluster=False))),
+        ("UPDATE_TRANSFORM", dict(update_particle_transform=dict(control_point=0,
+            position=dict(x=12., y=23., z=34.)))),
+        ("RELEASE", {}),
+    ]
+    records = [dict(demo_tick=10, order=order, data=dict(
+        type="GAME_PARTICLE_MANAGER_EVENT_" + kind, index=900, **payload))
+        for order, (kind, payload) in enumerate(payloads)]
+    monkeypatch.setattr(particle_events, "extract_particle_events", lambda *a, **k:
+        dict(records=records, status="complete", record_count=len(records)))
+    def fail(*args, **kwargs):
+        raise OSError("fixture converter failure after capture")
+    monkeypatch.setattr(installed_effects, "prepare_installed_effects", fail)
+    report = prepare_scene_extensions(manifest, tmp_path,
+        SimpleNamespace(map_name=None, resources=[resource]), object(), [],
+        demo=tmp_path / "replay.dem", log=lambda _: None)
+    saved = read_scene(manifest)
+    assert saved["entities"] == original["entities"]
+    assert report["particles"]["status"] == "failed"
+    assert len(saved["particle_instances"]) == 1
+    instance = saved["particle_instances"][0]
+    assert instance["selection_scope"] == "unattached_custom_origin"
+    assert instance["entity_id"] is None and instance["involved_entity_ids"] == []
+    assert instance["created_tick"] == 10 and instance["release_ticks"] == [10]
+    assert instance["destroy_tick"] is None
+    assert instance["events"][1]["data"]["update_particle_transform"]["position"] == dict(x=12., y=23., z=34.)
+
+
 def test_disabled_stages_clear_previous_derived_references_but_keep_recorded_events(tmp_path, monkeypatch):
     from agr import installed_effects, installed_map, installed_cloth
     original = scene()

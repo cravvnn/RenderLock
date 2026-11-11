@@ -253,6 +253,22 @@ def collect_system_samples(simulation):
     return systems
 
 
+def validate_renderer_classes(tracks, assets, simulation=None, *, scene=None):
+    """Refuse unsupported live renderers before baking sibling geometry."""
+    supported={'C_OP_RenderSprites','C_OP_RenderTrails','C_OP_RenderStandardLight','C_OP_RenderRopes'}
+    projected={}
+    for resource in sorted({key[2] for key in tracks}):
+        for renderer in assets['definitions'][resource].get('m_Renderers',[]):
+            kind=renderer.get('_class')
+            if kind=='C_OP_RenderProjected':
+                from .particle_projected_scene import validate_profile,no_world_receivers
+                validate_profile(resource,renderer)
+                projected[resource]=no_world_receivers(scene)
+            elif kind not in supported:
+                raise UnsupportedEffect('Simulated renderer '+str(kind)+' in '+resource)
+    return projected
+
+
 def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254):
     import bpy
     from mathutils import Vector, Quaternion
@@ -265,6 +281,7 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
     frame_step = output_fps / simulation['tick_rate']
     tracks=collect_particle_tracks(simulation)
     validate_render_samples(tracks)
+    projected=validate_renderer_classes(tracks,assets,simulation,scene=scene)
     collection=bpy.data.collections.new('AGR Simulated Effects')
     scene.collection.children.link(collection)
     materials={};images={};omissions=[]
@@ -422,6 +439,9 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
             raise UnsupportedEffect('Changing sprite sequences are not implemented: '+resource)
         definition=assets['definitions'][resource]
         for index,renderer in enumerate(definition.get('m_Renderers',[])):
+            if renderer['_class']=='C_OP_RenderProjected':
+                if resource not in projected:raise UnsupportedEffect('Projected scene receiver preflight is missing')
+                continue
             if renderer['_class']=='C_OP_RenderRopes':
                 continue # Whole live-array geometry was baked once per system above.
             if renderer.get('m_bOnlyRenderInEffectsBloomPass'):
@@ -520,6 +540,9 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
     if depth_rows:
         from .blender_particle_live_depth import prepare_depth_cards
         depth_report=prepare_depth_cards(depth_rows,scene,camera,unit_scale)
+    if projected:
+        from .particle_projected_scene import no_world_receivers
+        no_world_receivers(scene)
     report={'status':'experimental','instances':len(simulation['instances']),'particle_tracks':len(tracks),'objects':len(objects),'point_lights':sum(o.type=='LIGHT' for o in objects),'textures':len(images),'backend':simulation['backend'],'omissions':sorted(set(omissions)),
             'limitations':['Blender shader approximation; no Source bloom/depth intersection pass','Light intensity calibrated to Blender units; not measured engine radiometry','Random engine seed is not available in the demo','Only the supplied recorded instances/control-point history are simulated']}
     report.update(camera_binding='live_constraints',camera_object=camera.name,billboard_helpers=len(billboard_helpers))
@@ -546,5 +569,8 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
         report['camera_retarget_text']=script.name
         scene['agr_simulated_effects_camera']=camera.name
     report['limitations'].append('Tracking uses world-up; roll is ambiguous on the world-up axis. A different active camera requires retargeting constraints.')
+    if projected:
+        report['projected_layers']=projected
+        report['limitations'].append('Projected world layers have no receiving world geometry in this exported scene; adding a map requires rebuilding effects with a qualified projected material/receiver provider.')
     scene['agr_simulated_effects_report']=json.dumps(report)
     return report

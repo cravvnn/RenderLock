@@ -11,7 +11,7 @@ using System.Buffers.Binary;
 if(args.Length==1 && args[0]=="--capabilities-v1") {
  Console.WriteLine(JsonSerializer.Serialize(new { schema_version=1, commands=new[] {
   "physics-json-v1", "material-bundle-v1", "decompile-cloth", "inventory-cloth-physics",
-  "inventory-animation-clip-events", "inventory-model-hitboxes" } }));
+  "inventory-animation-clip-events", "inventory-model-hitboxes", "simulate-world-origin-v1" } }));
  return;
 }
 if(args.Length==4 && args[0]=="--material-bundle-v1") { MaterialBundleCommand.Run(args[1],args[2],args[3]);return; }
@@ -44,7 +44,7 @@ var output=new List<object>();
 foreach(var instance in config.GetProperty("instances").EnumerateArray()) {
  var id=instance.GetProperty("id").GetString();var name=instance.GetProperty("resource").GetString()!;int birth=instance.GetProperty("created_tick").GetInt32();
  var controls=(instance.TryGetProperty("control_points",out var ownControls)?ownControls:config.GetProperty("control_points")).EnumerateArray().ToDictionary(x=>x.GetProperty("tick").GetInt32(),x=>x);
- var replayEvents=ReplayEventTimeline.Parse(instance,birth,end);
+ var replayEvents=ReplayEventTimeline.Parse(instance,birth,end,start,tickRate);
  if(birth<0||birth>end)throw new Exception("Instance birth must precede output end and be nonnegative");
  // Pre-roll must use an explicit complete history. Never hold the first shot
  // transform backwards or restart an older effect at the output boundary.
@@ -115,7 +115,9 @@ foreach(var instance in config.GetProperty("instances").EnumerateArray()) {
   }
   Capture(sim,"root");frames.Add(new{tick,systems});
  }
- output.Add(new{id,resource=name,birth,frames,model_bone_count=modelCount??0,control_point_indices=new[]{0}.Concat((extraLayout??"").Split(',',StringSplitOptions.RemoveEmptyEntries).Select(int.Parse)).ToArray(),materialized_control_point_indices=ControlPointAudit.Indices(sim),control_point_input_policy=ControlPointAudit.InputProvenance(sim,"ControlPointInputPolicy"),declared_control_point_inputs=ControlPointAudit.InputProvenance(sim,"DeclaredControlPointInputs"),authored_control_point_indices=ControlPointAudit.InputProvenance(sim,"AuthoredControlPointIndices"),unprovided_control_point_indices=ControlPointAudit.InputProvenance(sim,"UnprovidedControlPointIndices"),system_seeds=seedBindings.Select(b=>new{path=b.Path,resource=b.Resource,seed=b.Value}).ToArray(),system_seed_resets=seedResets,replay_event_policy=ReplayEventTimeline.Policy,literal_transforms_applied=replayEvents.LiteralReport,destroy_applied=replayEvents.DestroyReport,release_ticks=replayEvents.ReleaseTicks});
+ var outputRow=new{id,resource=name,birth,frames,model_bone_count=modelCount??0,control_point_indices=new[]{0}.Concat((extraLayout??"").Split(',',StringSplitOptions.RemoveEmptyEntries).Select(int.Parse)).ToArray(),materialized_control_point_indices=ControlPointAudit.Indices(sim),control_point_input_policy=ControlPointAudit.InputProvenance(sim,"ControlPointInputPolicy"),declared_control_point_inputs=ControlPointAudit.InputProvenance(sim,"DeclaredControlPointInputs"),authored_control_point_indices=ControlPointAudit.InputProvenance(sim,"AuthoredControlPointIndices"),unprovided_control_point_indices=ControlPointAudit.InputProvenance(sim,"UnprovidedControlPointIndices"),system_seeds=seedBindings.Select(b=>new{path=b.Path,resource=b.Resource,seed=b.Value}).ToArray(),system_seed_resets=seedResets,replay_event_policy=ReplayEventTimeline.Policy,literal_transforms_applied=replayEvents.LiteralReport,destroy_applied=replayEvents.DestroyReport,release_ticks=replayEvents.ReleaseTicks};
+ if(replayEvents.WorldOriginProvider is null)output.Add(outputRow);
+ else { var row=JsonSerializer.SerializeToElement(outputRow).EnumerateObject().ToDictionary(p=>p.Name,p=>(object)p.Value.Clone());row.Add("world_origin_provider",replayEvents.WorldOriginProvider.Value);output.Add(row); }
 }
 File.WriteAllText(args[1],JsonSerializer.Serialize(new{schema_version=1,backend="ValveResourceFormat 42743fb93030c552f834fabb30708dad84d0cbf5 + AGR RampScalarSpline v1 + PT_TYPE_INVALID identity v1 + experimental CreateOnModel bones v1",request_sha256=requestSha256,seed,seed_policy=seed.HasValue?"agr_substitute_sha256_v1":"upstream_random",tick_rate=tickRate,start_tick=start,end_tick=end,warnings=log.Messages,instances=output},new JsonSerializerOptions{WriteIndented=true}));
 Console.WriteLine($"Simulated {output.Count} recorded instances; {log.Messages.Count} warnings");

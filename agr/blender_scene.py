@@ -703,6 +703,7 @@ def _review_setup(scene, positions):
             poly.points[0].co, poly.points[1].co = (*a, 1), (*b, 1)
     obj = bpy.data.objects.new(curve.name, curve)
     reference.objects.link(obj)
+    obj["agr_scene_role"] = "reference_grid"
     curve.materials.append(mat)
     # Imported assets may contain cameras. The export contract is exactly one
     # static scene overview, regardless of player count or asset contents.
@@ -745,7 +746,7 @@ def _review_setup(scene, positions):
 
 def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime=None, shot_hero=None,
                 character_shader=None, character_only=False, allow_partial_lighting=False, external_map=None,
-                map_viewport_proxy=False, map_project_scene=None):
+                map_viewport_proxy=False, map_project_scene=None, pending_world_receivers=False):
     _init_blender()
     if external_map is not None:
         from agr.external_map import validate_map_library
@@ -796,6 +797,8 @@ def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime
     bpy.ops.wm.read_factory_settings(use_empty=True)
     scene = bpy.context.scene
     scene.name = "RenderLock | replay segment"
+    if pending_world_receivers or external_map is not None:
+        scene["agr_pending_world_receivers"] = True
     scene.render.fps = round(fps)
     scene.render.fps_base = round(fps) / fps
     scene.render.resolution_x, scene.render.resolution_y, scene.render.resolution_percentage = 1280, 800, 100

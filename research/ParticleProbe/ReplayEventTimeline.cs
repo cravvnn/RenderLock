@@ -9,6 +9,7 @@ sealed class ReplayEventTimeline
     private int? destroyTick;
     private bool destroyImmediately;
     public const string Policy = "agr_recorded_control_lifecycle_v1";
+    public JsonElement? WorldOriginProvider { get; private init; }
 
     public object[] LiteralReport => literals.Select(row => (object)new
     {
@@ -33,9 +34,9 @@ sealed class ReplayEventTimeline
             ? number.GetSingle() : 0f).ToArray();
     }
 
-    public static ReplayEventTimeline Parse(JsonElement instance, int birth, int end)
+    public static ReplayEventTimeline Parse(JsonElement instance, int birth, int end, int? start = null, int? rate = null)
     {
-        var result = new ReplayEventTimeline();
+        var result = new ReplayEventTimeline { WorldOriginProvider = WorldOriginInputs.Qualify(instance, birth, end, start, rate) };
         if (!instance.TryGetProperty("events", out var events)) return result;
         var previousTick = birth;
         int? previousOrder = null;
@@ -119,7 +120,13 @@ sealed class ReplayEventTimeline
         if (instance.TryGetProperty("release_ticks", out var summaryReleases)
             && !summaryReleases.EnumerateArray().Select(value => value.GetInt32()).SequenceEqual(result.releases))
             throw new Exception("Particle release summary differs from events");
-        if (result.literals.Count > 0 || result.destroyTick.HasValue)
+        if (result.WorldOriginProvider.HasValue)
+        {
+            if (result.destroyTick.HasValue || result.literals.Count != 1 || result.literals[0].Point != 0
+                || result.releases.Count != 1 || result.releases[0] != birth)
+                throw new Exception("World-origin control/lifecycle differs from the qualified profile");
+        }
+        else if (result.literals.Count > 0 || result.destroyTick.HasValue)
         {
             var index = instance.GetProperty("index").GetInt32();
             var generation = instance.GetProperty("generation").GetInt32();

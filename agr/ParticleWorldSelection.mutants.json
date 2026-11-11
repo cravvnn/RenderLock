@@ -1,0 +1,5 @@
+[
+ {"name":"drop-unattached-world-generations","replace":[["MutDropWorld == FALSE","MutDropWorld == TRUE"]],"expect":"PreserveWorld"},
+ {"name":"treat-other-entity-binding-as-unowned","replace":[["MutIgnoreOtherBinding == FALSE","MutIgnoreOtherBinding == TRUE"]],"expect":"OnlySelectedOrWorld"},
+ {"name":"invent-hero-owner-for-world-effect","replace":[["MutInventHero == FALSE","MutInventHero == TRUE"]],"expect":"NoInventedOwner"}
+]

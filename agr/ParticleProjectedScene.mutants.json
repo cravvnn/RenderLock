@@ -1,0 +1,72 @@
+[
+  {
+    "name": "skip-scene-receiver-preflight",
+    "replace": [
+      [
+        "MutSkipInitial == FALSE",
+        "MutSkipInitial == TRUE"
+      ]
+    ],
+    "expect": "QualifiedStart"
+  },
+  {
+    "name": "ignore-geometry-added-during-bake",
+    "replace": [
+      [
+        "MutSkipFinal == FALSE",
+        "MutSkipFinal == TRUE"
+      ]
+    ],
+    "expect": "QualifiedFinish"
+  },
+  {
+    "name": "assume-any-projected-renderer-excludes-heroes",
+    "replace": [
+      [
+        "MutSkipProfile == FALSE",
+        "MutSkipProfile == TRUE"
+      ]
+    ],
+    "expect": "QualifiedStart"
+  },
+  {
+    "name": "ignore-map-scheduled-after-particle-bake",
+    "replace": [
+      [
+        "MutIgnorePending == FALSE",
+        "MutIgnorePending == TRUE"
+      ]
+    ],
+    "expect": "QualifiedStart"
+  },
+  {
+    "name": "admit-existing-world-receiver",
+    "replace": [
+      [
+        "MutIgnoreWorld == FALSE",
+        "MutIgnoreWorld == TRUE"
+      ]
+    ],
+    "expect": "QualifiedStart"
+  },
+  {
+    "name": "admit-unclassified-geometry",
+    "replace": [
+      [
+        "MutIgnoreUnknown == FALSE",
+        "MutIgnoreUnknown == TRUE"
+      ]
+    ],
+    "expect": "QualifiedStart"
+  },
+  {
+    "name": "admit-instanced-geometry",
+    "replace": [
+      [
+        "MutIgnoreInstances == FALSE",
+        "MutIgnoreInstances == TRUE"
+      ]
+    ],
+    "expect": "QualifiedStart"
+  }
+]

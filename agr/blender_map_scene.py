@@ -258,7 +258,7 @@ def build_map_first(build, segment, assets, output, *, library, project_scene, *
     if character_path.exists():
         raise ValueError('External map: use a fresh job folder for prepared-map composition.')
     proxy_enabled = options.pop('map_viewport_proxy')
-    report = build(segment, assets, character_path, external_map=None, map_viewport_proxy=False, **options)
+    report = build(segment, assets, character_path, external_map=None, map_viewport_proxy=False, pending_world_receivers=True, **options)
     scene, mapping, proxy = compose_prepared_map(character_path, output, library, report['coordinates'],
         proxy_enabled=proxy_enabled, project_scene=project_scene or output)
     report['output'] = str(output);report['external_map'] = mapping

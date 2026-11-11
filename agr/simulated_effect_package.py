@@ -56,6 +56,10 @@ def scene_identity(scene, entity_ids):
 
 
 def validate_package(package, scene):
+    if package.get('backend') == 'simulated_world_origin_v1':
+        from .particle_world_origin import validate_package as validate_world_package
+        validate_world_package(package, scene)
+        return
     if package.get('schema_version') != 1 or package.get('backend') != 'simulated_states_v1':
         raise ValueError('Unsupported simulated effect package')
     if not isinstance(package.get('coverage_scope'), str) or not package['coverage_scope'].strip():

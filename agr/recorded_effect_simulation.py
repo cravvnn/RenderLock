@@ -379,8 +379,9 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
     descriptor=data.get('effects',{})
     source=Path(descriptor.get('manifest_file',''))
     if not source.is_absolute():source=Path(manifest_dir)/source
-    attachments=json.loads(source.read_text(encoding='utf-8')).get('attachments',{})
     selected=set(entity_objects)
+    has_owned=any(i.get('entity_id') in selected for i in data.get('particle_instances',[]))
+    attachments=json.loads(source.read_text(encoding='utf-8')).get('attachments',{}) if has_owned else {}
     from .model_tracks import logical_entities
     entities=logical_entities(data['entities'])
     motion_start=history_start(data)
@@ -390,7 +391,9 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
             if entity['id'] in selected and entity.get('pose_file'):
                 with np.load(entity['pose_file'], allow_pickle=False) as poses:
                     history_ticks[entity['id']]=({s['tick'] for s in entity['samples']}, set(poses['ticks'].tolist()))
-    instances=[i for i in data.get('particle_instances',[]) if i.get('entity_id') in selected]
+    from .particle_events import WORLD_CUSTOM_ORIGIN_SCOPE,is_world_custom_origin_candidate
+    instances=[i for i in data.get('particle_instances',[]) if i.get('entity_id') in selected
+               or i.get('selection_scope') == WORLD_CUSTOM_ORIGIN_SCOPE]
     report={'status':'partial','stage':'rendering','backend':'recorded_simulation_v1',
             'attachment_provider':'selected_hero_model',
             'wearable_redirection':'not_reconstructed',
@@ -398,8 +401,10 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
             'selected_recorded_instances':len(instances),'attempted_instances':0,
             'rendered_instances':0,'objects':0,'particle_tracks':0,'point_lights':0,
             'history_start_tick':motion_start,'pre_shot_rendered_instances':0,
+            'unattached_world_candidates':sum(i.get('selection_scope') == WORLD_CUSTOM_ORIGIN_SCOPE for i in instances),
             'unsupported':[],'instances':[],
             'limitations':['Fixed point-follow CPs and exact unnamed root-origin CP0 with model bones/literal controls',
+                'Unowned world-origin support is limited to the qualified literal-at-birth bat explosion tree on the measured Windows build',
                 'Wearable child redirection is not reconstructed; attachments are evaluated on the selected hero model',
                 'Qualified regeneration uses CP0 body bones; recorded CP1 is unused by its exact audited definition tree',
                 'Literal CPs require complete creation-time values and zero interpolation; entity-provider changes remain unqualified',
@@ -416,7 +421,10 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
         if name not in definitions:
             definitions[name] = decoder.dump(name, provider)
         return definitions[name]
-    instances, expiry = partition_expired_history(instances, data['start_tick'], data['tick_rate'], get_definition)
+    owned_candidates=[i for i in instances if i.get('selection_scope') != WORLD_CUSTOM_ORIGIN_SCOPE]
+    owned_candidates, expiry = partition_expired_history(owned_candidates, data['start_tick'], data['tick_rate'], get_definition)
+    retained_owned={i['id'] for i in owned_candidates}
+    instances=[i for i in instances if i.get('selection_scope') == WORLD_CUSTOM_ORIGIN_SCOPE or i['id'] in retained_owned]
     report['authored_expiry_pruning'] = expiry
     report['candidate_instances'] = len(instances)
     from .coverage_diagnostics import recorded_birth_scope
@@ -437,6 +445,26 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
 
     for number,instance in enumerate(instances):
         try:
+            if instance.get('selection_scope') == WORLD_CUSTOM_ORIGIN_SCOPE:
+                if not is_world_custom_origin_candidate(instance):
+                    raise ValueError('World-effect selection differs from its explicit unattached creation')
+                from .particle_world_origin import request_header,POLICY as WORLD_POLICY
+                from .recorded_world_effects import prepare_world_package
+                request_header(data,instance)
+                from .particle_projected_scene import no_world_receivers
+                no_world_receivers(scene) # Includes maps scheduled for later composition.
+                report['attempted_instances']+=1
+                package,package_path=prepare_world_package(data,instance,runtime,provider,decoder,adapter,
+                    out/f'world-{number:06d}')
+                result=build_package_effects(package,data,package_path,scene,camera)
+                if result.get('objects',0)<=0:
+                    raise ValueError('World particle package produced no rendered geometry or lights')
+                report['rendered_instances']+=1
+                report['world_attachment_provider']=WORLD_POLICY
+                report['instances'].append(dict(id=instance['id'],resource=instance['resource'],
+                    package=str(package_path),rendering=result,selection_scope=WORLD_CUSTOM_ORIGIN_SCOPE))
+                for key in ('objects','particle_tracks','point_lights'):report[key]+=result.get(key,0)
+                continue
             if entities[instance['entity_id']].get('model_tracks'):
                 raise ValueError('Particle model/attachment providers across recorded model changes are not yet qualified')
             model_profile, root_profile, binding_provider = recorded_binding_profile(instance)

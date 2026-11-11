@@ -96,7 +96,8 @@ def prepare_scene_extensions(segment_path, pack, provider, decoder, bindings, *,
                 raw = extract_particle_events(demo, selected["start_tick"], selected["end_tick"], progress=log)
                 timeline = compile_particle_timeline(raw["records"], provider.resources,
                     selected["start_tick"], selected["end_tick"],
-                    tick_rate=selected["tick_rate"], entities=selected["entities"])
+                    tick_rate=selected["tick_rate"], entities=selected["entities"],
+                    include_world_custom_origin=True)
                 selected["particle_instances"] = timeline["instances"]
                 selected["particle_extraction"] = {key: value for key, value in raw.items() if key != "records"}
                 _write(Path(pack) / "particle_timeline_report.json", {key: value for key, value in timeline.items() if key != "instances"})

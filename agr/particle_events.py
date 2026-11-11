@@ -18,6 +18,7 @@ from .vendor.resource_hash import resource_id
 ENTRY_BITS = 14
 ENTRY_MASK = (1 << ENTRY_BITS) - 1
 INVALID_HANDLES = {0xFFFFFF, 0xFFFFFFFF}
+WORLD_CUSTOM_ORIGIN_SCOPE = "unattached_custom_origin"
 _EVENT_PREFIX = "GAME_PARTICLE_MANAGER_EVENT_"
 
 # (field name, protobuf scalar/message type, referenced message, repeated).
@@ -692,10 +693,32 @@ def resolve_particle_instance_resources(instances: Iterable[dict[str, Any]],
                       "unresolved_resource_ids": dict(sorted(unresolved.items()))}
 
 
+def is_world_custom_origin_candidate(instance: Mapping[str, Any]) -> bool:
+    """Retention only: an explicit unattached creation, never a hero alias.
+
+    Literal controls, lifetime, simulation and rendering need their own provider
+    qualification. Missing controls must remain visible as unsupported inputs.
+    A later entity binding prevents this unowned-world classification.
+    """
+    creation = instance.get("create")
+    handles = instance.get("involved_entity_handles")
+    identities = instance.get("involved_entity_ids")
+    return (isinstance(creation, dict)
+            and type(creation.get("attach_type")) is int and creation["attach_type"] == 8
+            and type(creation.get("entity_handle")) is int
+            and creation["entity_handle"] in INVALID_HANDLES
+            and instance.get("entity_handle") == creation["entity_handle"]
+            and creation.get("cluster", False) is False
+            and instance.get("entity_id") is None
+            and isinstance(handles, list) and not handles
+            and isinstance(identities, list) and not identities)
+
+
 def compile_particle_timeline(records: Iterable[dict[str, Any]],
                               resource_paths: Iterable[str] | Mapping[Any, Any],
                               start_tick: int, end_tick: int, *, tick_rate: float,
-                              entities: Iterable[dict[str, Any]] | None = None) -> dict[str, Any]:
+                              entities: Iterable[dict[str, Any]] | None = None,
+                              include_world_custom_origin: bool = False) -> dict[str, Any]:
     """Normalize instances without assuming a match, hero list or simulation.
 
     RELEASE is not a destroy. Non-immediate pre-range destroys remain candidates
@@ -703,6 +726,8 @@ def compile_particle_timeline(records: Iterable[dict[str, Any]],
     authored lifetimes. Every control-point vector retains original source units.
     """
     _validate_range(start_tick, end_tick)
+    if type(include_world_custom_origin) is not bool:
+        raise ParticleEventError("World custom-origin selection requires a boolean policy.")
     if isinstance(tick_rate, bool) or not isinstance(tick_rate, (int, float)) or not math.isfinite(tick_rate) or tick_rate <= 0:
         raise ParticleEventError("Particle timeline requires a positive finite replay tick rate.")
     lookup, identities = particle_resource_lookup(resource_paths), _full_entity_ids(entities)
@@ -785,14 +810,17 @@ def compile_particle_timeline(records: Iterable[dict[str, Any]],
         handles = instance.pop("_handles")
         instance["involved_entity_handles"] = sorted(handles)
         instance["involved_entity_ids"] = sorted({identities[h] for h in handles if h in identities}) if identities is not None else []
-        if identities is not None and not instance["involved_entity_ids"]:
+        world_candidate = include_world_custom_origin and is_world_custom_origin_candidate(instance)
+        if identities is not None and not instance["involved_entity_ids"] and not world_candidate:
             continue
         if instance["destroy_immediately"] and instance["destroy_tick"] < start_tick:
             continue
         instance["pre_range_tail_candidate"] = (instance["created_tick"] < start_tick
             and (instance["destroy_tick"] is not None or bool(instance["release_ticks"])))
+        if world_candidate:
+            instance["selection_scope"] = WORLD_CUSTOM_ORIGIN_SCOPE
         relevant.append(instance)
-    return {"schema_version": 2, "start_tick": start_tick, "end_tick": end_tick,
+    result = {"schema_version": 2, "start_tick": start_tick, "end_tick": end_tick,
             "tick_rate": tick_rate, "entity_entry_mask": ENTRY_MASK,
             "semantics": {"identity": "Full handles include entity serials; entry-only matches are rejected.",
                           "release": "Released control indices may be reused; emitted particles retain authored lifetimes.",
@@ -804,6 +832,14 @@ def compile_particle_timeline(records: Iterable[dict[str, Any]],
                         "selected_instances": len(relevant),
                         "selected_created_in_segment": sum(i["created_tick"] >= start_tick for i in relevant),
                         "resources": dict(collections.Counter(i["resource"] or "unresolved" for i in relevant))}}
+    if include_world_custom_origin:
+        worlds = [i for i in relevant if i.get("selection_scope") == WORLD_CUSTOM_ORIGIN_SCOPE]
+        result["semantics"]["unattached_world_effects"] = (
+            "Explicit custom-origin creations without entity bindings are retained independently; "
+            "no hero owner, visibility or renderer support is inferred.")
+        result["summary"]["world_custom_origin_candidates"] = len(worlds)
+        result["summary"]["world_custom_origin_created_in_segment"] = sum(i["created_tick"] >= start_tick for i in worlds)
+    return result
 
 
 def slice_particle_instances(instances, start_tick, end_tick, entities):
