@@ -86,11 +86,11 @@ def bake_fe_proxy_bones(rig, definition, frames, fps, collection=None, *, unit_s
         # Cloth pins follow exact DMX-inverse-bind skinning. The independently
         # imported rig can relocate weapon bones, so its rest inverse is invalid
         # for these source-space proxy vertices.
-        for vertex,point in zip(proxy.data.vertices,goals[0]):vertex.co=point
+        proxy.data.vertices.foreach_set('co',np.asarray(goals[0],dtype=np.float32).ravel())
         proxy.shape_key_add(name='Basis')
         for frame,points in zip(frames,goals):
             key=proxy.shape_key_add(name=f'Goal {frame:06d}')
-            for vertex,point in zip(key.data,points):vertex.co=point
+            key.data.foreach_set('co',np.asarray(points,dtype=np.float32).ravel())
             for tick,value in ((frame-1,0),(frame,1),(frame+1,0)):
                 key.value=value;key.keyframe_insert('value',frame=tick)
         collision_collection=bpy.data.collections.new('AGR selected proxy colliders');collection.children.link(collision_collection)
@@ -126,7 +126,8 @@ def bake_fe_proxy_bones(rig, definition, frames, fps, collection=None, *, unit_s
         for index,frame in enumerate(frames):
             scene.frame_set(frame);bpy.context.view_layer.update()
             evaluated=proxy.evaluated_get(bpy.context.evaluated_depsgraph_get())
-            points=np.asarray([v.co[:] for v in evaluated.data.vertices])
+            points=np.empty((len(evaluated.data.vertices),3),dtype=float)
+            evaluated.data.vertices.foreach_get('co',points.ravel())
             if points.shape!=(count,3) or not np.isfinite(points).all():raise ValueError('Back-solved proxy simulation produced invalid vertices')
             points,residual=project_proxy_rods(data,definition['physics'],points,goals[index],unit_scale)
             maximum_rod_residual=max(maximum_rod_residual,residual)
@@ -164,7 +165,7 @@ def bake_fe_proxy_bones(rig, definition, frames, fps, collection=None, *, unit_s
         proxy.modifiers.clear();proxy.shape_key_clear();proxy.shape_key_add(name='Basis')
         for frame,points in zip(frames,samples):
             key=proxy.shape_key_add(name=f'Frame {frame:06d}')
-            for vertex,point in zip(key.data,points):vertex.co=point
+            key.data.foreach_set('co',np.asarray(points,dtype=np.float32).ravel())
             for tick,value in ((frame-1,0),(frame,1),(frame+1,0)):
                 key.value=value;key.keyframe_insert('value',frame=tick)
         action=source_action.copy();action.name=source_action.name+' | Back-solved cloth'

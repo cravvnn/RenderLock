@@ -4,6 +4,7 @@ from __future__ import annotations
 
 def bake_fe_nodes(rig, definition, frames, fps, *, unit_scale=.0254, sample_times=None):
     import math
+    import time
     import bpy
     import numpy as np
     from mathutils import Matrix, Quaternion, Vector
@@ -62,7 +63,12 @@ def bake_fe_nodes(rig, definition, frames, fps, *, unit_scale=.0254, sample_time
     source_action = rig.animation_data.action
     source_slot = rig.animation_data.action_slot if hasattr(rig.animation_data,'action_slot') else None
     poses, worlds, goals = [], [], []
-    for frame in frames:
+    started = time.monotonic()
+    print(f"Imported cloth {rig.name}: sampling {len(frames)} frames, {count} control nodes", flush=True)
+    for frame_index, frame in enumerate(frames):
+        if frame_index % 120 == 0:
+            print(f"Imported cloth {rig.name}: sampling {frame_index + 1}/{len(frames)} "
+                  f"({time.monotonic() - started:.1f}s)", flush=True)
         scene.frame_set(frame); bpy.context.view_layer.update()
         pose = {bone.name:bone.matrix.copy() for bone in rig.pose.bones}
         poses.append(pose); worlds.append(rig.matrix_world.copy())
@@ -89,8 +95,15 @@ def bake_fe_nodes(rig, definition, frames, fps, *, unit_scale=.0254, sample_time
     # cloth transforms as a blanket post-pass. Keep the raw bone mapping below.
     goals=(np.asarray([prepare_goal_transforms(definition['physics'],frame,unit_scale) for frame in raw_goals])
            if any(fe.get(key) for key in ('m_CtrlOffsets','m_CtrlSoftOffsets','m_SphereRigids','m_TaperedCapsuleRigids','m_BoxRigids')) else raw_goals)
+    print(f"Imported cloth {rig.name}: sampling/preparation finished in {time.monotonic() - started:.1f}s; "
+          "starting CPU node simulation...", flush=True)
+    started = time.monotonic()
     points, solver = simulate_node_motion(definition['physics'],raw_goals,fps,unit_scale,
-                                         sample_times=sample_times)
+        sample_times=sample_times,progress=lambda done,total: print(
+            f"Imported cloth {rig.name}: CPU simulation {done}/{total} "
+            f"({time.monotonic() - started:.1f}s)",flush=True))
+    print(f"Imported cloth {rig.name}: CPU simulation finished in {time.monotonic() - started:.1f}s; "
+          "reconstructing cloth bone poses...", flush=True)
     if not solver.get('native_qualified_compiled_rod_blocks') and solver['maximum_rod_residual_m'] > .005:
         raise ValueError('FE node constraints did not converge within 5 mm: '+str(solver['maximum_rod_residual_m']))
     bases = {row['nNode']:row for row in fe.get('m_NodeBases',[])}
@@ -122,6 +135,8 @@ def bake_fe_nodes(rig, definition, frames, fps, *, unit_scale=.0254, sample_time
         return np.asarray(rows)
     rest_rows=transform_rows([worlds[0]@matrix for matrix in rest])
     for frame_index,frame in enumerate(frames):
+        if frame_index % 120 == 0:
+            print(f"Imported cloth {rig.name}: reconstructing {frame_index + 1}/{len(frames)}", flush=True)
         simulated = points[frame_index]
         previous=transform_rows(goals[frame_index]);current=previous.copy();current[:,:3]=simulated
         for i,row in bases.items():
@@ -186,7 +201,13 @@ def bake_fe_nodes(rig, definition, frames, fps, *, unit_scale=.0254, sample_time
         if hasattr(action,'slots'):rig.animation_data.action_slot = action.slots[0]
         unchanged = sorted(set(rig.pose.bones.keys())-affected)
         maximum_body_error = 0.
+        started = time.monotonic()
+        print(f"Imported cloth {rig.name}: checking {len(unchanged)} unrelated body bones "
+              f"across {len(frames)} frames...", flush=True)
         for index,frame in enumerate(frames):
+            if index % 120 == 0:
+                print(f"Imported cloth {rig.name}: body checks {index + 1}/{len(frames)} "
+                      f"({time.monotonic() - started:.1f}s)", flush=True)
             scene.frame_set(frame);bpy.context.view_layer.update()
             for name in unchanged:
                 maximum_body_error = max(maximum_body_error,float(np.max(abs(np.asarray(rig.pose.bones[name].matrix)-np.asarray(poses[index][name])))))

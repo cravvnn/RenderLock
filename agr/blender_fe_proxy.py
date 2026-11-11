@@ -163,14 +163,16 @@ def _bake(rig, coat, definition, frames, collection, unit_scale):
     proxy.hide_render=True
     samples=[]
     for f in frames:
-        scene.frame_set(f);deps=bpy.context.evaluated_depsgraph_get();evaluated=proxy.evaluated_get(deps);arr=np.array([v.co[:] for v in evaluated.data.vertices]);assert np.isfinite(arr).all()
+        scene.frame_set(f);deps=bpy.context.evaluated_depsgraph_get();evaluated=proxy.evaluated_get(deps)
+        arr=np.empty((len(evaluated.data.vertices),3),dtype=float)
+        evaluated.data.vertices.foreach_get('co',arr.ravel());assert np.isfinite(arr).all()
         samples.append(arr)
         if f%30==0:print('Cloth frame',f,flush=True)
     
     proxy.modifiers.clear();proxy.shape_key_add(name='Basis')
     for frame,arr in zip(frames,samples):
         key=proxy.shape_key_add(name=f'Frame {frame:06d}')
-        for vertex,point in zip(key.data,arr):vertex.co=point
+        key.data.foreach_set('co',np.asarray(arr,dtype=np.float32).ravel())
         key.value=0;key.keyframe_insert('value',frame=frame-1);key.value=1;key.keyframe_insert('value',frame=frame);key.value=0;key.keyframe_insert('value',frame=frame+1)
     scene.frame_set(frames[0])
     proxy['agr_fe_proxy_bake']=True

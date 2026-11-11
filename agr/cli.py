@@ -605,6 +605,7 @@ def _convert(args, diagnostics):
         nonlocal stage, stage_started
         now = time.monotonic()
         timings.append({"stage": stage, "seconds": round(now - stage_started, 3)})
+        log(f"Completed {stage} in {now - stage_started:.1f}s; starting {name}.")
         stage = name
         stage_started = now
 

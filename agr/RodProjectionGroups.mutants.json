@@ -1,0 +1,4 @@
+[
+ {"name":"batch-blocks-sharing-control-nodes","replace":[["MutSharedGroup==FALSE","MutSharedGroup==TRUE"]],"expect":"NativeOrder"},
+ {"name":"keep-first-compiler-pad-write","replace":[["MutFirstPadWrite==FALSE","MutFirstPadWrite==TRUE"]],"expect":"NativeOrder"}
+]

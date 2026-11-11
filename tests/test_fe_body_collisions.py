@@ -3,6 +3,25 @@ import pytest
 from agr.fe_body_collisions import project_contact, project_sphere, project_capsule, world_sphere, relative_collision_frame
 
 
+@pytest.mark.parametrize('coefficient', [None, 0., .6])
+def test_batched_capsule_matches_independent_axial_sphere_contacts(coefficient):
+    # Equal-radius axial capsule has an analytic per-node sphere center. Cover
+    # both caps, interior contacts, noncontacts and a float32 branch boundary.
+    points=np.array([[0.,0.,-1.], [.1,0.,2.], [0.,0.,5.],
+                     [10.,0.,2.], [.5,.25,3.], [0.,0.,2.]])
+    radii=np.array([.2,0.,.1,.3,.2,0.])
+    selected=[4,1,3,0,2]
+    kwargs={} if coefficient is None else dict(previous=points+[.1,.2,0.],
+        relative_transform=np.c_[np.eye(3),[.2,.1,0.]],friction=np.full(len(points),coefficient))
+    expected=points.copy()
+    for node in selected:
+        center=[0.,0.,min(4.,max(0.,points[node,2])),1.]
+        expected=project_sphere(expected,center,radii,[node],**kwargs)
+    actual=project_capsule(points,[[0.,0.,0.,1.],[0.,0.,4.,1.]],radii,selected,**kwargs)
+    np.testing.assert_array_equal(actual,expected)
+    np.testing.assert_array_equal(actual[5],points[5])
+
+
 def test_friction_transfers_only_bounded_tangential_collider_motion():
     points=np.zeros((2,3));prior=points.copy();motion=np.c_[np.eye(3),[10,7,9]]
     result=project_contact(points,prior,motion,1,[0,0,1],2.,.5)

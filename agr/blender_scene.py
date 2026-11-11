@@ -587,6 +587,9 @@ def _bake_pose(rig, spec, data, coordinates, fps, *, requested_ticks=None):
     previous = {}
     correction = Matrix.Rotation(math.radians(float(spec.get("pose_basis_yaw_degrees", 0))), 4, "Z")
     for frame_index, source_index in enumerate(indices):
+        if frame_index % 120 == 0:
+            print(f"Pose bake {rig.name}: sample {frame_index + 1}/{len(indices)}, "
+                  f"{len(names)} source bones, {len(bones)} rig bones", flush=True)
         globals_ = []
         for index, parent in enumerate(parents):
             scale = s[source_index, index]
@@ -857,9 +860,12 @@ def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime
         if poses_requested and pose_inputs_available and rigs:
             if len(rigs) != 1:
                 raise ValueError(name + ": select rig_object because asset has multiple armatures")
+            pose_started = time.monotonic()
+            print(f"{name}: baking recorded bone poses...", flush=True)
             entry["pose"] = _bake_pose(rigs[0], spec, data, coordinates, fps,
                                        requested_ticks=[sample['tick'] for sample in samples
                                                         if sample.get('pose_available', True)])
+            print(f"{name}: pose bake finished in {time.monotonic() - pose_started:.1f}s", flush=True)
             if entry['pose']['status'] == 'baked' and entity.get('pose_unavailable_ticks'):
                 missing = [t for t in entity['pose_unavailable_ticks'] if data['start_tick'] <= t <= data['end_tick']]
                 if missing:
@@ -901,6 +907,8 @@ def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime
             definition = Path(entity["secondary_motion_file"])
             if not definition.is_absolute():
                 definition = segment.parent / definition
+            cloth_started = time.monotonic()
+            print(f"{name}: preparing experimental cloth for {scene.frame_end - scene.frame_start + 1} frames...", flush=True)
             try:
                 entry["secondary_motion"] = bake_secondary_motion(
                     rigs[0], definition, list(range(scene.frame_start, scene.frame_end + 1)), fps,
@@ -910,6 +918,8 @@ def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime
                 if getattr(exc, "diagnostics", None):
                     entry["secondary_motion"]["diagnostics"] = exc.diagnostics
                 report["warnings"].append(name + ": secondary motion was withheld: " + str(exc))
+            print(f"{name}: cloth {entry['secondary_motion']['status']} in "
+                  f"{time.monotonic() - cloth_started:.1f}s", flush=True)
         if entry["model_status"] == "imported":
             # rig_object selection, source mesh checks and cloth suffix lookups
             # must finish before cosmetic names replace converter object names.

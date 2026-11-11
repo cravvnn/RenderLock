@@ -1,9 +1,16 @@
 import copy
 import numpy as np
 import pytest
-
 from agr.fe_bone_motion import simulate_node_motion, validate_motion_physics, node_basis
 
+
+def test_progress_observes_completed_samples_without_changing_solver_output():
+    source=physics();goals=targets(3)
+    expected,expected_report=simulate_node_motion(source,goals,64,1.)
+    events=[]
+    actual,report=simulate_node_motion(source,goals,64,1.,progress=lambda done,total:events.append((done,total)))
+    np.testing.assert_array_equal(actual,expected)
+    assert report==expected_report and events==[(3,3)]
 
 def physics(gravity=0.):
     return {'m_pFeModel': {

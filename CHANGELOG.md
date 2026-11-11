@@ -1,3 +1,10 @@
+# 0.3.0b27 - Faster cloth exports and clearer progress
+
+- Batch capsule contacts and reuse immutable validated rod data across each cloth solve. Preserve compiled rod dependencies, solver settings, contact behavior and strict coverage checks.
+- Transfer proxy mesh and shape-key coordinates in bulk for generated garments and back-solved cloth bones.
+- Show completed stage times and progress through pose baking, cloth sampling, CPU simulation and body-bone validation.
+- Existing experimental cloth approximations and unsupported authored-operation limits remain.
+
 # 0.3.0b26 - Patched replay helper TLS dependency
 
 - Rebuild the Windows replay helper with rustls 0.23.46, fixing

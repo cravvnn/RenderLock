@@ -282,11 +282,12 @@ def _collide(points, transforms, fe, dynamic, radii, scale, *,
 
 
 def simulate_node_motion(physics, goal_transforms, fps, unit_scale=.0254, *, iterations=16,
-                         sample_times=None):
+                         sample_times=None, progress=None):
     """Sample an explicit approximation using <=1/256-second steps.
 
     Targets are world-space metre transforms for every exact FE control node.
     Ordinary rig animation supplies these targets and is not evaluated here.
+    Optional progress(completed,total) observes completed samples every 30 frames.
     Optional sample_times are explicit simulation seconds for those targets;
     output video FPS cannot supply that clock after a shot has been retimed.
     Repeated/reversed timestamps require a separate pause/seek state policy.
@@ -366,7 +367,8 @@ def simulate_node_motion(physics, goal_transforms, fps, unit_scale=.0254, *, ite
     hard=[row for row in fe['m_Rods'] if row['flRelaxationFactor']==1.]
     soft=[row for row in fe['m_Rods'] if row['flRelaxationFactor']<1.]
     if compiled:
-        from .fe_rod_constraints import project_compiled_rods
+        from .fe_rod_constraints import prepare_compiled_rods
+        rod_plan=prepare_compiled_rods(count,compiled)
     if animated:
         from .fe_rod_constraints import project_animated_rods
     if triangles:
@@ -437,7 +439,7 @@ def simulate_node_motion(physics, goal_transforms, fps, unit_scale=.0254, *, ite
                     points=projected
                     maximum_hinge_residual=max(maximum_hinge_residual,hinge_report['maximum_angle_residual_radians'])
                 if compiled:
-                    projected=project_compiled_rods(points/unit_scale,compiled)*unit_scale
+                    projected=rod_plan.project(points/unit_scale)*unit_scale
                     if np.any(abs(projected[~dynamic]-points[~dynamic])>1e-8):
                         raise ValueError('Compiled FE rods changed a position-driven/static control')
                     points=projected
@@ -492,6 +494,8 @@ def simulate_node_motion(physics, goal_transforms, fps, unit_scale=.0254, *, ite
         residuals.append(float(residual.max()) if len(residual) else 0.)
         for rods,values in ((hard,hard_residuals),(soft,soft_residuals)):
             errors=rod_residuals(points,rods,unit_scale);values.append(float(errors.max()) if len(errors) else 0.)
+        if progress is not None and (frame%30==0 or frame==len(targets)-1):
+            progress(frame+1,len(targets))
     return np.asarray(samples), dict(substeps=max(interval_substeps,default=default_substeps),iterations=iterations,
         sample_clock='output_fps' if sample_times is None else 'explicit_seconds',
         sample_time_span_seconds=float(intervals.sum()),

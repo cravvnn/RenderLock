@@ -1,7 +1,41 @@
 import copy
 import numpy as np
 import pytest
-from agr.fe_rod_constraints import project_compiled_rods,project_animated_rods
+from agr.fe_rod_constraints import project_compiled_rods,project_animated_rods,prepare_compiled_rods
+
+
+def test_prepared_rods_snapshot_metadata_and_do_not_retain_solver_points():
+    points,block=fixture();before=points.copy()
+    expected=project_compiled_rods(points,[block])
+    plan=prepare_compiled_rods(len(points),[block])
+    block['nNode'][0][0]=999;block['f4MaxDist'][0]=1000
+    np.testing.assert_array_equal(plan.project(points),expected)
+    np.testing.assert_array_equal(points,before)
+    moved=points+[0,3,0]
+    np.testing.assert_array_equal(plan.project(moved),expected+[0,3,0])
+    for nodes,values in plan.blocks:
+        with pytest.raises(ValueError):nodes.setflags(write=True)
+        with pytest.raises(ValueError):values.setflags(write=True)
+
+
+def test_prepared_rods_refuse_new_dimensions_nonfinite_positions_and_scales():
+    points,block=fixture();plan=prepare_compiled_rods(len(points),[block])
+    for bad in (points[:-1],np.full_like(points,float('nan'))):
+        with pytest.raises(ValueError):plan.project(bad)
+    with pytest.raises(ValueError):plan.project(points,length_scales=[[1,1,0,1]])
+    block['nNode'][0][0]=999
+    with pytest.raises(ValueError):prepare_compiled_rods(len(points),[block])
+
+
+def test_dependent_blocks_stay_serial_and_independent_blocks_can_share_a_group():
+    points=np.array([[0.,0.,0.],[20.,0.,0.],[40.,0.,0.],
+                     [0.,10.,0.],[20.,10.,0.]])
+    def rod(a,b):
+        return dict(nNode=[[a]*4,[b]*4],f4MinDist=[10.]*4,f4MaxDist=[10.]*4,
+                    f4Weight0=[0.]*4,f4RelaxationFactor=[.5]*4)
+    plan=prepare_compiled_rods(5,[rod(0,1),rod(3,4),rod(1,2)])
+    assert [len(group[1]) for group in plan.groups]==[2,1]
+    np.testing.assert_array_equal(plan.project(points)[:,0],[0,15,32.5,0,15])
 
 
 def fixture():

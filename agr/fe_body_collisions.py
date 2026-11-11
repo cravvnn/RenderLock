@@ -290,16 +290,30 @@ def project_capsule(points, spheres, node_radii, selected, *, previous=None,
     radii=np.asarray(node_radii,dtype='f4');prior=None if previous is None else np.asarray(previous,dtype=float)
     coefficients=None if friction is None else np.asarray(friction,dtype=float)
     relative=None if friction is None else np.asarray(relative_transform,dtype=float)
-    for node in selected:
-        node=int(node);point=np.asarray(result[node],dtype='f4');offset=point-spheres[0,:3]
-        products=direction[:3]*offset;axial=(products[1]+products[0])+products[2]
-        radial=offset-direction[:3]*axial;products=radial*radial
-        radial_distance=np.sqrt((products[0]+products[1])+products[2])
-        distance=direction[3]*radial_distance+axial
-        if distance<=0:sphere=spheres[0]
-        elif distance>length:sphere=spheres[1]
-        else:
-            blend=distance/length;sphere=(np.float32(1)-blend)*spheres[0]+blend*spheres[1]
+    # Each selected node is independent within this capsule. Batch its sphere
+    # selection and reject noncontacts before entering the scalar contact kernel.
+    # Keep float32 operations and the exact native addition order; a float64 dot
+    # product can change the branch at a contact boundary.
+    nodes=np.asarray(selected,dtype=np.intp)
+    points32=np.asarray(result[nodes],dtype='f4')
+    offset=points32-spheres[0,:3]
+    products=direction[:3]*offset;axial=(products[:,1]+products[:,0])+products[:,2]
+    radial=offset-direction[:3]*axial[:,None];products=radial*radial
+    radial_distance=np.sqrt((products[:,0]+products[:,1])+products[:,2])
+    distance=direction[3]*radial_distance+axial
+    projected=np.empty((len(nodes),4),dtype='f4')
+    first=distance<=0;last=(~first)&(distance>length);middle=~(first|last)
+    projected[first]=spheres[0];projected[last]=spheres[1]
+    blend=(distance[middle]/length)[:,None]
+    projected[middle]=(np.float32(1)-blend)*spheres[0]+blend*spheres[1]
+    with np.errstate(over='ignore',invalid='ignore'):
+        delta=points32-projected[:,:3];squares=delta*delta
+        squared=(squares[:,0]+squares[:,1])+squares[:,2]
+        radius=projected[:,3]+radii[nodes];radius_squared=radius*radius
+    if not all(np.isfinite(v).all() for v in (squared,radius,radius_squared)):
+        raise ValueError('FE sphere distances exceed finite Source coordinates')
+    for index in np.flatnonzero(radius_squared>squared):
+        node=int(nodes[index]);point=points32[index];sphere=projected[index]
         _project_sphere_node(result[node],point,sphere,sphere,radii[node],
             previous=None if coefficients is None else prior[node],relative_transform=relative,
             friction=None if coefficients is None else float(coefficients[node]))

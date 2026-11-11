@@ -1,0 +1,6 @@
+[
+ {"name":"use-unvalidated-metadata","replace":[["MutSkipValidation == FALSE","MutSkipValidation == TRUE"]],"expect":"ValidatedBeforeUse"},
+ {"name":"accept-changed-point-dimensions","replace":[["MutSkipDimensions == FALSE","MutSkipDimensions == TRUE"]],"expect":"ValidatedBeforeUse"},
+ {"name":"reuse-prior-heros-plan","replace":[["MutSharedPlan == FALSE","MutSharedPlan == TRUE"]],"expect":"CallLocalSnapshot"},
+ {"name":"alias-caller-metadata","replace":[["MutAliasSource == FALSE","MutAliasSource == TRUE"]],"expect":"CallLocalSnapshot"}
+]
