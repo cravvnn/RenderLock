@@ -293,6 +293,8 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
         info=nodes.new('ShaderNodeObjectInfo');coord=nodes.new('ShaderNodeTexCoord')
         color=info.outputs['Color'];alpha=info.outputs['Alpha']
         layers=[t for t in renderer.get('m_vecTexturesInput',[]) if t.get('m_hTexture')]
+        from .particle_texture_channels import texture_channel_mode,RGB_ALPHA,LUMA
+        channel_modes=[texture_channel_mode(layer) for layer in layers]
         def mapped_texture(tex, layer_index, raw=False):
             image=nodes.new('ShaderNodeTexImage');image.image=texture(tex['m_hTexture'],sequence)
             if raw:
@@ -338,7 +340,12 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
                 add_uv=nodes.new('ShaderNodeVectorMath');add_uv.operation='ADD';links.new(mapping.outputs['Vector'],add_uv.inputs[0]);links.new(offset.outputs['Vector'],add_uv.inputs[1]);links.new(add_uv.outputs['Vector'],image.inputs['Vector'])
             mix=nodes.new('ShaderNodeMixRGB');mix.blend_type='MULTIPLY';mix.inputs[0].default_value=1
             links.new(color,mix.inputs[1]);links.new(image.outputs['Color'],mix.inputs[2]);color=mix.outputs[0]
-            mult=nodes.new('ShaderNodeMath');mult.operation='MULTIPLY';links.new(alpha,mult.inputs[0]);links.new(image.outputs['Alpha'],mult.inputs[1]);alpha=mult.outputs[0]
+            layer_alpha=image.outputs['Alpha']
+            if channel_modes[layer_index]==RGB_ALPHA:
+                luminance=nodes.new('ShaderNodeVectorMath');luminance.operation='DOT_PRODUCT'
+                links.new(image.outputs['Color'],luminance.inputs[0]);luminance.inputs[1].default_value=LUMA
+                layer_alpha=luminance.outputs['Value']
+            mult=nodes.new('ShaderNodeMath');mult.operation='MULTIPLY';links.new(alpha,mult.inputs[0]);links.new(layer_alpha,mult.inputs[1]);alpha=mult.outputs[0]
         power=nodes.new('ShaderNodeMath');power.operation='MULTIPLY';power.inputs[0].default_value=1
         if blend=='PARTICLE_OUTPUT_BLEND_MODE_ADD':links.new(alpha,power.inputs[0])
         power.inputs[1].default_value=scalar(renderer.get('m_flOverbrightFactor'),default=1)
