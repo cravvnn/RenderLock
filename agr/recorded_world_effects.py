@@ -3,22 +3,22 @@ import hashlib
 import json
 from pathlib import Path
 import subprocess
-from .particle_world_origin import (CLIENT_SHA256,BACKEND,DEFINITIONS,request_header,
+from .particle_world_origin import (CLIENT_SHA256,NATIVE_PROFILES,BACKEND,DEFINITIONS,request_header,
     control_points,world_identity,validate_response,validate_definitions,validate_package)
-PARTICLES_SHA256='5d5e29757162d86a4bb940c0f0b0189fbf12598d4238a7d27ec4082e9740ff7b'
+PARTICLES_SHA256=NATIVE_PROFILES[CLIENT_SHA256]
 
 def qualify_installation(provider):
- """This provider's native qualification is for one measured Windows client."""
+ """Admit only a measured Windows client/renderer pair."""
  path=Path(provider.install_path)/'game/citadel/bin/win64/client.dll'
  if not path.is_file():raise ValueError('World-origin creation is not yet qualified for this platform/client')
  with path.open('rb')as stream:actual=hashlib.file_digest(stream,'sha256').hexdigest()
- if actual!=CLIENT_SHA256:raise ValueError('World-origin creation client changed; native qualification is required')
+ if actual not in NATIVE_PROFILES:raise ValueError('World-origin creation client changed; native qualification is required')
  # The conditional projected layer also relies on the measured renderer defaults
  # in particles.dll (world/water enabled, characters disabled).
  particles=Path(provider.install_path)/'game/bin/win64/particles.dll'
  if not particles.is_file():raise ValueError('World-origin projected renderer platform is not yet qualified')
  with particles.open('rb')as stream:particle_sha=hashlib.file_digest(stream,'sha256').hexdigest()
- if particle_sha!=PARTICLES_SHA256:raise ValueError('World-origin projected renderer changed; native qualification is required')
+ if particle_sha!=NATIVE_PROFILES[actual]:raise ValueError('World-origin projected renderer changed; native qualification is required')
  return actual
 
 def prepare_world_package(data,instance,runtime,provider,decoder,adapter,directory):
@@ -26,8 +26,8 @@ def prepare_world_package(data,instance,runtime,provider,decoder,adapter,directo
  from .recorded_effect_simulation import (substitute_seed,validate_request_response,
      validate_seed_response,validate_event_response,validate_control_response)
  from .asset_converter import compiled
- header=request_header(data,instance)
- qualify_installation(provider)
+ client_sha256=qualify_installation(provider)
+ header=request_header(data,instance,client_sha256=client_sha256)
  definitions={name:decoder.dump(name,provider)for name in DEFINITIONS}
  validate_definitions(definitions)
  out=Path(directory);out.mkdir(parents=True,exist_ok=False)
@@ -46,7 +46,7 @@ def prepare_world_package(data,instance,runtime,provider,decoder,adapter,directo
   raise ValueError('World particle response is missing or exceeds the bounded32MiB output')
  sim=json.loads(result_path.read_text(encoding='utf-8'))
  validate_request_response(sim,instance,data['start_tick'],data['end_tick'],data['tick_rate'],request_sha)
- validate_seed_response(sim,plan['seed']);validate_response(sim,data,instance)
+ validate_seed_response(sim,plan['seed']);validate_response(sim,data,instance,client_sha256=client_sha256)
  validate_event_response(sim,instance,instance['created_tick'],data['end_tick'])
  validate_control_response(sim,instance['id'],[dict(control_point=0)])
  if sim.get('warnings'):raise ValueError('World particle simulator diagnostics: '+'; '.join(sim['warnings']))
@@ -61,7 +61,7 @@ def prepare_world_package(data,instance,runtime,provider,decoder,adapter,directo
   textures[name]={**descriptor,'directory':str(directory)}
  assets=dict(models={},definitions=definitions,textures=textures,
   provenance=dict(converter=decoder.identity,input_sha256={n:provider.resolve(compiled(n)).sha256 for n in names|texture_names}))
- package=dict(schema_version=1,backend=BACKEND,entity_ids=[],scene_identity=world_identity(data,instance),
+ package=dict(schema_version=1,backend=BACKEND,entity_ids=[],scene_identity=world_identity(data,instance,client_sha256=client_sha256),
   world_origin_provider=header,simulation_request_sha256=request_sha,simulation=sim,assets=assets,
   coverage_scope='One recorded unowned literal-birth explosion. Authored simulation and Blender shading use approximate Source behavior and AGR substitute seeds; projected rendering is verified separately.')
  validate_package(package,data)

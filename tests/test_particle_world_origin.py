@@ -94,10 +94,36 @@ def test_projected_defaults_require_matching_native_renderer(tmp_path,monkeypatc
  from types import SimpleNamespace
  import agr.recorded_world_effects as module
  binary=tmp_path/'game/citadel/bin/win64/client.dll';binary.parent.mkdir(parents=True);binary.write_bytes(b'qualified test client')
- monkeypatch.setattr(module,'CLIENT_SHA256',hashlib.sha256(binary.read_bytes()).hexdigest())
+ client_hash=hashlib.sha256(binary.read_bytes()).hexdigest()
+ monkeypatch.setattr(module,'NATIVE_PROFILES',{client_hash:module.PARTICLES_SHA256})
  provider=SimpleNamespace(install_path=tmp_path)
  with pytest.raises(ValueError,match='platform'):module.qualify_installation(provider)
  particles=tmp_path/'game/bin/win64/particles.dll';particles.parent.mkdir(parents=True);particles.write_bytes(b'changed renderer')
  with pytest.raises(ValueError,match='renderer changed'):module.qualify_installation(provider)
- monkeypatch.setattr(module,'PARTICLES_SHA256',hashlib.sha256(particles.read_bytes()).hexdigest())
- assert module.qualify_installation(provider)==module.CLIENT_SHA256
+ monkeypatch.setattr(module,'NATIVE_PROFILES',{client_hash:hashlib.sha256(particles.read_bytes()).hexdigest()})
+ assert module.qualify_installation(provider)==client_hash
+
+
+def test_known_native_profiles_keep_distinct_request_and_source_identities():
+ from agr.particle_world_origin import CLIENT_SHA256,LEGACY_CLIENT_SHA256
+ scene,item=fixture()
+ current=request_header(scene,item)
+ legacy=request_header(scene,item,client_sha256=LEGACY_CLIENT_SHA256)
+ assert current['client_sha256']==CLIENT_SHA256 and legacy['client_sha256']==LEGACY_CLIENT_SHA256
+ assert current!=legacy
+ assert world_identity(scene,item)!=world_identity(scene,item,client_sha256=LEGACY_CLIENT_SHA256)
+ for unknown in ('a'*64,[],None):
+  with pytest.raises(ValueError,match='native client profile'):
+   request_header(scene,item,client_sha256=unknown)
+
+
+def test_qualified_client_cannot_use_another_builds_renderer(tmp_path,monkeypatch):
+ import hashlib
+ from types import SimpleNamespace
+ import agr.recorded_world_effects as module
+ client=tmp_path/'game/citadel/bin/win64/client.dll';client.parent.mkdir(parents=True);client.write_bytes(b'known current fixture')
+ renderer=tmp_path/'game/bin/win64/particles.dll';renderer.parent.mkdir(parents=True);renderer.write_bytes(b'legacy fixture renderer')
+ client_sha=hashlib.sha256(client.read_bytes()).hexdigest()
+ monkeypatch.setattr(module,'NATIVE_PROFILES',{client_sha:'0'*64,'1'*64:hashlib.sha256(renderer.read_bytes()).hexdigest()})
+ with pytest.raises(ValueError,match='renderer changed'):
+  module.qualify_installation(SimpleNamespace(install_path=tmp_path))

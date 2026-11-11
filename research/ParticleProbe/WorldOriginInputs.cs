@@ -7,7 +7,9 @@ static class WorldOriginInputs
 {
     public const string Policy = "agr_world_literal_birth_release_v1";
     public const string Resource = "particles/abilities/vampirebat/vampirebat_batswarm_explosion.vpcf";
-    public const string ClientHash = "2007fddaf9f48211e1ed188aff3c31ad47ba667cbaace16f5dd30e9376b884c7";
+    public const string ClientHash = "d0341ce77398614af905ef8669d328fd4d45958282acef66789a250492e466b5";
+    public const string LegacyClientHash = "2007fddaf9f48211e1ed188aff3c31ad47ba667cbaace16f5dd30e9376b884c7";
+    private static bool QualifiedClient(string? value) => value == ClientHash || value == LegacyClientHash;
     private const string ResourceHash = "6452708104859076553";
 
     private static void Require(bool value, string reason)
@@ -28,7 +30,7 @@ static class WorldOriginInputs
             "bounded in-range birth and actual 64Hz output are required");
         Require(Fields(header, "policy", "client_sha256", "instance_id", "resource", "created_tick", "start_tick",
             "end_tick", "tick_rate", "demo_sha256", "events_sha256"), "unknown or incomplete provider fields");
-        Require(header.GetProperty("policy").GetString() == Policy && header.GetProperty("client_sha256").GetString() == ClientHash
+        Require(header.GetProperty("policy").GetString() == Policy && QualifiedClient(header.GetProperty("client_sha256").GetString())
             && header.GetProperty("resource").GetString() == Resource && instance.GetProperty("resource").GetString() == Resource
             && header.GetProperty("created_tick").GetInt32() == birth && header.GetProperty("start_tick").GetInt32() == start
             && header.GetProperty("end_tick").GetInt32() == end && header.GetProperty("tick_rate").GetInt32() == rate

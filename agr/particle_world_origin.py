@@ -14,7 +14,12 @@ from .vendor.resource_hash import resource_id
 POLICY='agr_world_literal_birth_release_v1'
 BACKEND='simulated_world_origin_v1'
 RESOURCE='particles/abilities/vampirebat/vampirebat_batswarm_explosion.vpcf'
-CLIENT_SHA256='2007fddaf9f48211e1ed188aff3c31ad47ba667cbaace16f5dd30e9376b884c7'
+LEGACY_CLIENT_SHA256='2007fddaf9f48211e1ed188aff3c31ad47ba667cbaace16f5dd30e9376b884c7'
+CLIENT_SHA256='d0341ce77398614af905ef8669d328fd4d45958282acef66789a250492e466b5'
+NATIVE_PROFILES={
+ LEGACY_CLIENT_SHA256:'5d5e29757162d86a4bb940c0f0b0189fbf12598d4238a7d27ec4082e9740ff7b',
+ CLIENT_SHA256:'46ae70beaef7935e27794d2148406407605994b59fa5ff19f9a37c8ba68c129f',
+}
 DEFINITIONS={
  RESOURCE:'4f7919166937fb6ae394fd2193389c2c709e8b5304860301bc000188105d52a4',
  RESOURCE.replace('.vpcf','_proj.vpcf'):'23ba75f3b7be4b67ae7d888441575745751d03487e44aa9aee4b9ad54f70aff8',
@@ -75,9 +80,10 @@ def literal_birth(scene,instance):
          'explicit finite CP0 position and identity orientation are required')
  return literal
 
-def request_header(scene,instance):
+def request_header(scene,instance,*,client_sha256=CLIENT_SHA256):
  literal_birth(scene,instance)
- return dict(policy=POLICY,client_sha256=CLIENT_SHA256,instance_id=instance['id'],resource=RESOURCE,
+ require(isinstance(client_sha256,str) and client_sha256 in NATIVE_PROFILES,"unqualified native client profile")
+ return dict(policy=POLICY,client_sha256=client_sha256,instance_id=instance['id'],resource=RESOURCE,
   created_tick=instance['created_tick'],start_tick=scene['start_tick'],end_tick=scene['end_tick'],tick_rate=scene['tick_rate'],
   demo_sha256=scene['metadata']['demo_sha256'],events_sha256=digest(instance['events']))
 
@@ -86,14 +92,14 @@ def control_points(scene,instance):
  return [dict(tick=tick,position=list(literal['position']),rotation=list(literal['rotation']))
          for tick in range(instance['created_tick'],scene['end_tick']+1)]
 
-def world_identity(scene,instance):
- return digest(dict(header=request_header(scene,instance),source_instance=instance,
+def world_identity(scene,instance,*,client_sha256=CLIENT_SHA256):
+ return digest(dict(header=request_header(scene,instance,client_sha256=client_sha256),source_instance=instance,
                     coordinates=scene['metadata'].get('coordinate_system')))
 
-def validate_response(simulation,scene,instance):
+def validate_response(simulation,scene,instance,*,client_sha256=CLIENT_SHA256):
  rows=simulation.get('instances')
  require(isinstance(rows,list) and len(rows)==1 and rows[0].get('id')==instance['id']
-         and rows[0].get('world_origin_provider')==request_header(scene,instance),
+         and rows[0].get('world_origin_provider')==request_header(scene,instance,client_sha256=client_sha256),
          'simulator did not acknowledge this exact world provider; rebuild ParticleProbe')
 
 def validate_definitions(definitions):
@@ -116,8 +122,12 @@ def validate_package(package,scene):
  require(isinstance(rows,list) and len(rows)==1 and isinstance(rows[0],dict),'one exact world generation is required')
  originals=[i for i in scene.get('particle_instances',[])if i.get('id')==rows[0].get('id')]
  require(len(originals)==1,'recorded source generation is missing or ambiguous')
- original=originals[0];header=request_header(scene,original)
- require(package.get('scene_identity')==world_identity(scene,original)
+ original=originals[0]
+ declared=package.get('world_origin_provider')
+ require(isinstance(declared,dict) and isinstance(declared.get('client_sha256'),str),'native profile provenance is required')
+ client_sha256=declared['client_sha256']
+ header=request_header(scene,original,client_sha256=client_sha256)
+ require(package.get('scene_identity')==world_identity(scene,original,client_sha256=client_sha256)
          and package.get('world_origin_provider')==header and rows[0].get('entity_id')is None,
          'source world generation, replay, range or coordinates changed')
  request_sha=package.get('simulation_request_sha256')
@@ -125,7 +135,7 @@ def validate_package(package,scene):
  require(simulation.get('backend') and not simulation.get('warnings'),'unresolved simulation diagnostics')
  validate_request_response(simulation,original,scene['start_tick'],scene['end_tick'],scene['tick_rate'],request_sha)
  validate_seed_response(simulation,substitute_seed(scene,original))
- validate_response(simulation,scene,original)
+ validate_response(simulation,scene,original,client_sha256=client_sha256)
  validate_event_response(simulation,original,original['created_tick'],scene['end_tick'])
  validate_control_response(simulation,original['id'],[dict(control_point=0)])
  require(not any(rows[0].get(field) is not None for field in ('custom_origin_provider','birth_override_provider',

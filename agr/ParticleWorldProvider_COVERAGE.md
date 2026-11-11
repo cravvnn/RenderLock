@@ -34,3 +34,13 @@ the exact five world definitions use its existing static texture adapter. The
 current helper is compiled from b28 sources with the additive WorldOriginInputs
 class; older broad research providers are not imported. Capture/extraction CLI,
 owned responses and .crav schema are unchanged.
+
+The 6861 update adds a stateless exact client/renderer-pair lookup. The request
+and package identity carry the selected known client; the renderer hash is its
+paired immutable qualification input. Existing 6860 package identities are
+validated with their declared known profile, without querying installed files.
+No new lifecycle/cache/retry state is introduced: validWorld in the adjacent
+model abstracts the preflight conjunction. Cross-build pairs and unknown hashes
+are negative tests; current and legacy helper headers are exercised separately.
+Native instruction reanchoring/emulation is separate evidence and does not
+establish live allocation, Source timing, map projection or lighting parity.
