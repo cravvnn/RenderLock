@@ -1,3 +1,9 @@
+# 0.3.0b28 - Particle depth interpolation and update-check recovery
+
+- Correct supported depth-biased sprite/trail cards at fractional frames using live geometry and UV interpolation. Requires Blender 5.2+, constant bias and a qualified perspective/orthographic camera; clipping-floor and unsupported particle/provider limits remain.
+- Preserve whole-instance package rollback and refuse retargeting depth-qualified cards without camera/projection requalification.
+- Explain GitHub rate limits, honor retry/reset headers within the update session, and keep the official releases link available without metadata. No automatic retry/download/install or weaker verification is added.
+
 # 0.3.0b27 - Faster cloth exports and clearer progress
 
 - Batch capsule contacts and reuse immutable validated rod data across each cloth solve. Preserve compiled rod dependencies, solver settings, contact behavior and strict coverage checks.

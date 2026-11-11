@@ -1,0 +1,5 @@
+[
+ {"name":"check-before-server-reset","replace":[["MutIgnoreCooldown==FALSE","MutIgnoreCooldown==TRUE"]],"expect":"NoRequestDuringCooldown"},
+ {"name":"stale-error-disables-current-check","replace":[["MutAcceptStale==FALSE","MutAcceptStale==TRUE"]],"expect":"NoStaleCooldown"},
+ {"name":"rate-limit-causes-automatic-install","replace":[["MutAutoInstall==FALSE","MutAutoInstall==TRUE"]],"expect":"MetadataNeverInstalls"}
+]

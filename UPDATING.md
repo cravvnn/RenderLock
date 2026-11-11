@@ -19,6 +19,10 @@ versions only. Draft releases are excluded. Notes are shown inside the app;
 the full release can also be opened on GitHub. Checks require internet access
 and can be deferred by GitHub's API limits or an incomplete release upload.
 Source checkouts cannot install updates over development files.
+
+If GitHub limits update checks, RenderLock shows a retry time and pauses repeated
+checks during that session. **Open GitHub releases** stays available for a manual
+download. Restarting the app does not reset GitHub's connection-wide limit.
 The Windows updater is not a native Linux/macOS updater. Experimental Linux
 support remains on its separate development branch.
 

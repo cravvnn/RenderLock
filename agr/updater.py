@@ -7,17 +7,23 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
+import time
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path, PurePosixPath
 import re
 import shutil
 import stat
 import urllib.parse
+import urllib.error
 import urllib.request
 import zipfile
 
 REPOSITORY = "cravvnn/RenderLock"
 RELEASES_URL = f"https://api.github.com/repos/{REPOSITORY}/releases?per_page=100"
+RELEASES_PAGE = f"https://github.com/{REPOSITORY}/releases"
 MANIFEST = "release_manifest.json"
 WORK = ".renderlock-update"
 PENDING = ".renderlock-update-pending"
@@ -160,9 +166,59 @@ def select_release(releases, current):
                 notes=str(data.get("body") or "No release notes were supplied.")[:60000])
 
 
+class UpdateRateLimited(RuntimeError):
+    def __init__(self, retry_at):
+        self.retry_at = retry_at
+        try:
+            when = datetime.fromtimestamp(retry_at, timezone.utc).astimezone().strftime('%H:%M %Z')
+        except (OSError, OverflowError, ValueError):
+            when = "GitHub's limit resets"
+        super().__init__(f'GitHub temporarily limited update checks for this internet connection. '
+                         f'Try again after {when}, or open GitHub releases to download manually')
+
+
+def rate_limit_error(error, now=None):
+    """Interpret GitHub's limit response without treating every 403 as a limit."""
+    if error.code not in (403, 429):
+        return None
+    now = time.time() if now is None else now
+    body = error.read(8192).decode('utf-8', errors='replace').lower()
+    headers = error.headers or {}
+    if (error.code != 429 and headers.get('X-RateLimit-Remaining') != '0'
+            and 'rate limit' not in body and 'rate limit' not in str(error.reason).lower()):
+        return None
+    deadlines = [now + 60]
+    for name in ('Retry-After', 'X-RateLimit-Reset'):
+        value = headers.get(name)
+        if value is None:
+            continue
+        try:
+            number = float(value)
+            deadline = now + number if name == 'Retry-After' else number
+        except (ValueError, TypeError):
+            try:
+                deadline = parsedate_to_datetime(value).timestamp() if name == 'Retry-After' else now
+            except (ValueError, TypeError, OverflowError):
+                continue
+        # Ignore malformed or implausible dates instead of disabling checks
+        # indefinitely. Normal GitHub reset windows are bounded well below a day.
+        if math.isfinite(deadline) and now < deadline <= now + 86400:
+            deadlines.append(deadline)
+    return UpdateRateLimited(max(deadlines))
+
+
 def check_latest(current):
-    with open_url(RELEASES_URL) as response:
-        payload = response.read(2 * 1024**2 + 1)
+    try:
+        with open_url(RELEASES_URL) as response:
+            payload = response.read(2 * 1024**2 + 1)
+    except urllib.error.HTTPError as error:
+        try:
+            limited = rate_limit_error(error)
+        finally:
+            error.close()
+        if limited is not None:
+            raise limited from error
+        raise
     if len(payload) > 2 * 1024**2:
         raise ValueError("Release metadata is too large")
     return select_release(json.loads(payload), current)

@@ -12,6 +12,8 @@ def retarget_simulated_effects(scene, camera):
         raise ValueError('Choose an active camera in this scene first')
     if any(obj.get('agr_particle_rope_sampled_camera') for obj in scene.objects):
         raise ValueError('Rope geometry uses sampled camera position and projection. Rebuild the rope geometry for the changed camera before retargeting particle constraints.')
+    if any(obj.get('agr_particle_depth_sampled_camera') for obj in scene.objects):
+        raise ValueError('Depth-biased cards require camera/projection requalification before retargeting particle constraints.')
     targets = []
     for obj in scene.objects:
         if obj.get('agr_particle_billboard_helper'):

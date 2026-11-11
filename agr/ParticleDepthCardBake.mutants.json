@@ -1,0 +1,5 @@
+[
+ {"name":"mutate-before-all-projections-qualify","replace":[["MutEarlyWrite==FALSE","MutEarlyWrite==TRUE"]],"expect":"CapturedBeforeWrite"},
+ {"name":"leave-private-sampling-frame-active","replace":[["MutSkipRestore==FALSE","MutSkipRestore==TRUE"]],"expect":"RestoredOnReturn"},
+ {"name":"retain-failed-package-geometry","replace":[["MutSkipRollback==FALSE","MutSkipRollback==TRUE"]],"expect":"FailureAtomic"}
+]

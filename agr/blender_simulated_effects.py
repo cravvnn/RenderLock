@@ -350,7 +350,7 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
             add=nodes.new('ShaderNodeMixShader');links.new(alpha,add.inputs[0]);links.new(transparent.outputs[0],add.inputs[1]);links.new(emit.outputs[0],add.inputs[2])
         output=nodes.new('ShaderNodeOutputMaterial');links.new(add.outputs[0],output.inputs['Surface'])
         materials[key]=mat;return mat
-    objects=[];billboard_helpers=[];rope_objects=[];rope_systems=[]
+    objects=[];billboard_helpers=[];rope_objects=[];rope_systems=[];depth_rows=[]
     original_frame = scene.frame_current
     original_subframe = scene.frame_subframe
     try:
@@ -500,6 +500,19 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
                 _linear(data)
             _linear(obj)
             if facing_helper is not None:_linear(facing_helper)
+            if not light:
+                # The released renderer has literal/constant scalar support,
+                # not the development renderer's dynamic per-sample contexts.
+                # Keep unsupported providers strict; never substitute a bias.
+                bias=scalar(renderer.get('m_flDepthBias'),default=0)
+                if bias:
+                    depth_rows.append(dict(obj=obj,samples=[
+                        (tick,1+(tick-simulation['start_tick'])*frame_step,bias)
+                        for tick,_,_ in samples]))
+    depth_report=None
+    if depth_rows:
+        from .blender_particle_live_depth import prepare_depth_cards
+        depth_report=prepare_depth_cards(depth_rows,scene,camera,unit_scale)
     report={'status':'experimental','instances':len(simulation['instances']),'particle_tracks':len(tracks),'objects':len(objects),'point_lights':sum(o.type=='LIGHT' for o in objects),'textures':len(images),'backend':simulation['backend'],'omissions':sorted(set(omissions)),
             'limitations':['Blender shader approximation; no Source bloom/depth intersection pass','Light intensity calibrated to Blender units; not measured engine radiometry','Random engine seed is not available in the demo','Only the supplied recorded instances/control-point history are simulated']}
     report.update(camera_binding='live_constraints',camera_object=camera.name,billboard_helpers=len(billboard_helpers))
@@ -509,6 +522,10 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
         report['rope_systems']=rope_systems
         report['rope_lighting']={'policy':'explicit neutral RGB; Source lighting is not reconstructed','rgb':[1,1,1]}
         report['limitations'].append('Rope geometry samples camera position and projection per replay tick. Moving, animating or replacing the camera afterward requires rebuilding rope geometry.')
+    if depth_report:
+        report['live_depth_cards']=depth_report
+        report['camera_binding']='sampled_rope_geometry_with_live_projective_cards' if rope_objects else 'live_constraints_with_qualified_projective_depth'
+        report['limitations'].append(depth_report['scope'])
     if any(obj.type == 'MESH' for obj in objects):
         from .blender_effects import ensure_particle_transparency
         report['cycles_transparent_bounces'] = ensure_particle_transparency(scene)

@@ -4,6 +4,7 @@ from __future__ import annotations
 import queue
 import re
 import threading
+import time
 import webbrowser
 
 from . import __version__, updater
@@ -26,6 +27,7 @@ class UpdateUI:
         self.ready = None
         self.closed = False
         self.request = 0
+        self.retry_at = 0
         self._status("Check for new RenderLock releases." if self.enabled else
                      "Update installation is available in the Windows portable build.")
         app.root.after(150, self.poll)
@@ -34,10 +36,11 @@ class UpdateUI:
 
     def _status(self, text):
         self.app.update_status.set(text)
-        self.app.update_check.configure(state="disabled" if self.running or self.restarting else "normal")
+        self.app.update_check.configure(state="disabled" if self.running or self.restarting or time.time() < self.retry_at else "normal")
         self.app.update_action.configure(text="Install and restart" if self.ready else "Download update",
             state="normal" if self.enabled and self.available and not self.running and not self.restarting else "disabled")
-        self.app.update_notes_link.configure(state="normal" if self.available else "disabled")
+        self.app.update_notes_link.configure(state="normal",
+            text="Open full release on GitHub" if self.available else "Open GitHub releases")
 
     def _run(self, function, kind):
         self.running = True
@@ -47,6 +50,8 @@ class UpdateUI:
         def run():
             try:
                 self.events.put((request, kind, function()))
+            except updater.UpdateRateLimited as error:
+                self.events.put((request, "rate_limited", error))
             except Exception as error:
                 self.events.put((request, "error", str(error)))
         threading.Thread(target=run, name="RenderLock update", daemon=True).start()
@@ -56,6 +61,9 @@ class UpdateUI:
             return
         if not self.enabled:
             self._status("Use the packaged Windows build for in-app updates.")
+            return
+        if time.time() < self.retry_at:
+            self._status(str(updater.UpdateRateLimited(self.retry_at)) + ". Your installed version is unchanged.")
             return
         self._run(lambda: updater.check_latest(__version__), "checked")
         self._status("Checking published RenderLock releases...")
@@ -92,8 +100,7 @@ class UpdateUI:
         self.app.root.destroy()
 
     def open_notes(self):
-        if self.available:
-            webbrowser.open(self.available["notes_url"])
+        webbrowser.open(self.available["notes_url"] if self.available else updater.RELEASES_PAGE)
 
     def poll(self):
         if self.closed:
@@ -108,6 +115,7 @@ class UpdateUI:
                     continue
                 self.running = False
                 if kind == "checked":
+                    self.retry_at = 0
                     self.available, self.ready = value, None
                     self.app.update_notes.configure(state="normal")
                     self.app.update_notes.delete("1.0", "end")
@@ -121,8 +129,15 @@ class UpdateUI:
                 elif kind == "downloaded":
                     self.ready = value
                     self._status("Update verified and ready. Click Install and restart when your work is finished.")
+                elif kind == "rate_limited":
+                    self.retry_at = value.retry_at
+                    self._status(str(value) + ". Your installed version is unchanged.")
                 else:
                     self._status("Update deferred: " + value + ". Your installed version is unchanged.")
         except queue.Empty:
             pass
+        if self.retry_at and time.time() >= self.retry_at:
+            self.retry_at = 0
+            if not self.running and not self.ready:
+                self._status("GitHub update checks are available again. Click Check for updates when ready.")
         self.app.root.after(150, self.poll)
