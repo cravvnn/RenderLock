@@ -2,7 +2,8 @@
 
 This source candidate adds outward Mina bat projectiles to normal recorded-effect
 exports. It includes network history retention, strict owner/request/capture
-binding, animated model geometry and the sprite/rope layers used by the tracer.
+binding, animated model geometry and the sprite/rope layers used by the tracer. It also connects captured scalar
+controls and collection-age texture curves used by Venator crossbow muzzle flashes.
 It is based on the b29 public source; it is not a new published application build.
 
 ## Runtime layout
@@ -46,6 +47,17 @@ The internal v2 sidecar preserves history before the shot and subsequent owner
 changes, with exact replay/helper/range/payload provenance. Missing capture is
 unavailable, not an empty success. An enclosed saved-shot view keeps the original
 hashed capture intact. Existing non-projectile package identities are unchanged.
+
+A second fresh normal CLI range qualified both Venator muzzle-flash instances.
+Their captured CP5 switch drives direct and inverse alpha scaling; texture curves
+use actual child-system collection age. Missing snapshots refuse the whole
+instance. UV origins wrap after time interpolation, and clamped corner transforms
+precede triangle interpolation, avoiding wrapped-endpoint animation artifacts.
+Actual fractional-frame pixel tests cover both paths, packed save/reopen and
+late missing-input rollback. The saved normal scene passed 2,878 alpha checks and
+eight CPU Cycles preview frames over both firing moments. This establishes the
+input/rendering connection; visible smoke-card edges and approximate lighting
+remain fidelity limits rather than Source pixel equivalence.
 
 ## Remaining limits
 

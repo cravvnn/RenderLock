@@ -22,3 +22,19 @@ Unknown/missing per-particle inputs, unsupported rope offsets and animated atlas
 sources continue to fail. Numeric, native instruction, rendered-pixel, reopened
 material and full normal-export checks are distinct evidence scopes. None proves
 native GPU filtering, original randomness, Source lighting or fresh replay capture.
+
+Renderer alpha scaling also consumes this same immutable per-system context via
+render_scalar. Literal behavior remains on the same scalar math; dynamic CP/age
+inputs require actual snapshots and the existing input-provenance checks. This
+adds no new state owner or lifecycle. Keyed alpha uses the existing scene bake;
+missing/invalid snapshots still trigger the whole package's allocation rollback.
+
+Collection-age curve UV inputs require the same actual per-system snapshots;
+shot elapsed time cannot substitute for a child's collection age. Raw UV origin
+is keyed, then wrapped in the shader after time interpolation. For clamped UVs,
+each source corner is transformed and clamped before triangle interpolation.
+This pure graph/math change removes keyed wrapped/clamped endpoint ambiguity,
+adds no lifecycle, and remains inside the package allocation transaction.
+The alpha/UV pixel fixture checks both paths, fractional frames, save/reopen and
+late missing-child rollback. Its analytic byte-ramp texture distinguishes the
+old wrapped-endpoint graph at frame2.25 (32/255) from the corrected96/255.

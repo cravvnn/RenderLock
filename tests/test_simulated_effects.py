@@ -1,4 +1,4 @@
-﻿import pytest
+import pytest
 import copy
 import math
 from agr.blender_simulated_effects import trail_dimensions, texture_control_value, static_texture_sequence, collect_particle_tracks
@@ -133,3 +133,18 @@ def test_sequence_wrapping_does_not_hide_unsupported_or_ambiguous_sheets():
   static_texture_sequence({'is_sprite_sheet':True,'sequences':{'0':{'status':'unsupported','frames':[{},{}]}}},7,'animated')
  with pytest.raises(UnsupportedEffect,match='Invalid'):
   static_texture_sequence({'sequences':{'0':good}},-1,'negative')
+
+
+@pytest.mark.parametrize('age,expected',[(0,0),(.25,.125),(.75,.375),(1,.5)])
+def test_texture_collection_age_curve_uses_supplied_child_age(age,expected):
+ value=dict(m_nType='PF_TYPE_COLLECTION_AGE',m_nMapType='PF_MAP_TYPE_CURVE',
+  m_Curve=dict(m_spline=[dict(x=0,y=0,m_flSlopeOutgoing=.5),dict(x=1,y=.5,m_flSlopeIncoming=.5)]))
+ assert texture_control_value(value,age)==pytest.approx(expected)
+
+
+def test_uv_raw_origin_preserves_crossing_for_shader_time_wrap():
+ controls={'m_flFinalTextureOffsetV':{'m_nType':'PF_TYPE_COLLECTION_AGE'}}
+ assert texture_uv_parameters(controls,.75)[1]==(.5,.25)
+ assert texture_uv_parameters(controls,.75,wrap_origin=False)[1]==(.5,1.25)
+ with pytest.raises(UnsupportedEffect,match='mapping'):
+  texture_control_value({'m_nType':'PF_TYPE_COLLECTION_AGE','m_nMapType':'unknown'},.5)

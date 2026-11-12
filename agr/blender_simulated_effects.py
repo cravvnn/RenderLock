@@ -35,6 +35,9 @@ def texture_control_value(value, age, default=0):
     mode = value.get('m_nMapType', 'PF_MAP_TYPE_DIRECT')
     if mode == 'PF_MAP_TYPE_MULT':
         result *= value.get('m_flMultFactor', 1)
+    elif mode == 'PF_MAP_TYPE_CURVE':
+        from .particle_render_controls import render_scalar
+        return render_scalar(value,age=age,default=default)
     elif mode != 'PF_MAP_TYPE_DIRECT':
         raise UnsupportedEffect('Texture control mapping ' + mode)
     if not math.isfinite(result):
@@ -56,7 +59,7 @@ def trail_dimensions(particle, renderer, step):
     return length,max(0.,radius),[v/distance for v in delta]
 
 
-def texture_uv_parameters(controls, age, random_uv=(0., 0.)):
+def texture_uv_parameters(controls, age, random_uv=(0., 0.), *, wrap_origin=True):
     """ParticleTextureLayer.PlaceCorner: rotate about .5, divide, add wrapped origin.
 
     Authored rotation is radians. Clamping is per vertex in Source/VRF, so a
@@ -67,7 +70,7 @@ def texture_uv_parameters(controls, age, random_uv=(0., 0.)):
         raise UnsupportedEffect('Zero particle texture scale')
     offset=tuple(texture_control_value(controls.get('m_flFinalTextureOffset'+axis),age)+random_uv[j]+.5
                  for j,axis in enumerate(('U','V')))
-    origin=tuple(value-math.floor(value) for value in offset)
+    origin=tuple(value-math.floor(value) for value in offset)if wrap_origin else offset
     rotation=texture_control_value(controls.get('m_flFinalTextureUVRotation'),age)
     return scale,origin,rotation
 
@@ -84,12 +87,14 @@ def build_texture_uv_nodes(nodes, links, coordinate, controls, samples, *, trail
     links.new(rotation.outputs['Vector'],divide.inputs[0])
     origin=nodes.new('ShaderNodeVectorMath');origin.operation='ADD'
     links.new(divide.outputs['Vector'],origin.inputs[0])
+    wrapped=nodes.new('ShaderNodeVectorMath');wrapped.operation='FRACTION'
+    links.new(wrapped.outputs['Vector'],origin.inputs[1])
     for frame,age,random_uv in samples:
-        scale,wrapped,angle=texture_uv_parameters(controls,age,random_uv)
+        scale,offset,angle=texture_uv_parameters(controls,age,random_uv,wrap_origin=False)
         divide.inputs[1].default_value=(*scale,1)
-        origin.inputs[1].default_value=(*wrapped,0)
+        wrapped.inputs[0].default_value=(*offset,0)
         rotation.inputs['Angle'].default_value=angle
-        for socket in (divide.inputs[1],origin.inputs[1],rotation.inputs['Angle']):
+        for socket in (divide.inputs[1],wrapped.inputs[0],rotation.inputs['Angle']):
             socket.keyframe_insert('default_value',frame=frame)
     return origin
 
@@ -133,13 +138,18 @@ def build_clamped_texture_uv_nodes(nodes, links, coordinate, controls, samples, 
                    op('MINIMUM', v, op('SUBTRACT', 1, u)),
                    op('MAXIMUM', op('SUBTRACT', total, 1), 0))
     corners = []
-    for weight in weights:
+    for weight,(u0,v0)in zip(weights,((0,0),(1,0),(0,1),(1,1))):
+        coordinate_node=nodes.new('ShaderNodeCombineXYZ')
+        coordinate_node.inputs['X'].default_value=u0;coordinate_node.inputs['Y'].default_value=v0
+        placed=build_texture_uv_nodes(nodes,links,coordinate_node.outputs['Vector'],
+            dict(controls,m_bClampUVs=False),samples,trail=trail)
+        low=nodes.new('ShaderNodeVectorMath');low.operation='MAXIMUM';low.inputs[1].default_value=(0,0,0)
+        links.new(placed.outputs['Vector'],low.inputs[0])
+        high=nodes.new('ShaderNodeVectorMath');high.operation='MINIMUM';high.inputs[1].default_value=(1,1,0)
+        links.new(low.outputs['Vector'],high.inputs[0])
         node = nodes.new('ShaderNodeVectorMath'); node.operation = 'SCALE'
+        links.new(high.outputs['Vector'],node.inputs[0])
         links.new(weight, node.inputs['Scale']); corners.append(node)
-    for frame, age, random_uv in samples:
-        for node, uv in zip(corners, texture_uv_corners(controls, age, random_uv)):
-            node.inputs[0].default_value = (*uv, 0)
-            node.inputs[0].keyframe_insert('default_value', frame=frame)
     result = corners[0]
     for node in corners[1:]:
         add = nodes.new('ShaderNodeVectorMath'); add.operation = 'ADD'
@@ -330,6 +340,9 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
         from .particle_texture_layers import needs_extended_sprite_layers,build_layer_stack,gradient_pixels
         authored_layers=renderer.get('m_vecTexturesInput',[])
         extended=needs_extended_sprite_layers(authored_layers)
+        curve_age=any(isinstance(value,dict)and value.get('m_nType')=='PF_TYPE_COLLECTION_AGE'
+            and value.get('m_nMapType')=='PF_MAP_TYPE_CURVE'
+            for layer in authored_layers for value in layer.get('m_TextureControls',{}).values())
         layers=authored_layers if extended else [t for t in authored_layers if t.get('m_hTexture')]
         from .particle_texture_channels import texture_channel_mode,RGB_ALPHA,LUMA
         channel_modes=[] if extended else [texture_channel_mode(layer) for layer in layers]
@@ -357,9 +370,9 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
             uv_samples=[]
             for tick,_,_ in samples:
                 context=contexts.get((instance,system_path,tick))
-                if extended and context is None:
+                if (extended or curve_age)and context is None:
                     raise UnsupportedEffect('Extended texture composition requires actual per-system age snapshots')
-                age=context['age'] if extended else (tick-births[instance])/simulation['tick_rate']
+                age=context['age'] if extended or curve_age else (tick-births[instance])/simulation['tick_rate']
                 uv_samples.append((1+(tick-simulation['start_tick'])*frame_step,age,random_uv))
             mapping=build_texture_uv_nodes(nodes,links,coord.outputs['UV'],controls,uv_samples,
                                            trail=renderer['_class']=='C_OP_RenderTrails')
@@ -431,6 +444,7 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
         else:
             add=nodes.new('ShaderNodeMixShader');links.new(alpha,add.inputs[0]);links.new(transparent.outputs[0],add.inputs[1]);links.new(emit.outputs[0],add.inputs[2])
         output=nodes.new('ShaderNodeOutputMaterial');links.new(add.outputs[0],output.inputs['Surface'])
+        _linear(mat.node_tree)
         materials[key]=mat;return mat
     objects=[];billboard_helpers=[];rope_objects=[];rope_systems=[];depth_rows=[]
     original_frame = scene.frame_current
@@ -565,7 +579,9 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
             for tick,step,p in samples:
                 frame=1+(tick-simulation['start_tick'])*frame_step
                 obj.location=Vector(p['position'])*unit_scale
-                alpha=p['alpha']*p['alpha_alternate']*scalar(renderer.get('m_flAlphaScale'),default=1)
+                from .particle_render_controls import render_scalar
+                context=contexts.get((instance,system_path,tick))
+                alpha=p['alpha']*p['alpha_alternate']*render_scalar(renderer.get('m_flAlphaScale'),context=context,default=1)
                 obj.color=(*p['color'],max(0,alpha))
                 if light:
                     scale=renderer.get('m_vecColorScale',{})
