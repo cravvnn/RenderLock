@@ -65,6 +65,28 @@ def rope_sample(nodes,t,orientation,camera):
     return {'position':position,'radius':radius,'width':width,'tangent':tangent,'color':color}
 
 
+def reference_camera_size(radius,alpha,position,camera,renderer):
+    """Pinned VRF CollectNodes response, not native renderer equivalence.
+
+    Fade the original radius before the distance-scaled clamp, per control
+    point before spline interpolation. No frame, camera or default is inferred.
+    """
+    enabled=renderer.get('m_bEnableFadingAndClamping',False)
+    if type(enabled)is not bool:raise UnsupportedEffect('Invalid rope camera fading switch')
+    if not enabled:return radius,alpha
+    low=_number(renderer.get('m_flMinSize',0));high=_number(renderer.get('m_flMaxSize',2000))
+    start=_number(scalar(renderer.get('m_flStartFadeSize'),default=1000))
+    end=_number(scalar(renderer.get('m_flEndFadeSize'),default=2000))
+    if min(low,high,start,end)<0 or low>high:raise UnsupportedEffect('Invalid rope camera size/fade bounds')
+    with np.errstate(over='ignore',invalid='ignore',divide='ignore'):
+        delta=position-camera;distance=_F(np.sqrt(np.dot(delta,delta)))
+        first=start*distance;last=end*distance
+        if radius>first and last>first:alpha*=max(_F(0),_F(1)-(radius-first)/(last-first))
+        radius=min(max(radius,low*distance),high*distance)
+    if not np.isfinite([radius,alpha,distance,first,last]).all():raise UnsupportedEffect('Rope camera size/fade exceeds finite float32 bounds')
+    return _F(radius),_F(alpha)
+
+
 def rope_collection_bounds(particles, definition=None):
     """Native finite leaf bounds: particle radius plus authored box padding."""
     definition = definition or {}
@@ -145,13 +167,15 @@ def rope_subdivisions(particles, renderer, camera_position=None, camera_projecti
 def build_rope_geometry(particles,renderer,age=0.,camera_position=None,*,camera_projection=None,definition=None,shader_extra_policy=None):
     """Build fixed or sampled adaptive ribbons, preserving live array order.
 
-    CP-driven texture coordinates, non-normal vector fields and camera fading
+    CP-driven texture coordinates, non-normal vector fields and angle fading
     remain explicit gaps. Bookworm's authored geometry uses
     fixed tessellation 2, normal orientation and scratch-float scalar coordinates.
     """
     subdivisions = rope_subdivisions(particles, renderer, camera_position, camera_projection, definition) if len(particles) >= 2 else 1
-    if renderer.get('m_bEnableFadingAndClamping') or renderer.get('m_flStartFadeDot',1)<1:
-        raise UnsupportedEffect('Camera-dependent rope fading is not implemented')
+    if renderer.get('m_flStartFadeDot',1)<1:
+        raise UnsupportedEffect('Camera-angle rope fading is not implemented')
+    if renderer.get('m_bEnableFadingAndClamping') and camera_position is None:
+        raise UnsupportedEffect('Rope size fading requires a sampled camera position')
     if renderer.get('m_nTextureVParamsCP',-1)!=-1 or any(renderer.get(k,0)!=0 for k in
             ('m_flScaleVSizeByControlPointDistance','m_flScaleVScrollByControlPointDistance','m_flScaleVOffsetByControlPointDistance')):
         raise UnsupportedEffect('Control-point rope texture scaling is not implemented')
@@ -178,7 +202,9 @@ def build_rope_geometry(particles,renderer,age=0.,camera_position=None,*,camera_
         identities.add(p['id'])
         if use_scalar and fields[scalar_field] not in p:raise UnsupportedEffect('Missing rope UV scalar state')
         alpha=_number(p['alpha'])*_number(p['alpha_alternate'])*alpha_scale
-        nodes.append({'position':_vector(p['position'],3),'radius':_number(p['radius'])*radius_scale,
+        position=_vector(p['position'],3);radius=_number(p['radius'])*radius_scale
+        radius,alpha=reference_camera_size(radius,alpha,position,camera,renderer)
+        nodes.append({'position':position,'radius':radius,
                       'normal':_vector(p['normal'],3) if orientation=='PARTICLE_ORIENTATION_ALIGN_TO_PARTICLE_NORMAL' else None,
                       'color':np.r_[_vector(p['color'],3),alpha].astype(np.float32),
                       'uv_scalar':_number(p[fields[scalar_field]])*scalar_scale if use_scalar else _F(0)})

@@ -44,6 +44,18 @@ default, capture and whole-instance rollback. Its40 states/five guard mutants do
 not prove native arithmetic, clipping or Blender internals. Pure math tests use
 an independent polygon clipper; actual packed pixels and saved data are separate.
 
+Camera size fading/clamping now ports the retained `reference_camera_size`
+operation without the unrelated historical child-bounds or shader-coordinate
+changes. The pinned VRF revision's `RenderRopes.CollectNodes` applies distance
+fade to original radius, then clamps radius by distance-scaled min/max, per
+control point before spline interpolation. The existing sampled-camera path
+already supplies Source-unit position at each tick. Missing camera, invalid
+parameters, angle fading and unresolved CP providers still refuse. Existing
+`resolve_rope_inputs` reports this as reference-viewer equations, with native
+renderer equivalence explicitly unqualified. No new frame handler, state,
+cache or lifecycle is introduced. Changing the camera requires rebuilding the
+existing camera-sampled geometry; the retarget action still refuses it.
+
 The normal flashbang imports its complete sibling tree. Its hero camera clips
 all ring meshes. A separate inspection-camera rebuild of that exact fresh normal
 package independently saves/reopens all66 ring samples and verifies57 visibility
