@@ -80,7 +80,7 @@ static class PerChildReplayStudy
                         velocity = V(particle.Velocity), radius = particle.Radius, alpha = particle.Alpha, alpha_alternate = particle.AlphaAlternate,
                         color = V(particle.Color), life = particle.Lifetime, age = particle.Age, creation_time = particle.CreationTime,
                         scratch_float0 = particle.ScratchFloat0, hitbox_index = particle.HitboxIndex, hitbox_coordinates = V(particle.HitboxOffsetPosition),
-                        trail = particle.TrailLength, normal = V(particle.Normal), rotation = V(particle.Rotation), sequence = particle.SequenceNumber,
+                        trail = particle.TrailLength, normal = V(particle.Normal), rotation = V(particle.Rotation), sequence = particle.SequenceNumber, second_sequence = particle.SecondSequenceNumber,
                         manual_frame = particle.ManualAnimationFrame });
                 systems.Add(new { name = system.Name, system_path = path, step = system.Particles.CurrentFrameTime, particles });
                 for (var child = 0; child < system.Children.Count; child++) Capture(system.Children[child], path + "/" + child);

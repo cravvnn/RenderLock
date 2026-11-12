@@ -40,6 +40,20 @@ def test_geometry_preparation_cannot_patch_the_material_dependency(tmp_path, mon
     assert [name for target, name in patches if target == 'geometry'] == [
         'vrf-skeletonless-morph-animation.patch']
     assert ('particle', 'vrf-skeletonless-morph-animation.patch') not in patches
+    assert ('particle', 'vrf-vector-expression-initializer.patch') not in patches
+    assert ('geometry', 'vrf-vector-expression-initializer.patch') not in patches
+    assert ('simulation', 'vrf-vector-expression-initializer.patch') in patches
     properties = codeql_build_helpers.properties(tmp_path / 'work')
     assert '-p:ParticleVrfProject=' + str(tmp_path / 'work/particle/ValveResourceFormat/ValveResourceFormat.csproj') in properties
     assert '-p:ParticleGeometryVrfProject=' + str(tmp_path / 'work/geometry/ValveResourceFormat/ValveResourceFormat.csproj') in properties
+
+
+def test_archive_inside_another_repository_cannot_silently_skip_patches(tmp_path):
+    subprocess.run(['git','init',str(tmp_path)],check=True,capture_output=True)
+    source=tmp_path/'nested';source.mkdir()
+    (source/'source.cs').write_bytes(b'old\n')
+    patch=tmp_path/'change.patch'
+    patch.write_bytes(b'diff --git a/source.cs b/source.cs\n--- a/source.cs\n+++ b/source.cs\n@@ -1 +1 @@\n-old\n+new\n')
+    with pytest.raises(ValueError,match='own Git root'):
+        apply_patch(source,patch,tmp_path/'normalized')
+    assert (source/'source.cs').read_bytes()==b'old\n'

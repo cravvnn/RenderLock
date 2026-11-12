@@ -1,0 +1,89 @@
+--- a/ValveResourceFormat/Particles/ParticleControllerFactory.cs
++++ b/ValveResourceFormat/Particles/ParticleControllerFactory.cs
+@@ -90,6 +90,7 @@
+                 ["C_INIT_RemapInitialTransformDirectionToRotation"] = initializerInfo => new RemapInitialTransformDirectionToRotation(initializerInfo),
+                 ["C_INIT_RemapScalarToVector"] = initializerInfo => new RemapScalarToVector(initializerInfo),
+                 ["C_INIT_RemapTransformOrientationToRotations"] = initializerInfo => new Initializers.RemapTransformOrientationToRotations(initializerInfo),
++                ["C_INIT_SetVectorAttributeToVectorExpression"] = initializerInfo => new Initializers.SetVectorAttributeToVectorExpression(initializerInfo),
+                 ["C_INIT_RemapTransformToVector"] = initializerInfo => new RemapTransformToVector(initializerInfo),
+                 ["C_INIT_RemapParticleCountToScalar"] = initializerInfo => new Initializers.RemapParticleCountToScalar(initializerInfo),
+                 ["C_INIT_RingWave"] = initializerInfo => new RingWave(initializerInfo),
+--- a/ValveResourceFormat/Particles/ParticleSystemState.cs
++++ b/ValveResourceFormat/Particles/ParticleSystemState.cs
+@@ -194,9 +194,10 @@
+ 
+         private ParticleSystemState RootState => ParentSystem?.RootState ?? this;
+ 
++        private bool HasExpressionControlWrites;
+         /// <summary>The policy used to distinguish supplied and position-authored control points.</summary>
+         public string? ControlPointInputPolicy => RootState.DeclaredInputSet == null
+-            ? null : "agr_authored_child_controls_v2";
++            ? null : RootState.HasExpressionControlWrites ? "agr_authored_expression_controls_v3" : "agr_authored_child_controls_v2";
+ 
+         /// <summary>External control points explicitly supplied before simulation began.</summary>
+         public int[] DeclaredControlPointInputs => RootState.DeclaredInputSet?.Order().ToArray() ?? [];
+@@ -240,6 +241,12 @@
+ 
+         internal void WriteAuthoredChildPosition(int cp, Vector3 position)
+             => WriteAuthoredChildTransform(cp, position, null);
++
++        internal void WriteAuthoredExpressionPosition(int cp, Vector3 position)
++        {
++            WriteAuthoredChildPosition(cp, position);
++            RootState.HasExpressionControlWrites = true;
++        }
+ 
+         internal void WriteAuthoredChildTransform(int cp, Vector3 position, Matrix4x4? basis)
+         {
+--- a/ValveResourceFormat/Particles/PreEmissionOperators/SetControlPointToVectorExpression.cs
++++ b/ValveResourceFormat/Particles/PreEmissionOperators/SetControlPointToVectorExpression.cs
+@@ -46,7 +46,14 @@
+                 _ => throw new NotImplementedException($"Unrecognized vector expression type ({expression})")
+             };
+ 
+-            particleSystemState.SetControlPointValue(outputCP, output);
++            if (expression == VectorExpression.VECTOR_EXPRESSION_ADD)
++            {
++                particleSystemState.WriteAuthoredExpressionPosition(outputCP, output);
++            }
++            else
++            {
++                particleSystemState.SetControlPointValue(outputCP, output);
++            }
+         }
+     }
+ }
+--- /dev/null
++++ b/ValveResourceFormat/Particles/Initializers/SetVectorAttributeToVectorExpression.cs
+@@ -0,0 +1,31 @@
++namespace ValveResourceFormat.Particles.Initializers;
++
++/// <summary>Bounded native ADD initializer, replacing a particle normal.</summary>
++class SetVectorAttributeToVectorExpression : ParticleFunctionInitializer
++{
++    private readonly IVectorProvider input1;
++    private readonly IVectorProvider input2;
++
++    public SetVectorAttributeToVectorExpression(ParticleDefinitionParser parse) : base(parse)
++    {
++        // Installed constructor: output Normal=21, expression ADD=0,
++        // set method REPLACE=0, normalized output=false. Other modes are withheld.
++        if (parse.ParticleField("m_nOutputField", ParticleField.Normal) != ParticleField.Normal
++            || parse.Enum<VectorExpression>("m_nExpression", VectorExpression.VECTOR_EXPRESSION_ADD) != VectorExpression.VECTOR_EXPRESSION_ADD
++            || parse.Enum<ParticleSetMethod>("m_nSetMethod", ParticleSetMethod.PARTICLE_SET_REPLACE_VALUE) != ParticleSetMethod.PARTICLE_SET_REPLACE_VALUE
++            || parse.Boolean("m_bNormalizedOutput"))
++            throw new NotSupportedException("Vector expression initializer requires ADD, Normal, replacement, without normalization");
++        input1 = parse.VectorProvider("m_vInput1", new LiteralVectorProvider(Vector3.Zero));
++        input2 = parse.VectorProvider("m_vInput2", new LiteralVectorProvider(Vector3.Zero));
++    }
++
++    public override ulong WrittenFields => FieldMask(ParticleField.Normal);
++
++    public override Particle Initialize(ref Particle particle, ParticleCollection particles, ParticleSystemState state)
++    {
++        var a = input1.NextVector(ref particle, state);
++        var b = input2.NextVector(ref particle, state);
++        particle.Normal = a + b;
++        return particle;
++    }
++}

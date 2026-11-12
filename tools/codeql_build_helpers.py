@@ -1,4 +1,4 @@
-"""Restore pinned public dependencies, then compile all five C# helpers for CodeQL.
+"""Restore pinned public dependencies, then compile all six C# helpers for CodeQL.
 
 Prepare dependencies BEFORE CodeQL initialization, then run `build` while tracing.
 This keeps the scan focused on RenderLock rather than rebuilding upstream code.
@@ -16,12 +16,13 @@ ROOT = Path(__file__).resolve().parents[1]
 UPSTREAM = "https://github.com/ValveResourceFormat/ValveResourceFormat.git"
 LIGHTING_REVISION = "9e2e6c7f67e3c4e5a5f443a60c3a5d841ba8f304"  # Source 2 Viewer 20.1
 PARTICLE_REVISION = "42743fb93030c552f834fabb30708dad84d0cbf5"
-PROJECTS = ("ParticleProbe", "WorldRegionProbe", "ProbeAtlasDecode", "CubemapDecode", "ParticleGeometryProbe")
+PROJECTS = ("ParticleProbe", "WorldRegionProbe", "ProbeAtlasDecode", "CubemapDecode", "ParticleGeometryProbe", "ParticleSimulationProbe")
 PATCHES = ("vrf-ramp-scalar-spline.patch", "vrf-invalid-transform-identity.patch",
            "vrf-create-on-model-bones.patch", "vrf-kv3-v5-unsigned-constants.patch",
            "vrf-bounded-model-extraction.patch", "vrf-set-child-control-points.patch",
            "vrf-per-child-control-point.patch")
 GEOMETRY_PATCHES = ("vrf-skeletonless-morph-animation.patch",)
+SIMULATION_PATCHES = PATCHES + ("vrf-vector-expression-initializer.patch",)
 
 
 def run(*args, cwd=ROOT):
@@ -48,10 +49,17 @@ def checkout(path, revision):
 def properties(work):
     return ["-p:ParticleVrfProject=" + str(work / "particle/ValveResourceFormat/ValveResourceFormat.csproj"),
             "-p:ParticleGeometryVrfProject=" + str(work / "geometry/ValveResourceFormat/ValveResourceFormat.csproj"),
+            "-p:ParticleSimulationVrfProject=" + str(work / "simulation/ValveResourceFormat/ValveResourceFormat.csproj"),
             "-p:ProbeReferences=" + str(work / "lighting/ValveResourceFormat/bin/Debug")]
 
 
 def apply_patch(checkout_root, source, workspace):
+    # git apply can silently skip diff --git paths when an archived source tree
+    # inherits an enclosing repository. Require the dependency's own repository.
+    actual_root = Path(subprocess.check_output(
+        ["git", "rev-parse", "--show-toplevel"], cwd=checkout_root, text=True).strip()).resolve()
+    if actual_root != Path(checkout_root).resolve():
+        raise ValueError("Dependency patches require the checkout's own Git root")
     # Windows checkouts may convert .patch files to CRLF while upstream's C#
     # attributes require LF. Normalize the patch transport, never its context.
     destination = workspace / source.name
@@ -68,11 +76,14 @@ def prepare(work, dotnet):
     # Separate assembly directory: never add geometry patches to the material
     # parser or change its qualified runtime hash as a side effect.
     geometry = checkout(work / "geometry", PARTICLE_REVISION)
+    simulation = checkout(work / "simulation", PARTICLE_REVISION)
     for name in PATCHES:
         apply_patch(work / "particle", ROOT / "tools/patches" / name, work / "patches")
     for name in GEOMETRY_PATCHES:
         apply_patch(work / "geometry", ROOT / "tools/patches" / name, work / "patches")
-    for project in (lighting, particle, geometry):
+    for name in SIMULATION_PATCHES:
+        apply_patch(work / "simulation", ROOT / "tools/patches" / name, work / "patches")
+    for project in (lighting, particle, geometry, simulation):
         run(dotnet, "build", project, "--configuration", "Debug",
             "-p:CopyLocalLockFileAssemblies=true", "-p:UseSharedCompilation=false")
     refs = work / "lighting/ValveResourceFormat/bin/Debug"
@@ -85,7 +96,8 @@ def prepare(work, dotnet):
 
 def configuration():
     return dict(lighting=LIGHTING_REVISION, particle=PARTICLE_REVISION,
-                geometry=PARTICLE_REVISION, geometry_patches=list(GEOMETRY_PATCHES), projects=list(PROJECTS))
+                geometry=PARTICLE_REVISION, geometry_patches=list(GEOMETRY_PATCHES),
+                simulation=PARTICLE_REVISION, simulation_patches=list(SIMULATION_PATCHES), projects=list(PROJECTS))
 
 
 def build(work, dotnet):

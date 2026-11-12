@@ -126,7 +126,11 @@ def build_package_effects(package, data, manifest_file, scene, camera):
         directory = Path(texture['directory'])
         if not directory.is_absolute():
             texture['directory'] = str((Path(manifest_file).parent / directory).resolve())
-    groups = ('objects', 'collections', 'meshes', 'materials', 'lights', 'images', 'actions', 'node_groups', 'texts')
+    for model in assets.get('models', {}).values():
+        directory = Path(model['directory'])
+        if not directory.is_absolute():
+            model['directory'] = str((Path(manifest_file).parent / directory).resolve())
+    groups = ('objects', 'collections', 'meshes', 'shape_keys', 'materials', 'lights', 'images', 'actions', 'node_groups', 'texts')
     before = {key: set(getattr(bpy.data, key)) for key in groups}
     try:
         report = build_simulated_effects(package['simulation'], assets, scene, camera)

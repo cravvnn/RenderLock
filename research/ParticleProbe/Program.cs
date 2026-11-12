@@ -109,7 +109,7 @@ foreach(var instance in config.GetProperty("instances").EnumerateArray()) {
   var systems=new List<object>();
   void Capture(ParticleSystemSimulation s,string path) {
    var particles=new List<object>();
-   foreach(ref var x in s.Particles.Current)particles.Add(new{id=x.UniqueParticleId,position=V(x.Position),previous=V(x.PositionPrevious),velocity=V(x.Velocity),radius=x.Radius,alpha=x.Alpha,alpha_alternate=x.AlphaAlternate,color=V(x.Color),life=x.Lifetime,age=x.Age,creation_time=x.CreationTime,scratch_float0=x.ScratchFloat0,hitbox_index=x.HitboxIndex,hitbox_coordinates=V(x.HitboxOffsetPosition),trail=x.TrailLength,normal=V(x.Normal),rotation=V(x.Rotation),sequence=x.SequenceNumber,manual_frame=x.ManualAnimationFrame});
+   foreach(ref var x in s.Particles.Current)particles.Add(new{id=x.UniqueParticleId,position=V(x.Position),previous=V(x.PositionPrevious),velocity=V(x.Velocity),radius=x.Radius,alpha=x.Alpha,alpha_alternate=x.AlphaAlternate,color=V(x.Color),life=x.Lifetime,age=x.Age,creation_time=x.CreationTime,scratch_float0=x.ScratchFloat0,hitbox_index=x.HitboxIndex,hitbox_coordinates=V(x.HitboxOffsetPosition),trail=x.TrailLength,normal=V(x.Normal),rotation=V(x.Rotation),sequence=x.SequenceNumber,second_sequence=x.SecondSequenceNumber,manual_frame=x.ManualAnimationFrame});
    systems.Add(new{name=s.Name,system_path=path,step=s.Particles.CurrentFrameTime,particles});
    for(int childIndex=0;childIndex<s.Children.Count;childIndex++)Capture(s.Children[childIndex],path+"/"+childIndex);
   }

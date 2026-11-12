@@ -260,7 +260,14 @@ def validate_renderer_classes(tracks, assets, simulation=None, *, scene=None):
     for resource in sorted({key[2] for key in tracks}):
         for renderer in assets['definitions'][resource].get('m_Renderers',[]):
             kind=renderer.get('_class')
-            if kind=='C_OP_RenderProjected':
+            if kind=='C_OP_RenderModels':
+                from .particle_model_assets import validate_model
+                from .blender_particle_models import validate_model_samples
+                descriptor=validate_model(renderer,assets)
+                for key,samples in tracks.items():
+                    if key[2]==resource:
+                        validate_model_samples(renderer,descriptor,samples)
+            elif kind=='C_OP_RenderProjected':
                 from .particle_projected_scene import validate_profile,no_world_receivers
                 validate_profile(resource,renderer)
                 projected[resource]=no_world_receivers(scene)
@@ -439,6 +446,14 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
             raise UnsupportedEffect('Changing sprite sequences are not implemented: '+resource)
         definition=assets['definitions'][resource]
         for index,renderer in enumerate(definition.get('m_Renderers',[])):
+            if renderer['_class']=='C_OP_RenderModels':
+                from .blender_particle_models import build_model_particle
+                name=f'AGR FX model | {instance} | {system_path} | {particle_id}.{index}'
+                obj,notes=build_model_particle(name,renderer,assets,samples,simulation,collection,texture,unit_scale)
+                obj['agr_particle_resource']=resource;obj['agr_particle_instance']=instance
+                obj['agr_particle_system_path']=system_path;obj['agr_simulation_backend']=simulation['backend']
+                objects.append(obj);omissions.extend(resource+': '+note for note in notes)
+                continue
             if renderer['_class']=='C_OP_RenderProjected':
                 if resource not in projected:raise UnsupportedEffect('Projected scene receiver preflight is missing')
                 continue

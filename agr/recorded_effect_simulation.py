@@ -559,16 +559,9 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
             names={s['name'].removesuffix('_c') for f in simulation['instances'][0]['frames'] for s in f['systems']}
             if model_profile and names!=set(REGEN_DEFINITIONS):
                 raise ValueError('Simulator regeneration system tree differs from qualified definitions')
-            for name in names:
-                if name not in definitions:definitions[name]=decoder.dump(name,provider)
-            texture_names={t['m_hTexture'] for name in names for renderer in definitions[name].get('m_Renderers',[])
-                           for t in renderer.get('m_vecTexturesInput',[]) if t.get('m_hTexture')}
-            for name in texture_names:
-                if name not in textures:
-                    directory,descriptor=adapter.texture(name,provider)
-                    textures[name]={**descriptor,'directory':str(directory)}
-            assets={'definitions':{n:definitions[n] for n in names},'textures':{n:textures[n] for n in texture_names},
-                    'provenance':{'converter':decoder.identity,'input_sha256':{n:provider.resolve(compiled(n)).sha256 for n in names|texture_names}}}
+            from .particle_render_assets import prepare_render_assets
+            assets=prepare_render_assets(names,decoder,adapter,provider,runtime,
+                definitions=definitions,textures=textures)
             package={'schema_version':1,'backend':'simulated_states_v1','entity_ids':[instance['entity_id']],
                      'scene_identity':scene_identity(data,[instance['entity_id']]),'simulation':simulation,'assets':assets,
                      'simulation_request_sha256':request_sha256,

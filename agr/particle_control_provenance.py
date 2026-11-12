@@ -11,7 +11,7 @@ def confirmed_materialized_points(row, expected):
     if policy is None:
         return confirmed_points(row, 'materialized_control_point_indices', expected)
     authored = row.get('authored_control_point_indices')
-    if (policy not in ('agr_set_child_position_inputs_v1', 'agr_authored_child_controls_v2')
+    if (policy not in ('agr_set_child_position_inputs_v1', 'agr_authored_child_controls_v2', 'agr_authored_expression_controls_v3')
             or not confirmed_points(row, 'declared_control_point_inputs', expected)
             or not confirmed_points(row, 'unprovided_control_point_indices', [])
             or not isinstance(authored, list)
