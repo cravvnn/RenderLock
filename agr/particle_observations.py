@@ -69,10 +69,10 @@ def read_observations(path, *, reserved=()):
     if (not isinstance(document, dict)
             or set(document) != {'format', 'schema_version', 'captures'}
             or document['format'] != FORMAT
-            or type(document['schema_version']) is not int or document['schema_version'] not in (1, 2)
+            or type(document['schema_version']) is not int or document['schema_version'] not in (1, 2, 3)
             or not isinstance(document['captures'], list)
             or not 1 <= len(document['captures']) <= MAX_CAPTURES):
-        raise ValueError('Particle observations require schema 1 or 2 and 1..64 captures')
+        raise ValueError('Particle observations require schema 1, 2 or 3 and 1..64 captures')
     captures = {}
     for row in document['captures']:
         if (not isinstance(row, dict)
@@ -86,10 +86,14 @@ def read_observations(path, *, reserved=()):
                 raise ValueError('Particle observations contain invalid Crossbow records')
             captures[row['instance_id']] = row['capture']
         else:
-            if (set(row) != {'instance_id', 'profile', 'birth', 'child'} or row['profile'] != 'silence'
+            fields = {'instance_id', 'profile', 'birth', 'child'} | ({'source_scene'} if document['schema_version'] == 3 else set())
+            if (set(row) != fields or row['profile'] != 'silence'
                     or not isinstance(row['birth'], dict) or not isinstance(row['child'], dict)):
                 raise ValueError('Schema 2 requires separate original bound Silence birth and child envelopes')
             captures[row['instance_id']] = dict(birth=row['birth'], child=row['child'])
+            if document['schema_version'] == 3:
+                if not isinstance(row['source_scene'], dict):raise ValueError('Explicit original Silence source witness required')
+                captures[row['instance_id']]['source_scene'] = row['source_scene']
     return dict(schema_version=document['schema_version'], captures=captures, source=str(source),
                 sha256=hashlib.sha256(raw).hexdigest(), bytes=len(raw))
 
@@ -122,7 +126,7 @@ def bind_runtime_observations(document, scene):
     if document.get('schema_version', 1) == 1:
         bound, receipt = bind_observations(document, scene)
         return dict(crossbow_owner_captures=bound), receipt
-    if document.get('schema_version') != 2:
+    if document.get('schema_version') not in (2, 3):
         raise ValueError('Unknown particle observation schema')
     import copy
     from .particle_silence_inputs import prepare_observed_inputs
@@ -131,13 +135,20 @@ def bind_runtime_observations(document, scene):
         if instance['id'] in instances:
             raise ValueError('Particle observation target identity is ambiguous')
         instances[instance['id']] = instance
-    birth, child = {}, {}
+    birth, child, equivalents = {}, {}, {}
     for key, envelopes in document['captures'].items():
         if key not in instances:
             raise ValueError(f'Particle observation {key} is absent from the selected replay history')
-        prepare_observed_inputs(scene, instances[key], envelopes['birth'], envelopes['child'])
+        proof=None
+        if document['schema_version'] == 3:
+            from .particle_silence_binding import bind_equivalence
+            proof=bind_equivalence(envelopes['source_scene'],scene,instances[key],envelopes['birth'],envelopes['child'])
+            equivalents[key]=proof
+        prepare_observed_inputs(scene, instances[key], envelopes['birth'], envelopes['child'],proof)
         birth[key], child[key] = copy.deepcopy(envelopes['birth']), copy.deepcopy(envelopes['child'])
-    receipt = dict(schema_version=2, format=FORMAT, sha256=document['sha256'], bytes=document['bytes'],
+    receipt = dict(schema_version=document['schema_version'], format=FORMAT, sha256=document['sha256'], bytes=document['bytes'],
         instance_ids=sorted(birth), status='imported_qualified_observations', acquisition='supplied_file',
         profile='silence', scope='Original historical native observations; no current reader or complete particle coverage claim')
-    return dict(silence_birth_captures=birth, client_child_captures=child), receipt
+    runtime=dict(silence_birth_captures=birth, client_child_captures=child)
+    if equivalents:runtime['silence_input_equivalences']=equivalents
+    return runtime, receipt

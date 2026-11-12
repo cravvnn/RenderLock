@@ -19,7 +19,7 @@ NORMAL_POLICY = 'agr_normal_silence_evaluated_inputs_v1'
 
 
 def request_inputs(data, instance, observed, points, hitboxes):
-    require(observed == prepare_observed_inputs(data, instance, observed['birth'], observed['child']),
+    require(observed == prepare_observed_inputs(data, instance, observed['birth'], observed['child'], observed.get('equivalence')),
             'observations changed during preparation')
     require(instance.get('resource') == SILENCE and hitboxes.get('points_sha256') == digest(points)
         and [p.get('tick') for p in points] == list(range(instance['created_tick'], data['end_tick'] + 1)),
@@ -35,7 +35,8 @@ def validate_normal_request(package, data, instance):
     from .recorded_effect_simulation import substitute_seed
     provider = package['hitbox_provider']
     require(provider.get('normal_inputs_policy') == NORMAL_POLICY, 'unqualified normal input provider')
-    observed = prepare_observed_inputs(data, instance, package['silence_birth_capture'], package['client_child_capture'])
+    observed = prepare_observed_inputs(data, instance, package['silence_birth_capture'], package['client_child_capture'],
+        package.get('silence_input_equivalence'))
     request = package.get('simulation_request')
     require(isinstance(request, dict) and set(request) == {'start_tick', 'end_tick', 'tick_rate', 'seed', 'gameinfo', 'instances'}
         and isinstance(request['instances'], list) and len(request['instances']) == 1,
@@ -59,14 +60,15 @@ def prepare_package(data, instance, entity, objects, scene, manifest_dir, attach
     from .simulated_effect_package import scene_identity, validate_package
     birth = (runtime.get('silence_birth_captures') or {}).get(instance['id'])
     child = (runtime.get('client_child_captures') or {}).get(instance['id'])
-    observed = prepare_observed_inputs(data, instance, birth, child)
+    equivalence = (runtime.get('silence_input_equivalences') or {}).get(instance['id'])
+    observed = prepare_observed_inputs(data, instance, birth, child, equivalence)
     out = Path(out)
     out.mkdir(exist_ok=False)
     definitions = {name: decoder.dump(name, provider) for name in DEFINITIONS}
     validate_definitions(definitions)
     inventory, provenance = collect_inventory(provider, runtime, entity['model_constraints'], out / 'hitboxes.json')
     points, hitboxes = capture_points(data, instance, entity, objects, scene, manifest_dir,
-        attachments, inventory, birth, child)
+        attachments, inventory, birth, child, equivalence)
     hitboxes['normal_inputs_policy'] = NORMAL_POLICY
     plan = {key: data[key] for key in ('start_tick', 'end_tick', 'tick_rate')}
     plan.update(gameinfo=str(Path(runtime['install_path']) / 'game/citadel/gameinfo.gi'),
@@ -101,6 +103,7 @@ def prepare_package(data, instance, entity, objects, scene, manifest_dir, attach
         silence_birth_capture=copy.deepcopy(birth), client_child_capture=copy.deepcopy(child),
         hitbox_provider=hitboxes, authored_hitbox_provenance=provenance,
         coverage_scope='One supplied historical Silence birth/body selection; fresh evaluated replay hitboxes and approximate rendering. No current live acquisition or complete native pose/shader parity.')
+    if equivalence is not None:package['silence_input_equivalence']=copy.deepcopy(equivalence)
     validate_package(package, data)
     path = out / 'package.json'
     path.write_text(json.dumps(package, allow_nan=False), encoding='utf-8')

@@ -16,7 +16,25 @@ paths. They must match the exact replay/scene/model/history. Schema 2 does not
 mix profiles or bind an old packet to a newly generated scene. The existing
 `prepare-particle-observations` command still prepares schema 1 Crossbow reports.
 Fresh-scene equivalence for historical Silence packets remains an explicit
-unresolved integration gate, not a permissive importer option.
+input proof, not a permissive importer option. Schema 3 adds `source_scene` to
+each schema-2 record. The importer validates both original envelopes against
+that source witness and creates a separate `particle_silence_binding` proof.
+Packets are never rebound. Equal inclusive shot range, replay, exact recorded
+instance/events, owner basis, model/skeleton bytes, complete root samples and
+all q/t/s/fresh pose rows from birth through end are required. Earlier warmup
+outside the consumed span may differ; no consumed motion can differ. The only
+nonidentical preparation dependency admitted is the separately audited
+effect_assets source/target pair already used by retained slide binding. All
+constraint definitions, hierarchy and attachment data remain exact.
+
+This bridge is a pure bounded snapshot comparison and immutable proof builder,
+without persistent state/cache/retry/handler, so it needs no additional lifecycle
+model. ZIP member/NPY headers are bounded and typed before array allocation.
+Repeated admission recomputes the proof against source and target files. Its
+target identity binds the fresh scene independently; original birth/child hashes
+and original native profiles remain distinct. Newly evaluated Blender poses and
+saved recapture are still mandatory. Numeric/source equivalence cannot establish
+the output image or current native acquisition.
 
 `blender_silence_inputs.capture_points` reuses `evaluated_snapshot_rig` and
 `capture_model_bones`, selecting only authored hitbox bones. Full tick history,

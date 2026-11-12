@@ -8,9 +8,9 @@ from .particle_silence_inputs import (prepare_observed_inputs, prepare_hitbox_fr
 
 
 def capture_points(data, instance, entity, objects, scene, manifest_dir, attachments,
-                   inventory, birth, child):
+                   inventory, birth, child, equivalence=None):
     from .blender_particle_skinning import evaluated_snapshot_rig
-    observed = prepare_observed_inputs(data, instance, birth, child)
+    observed = prepare_observed_inputs(data, instance, birth, child, equivalence)
     with evaluated_snapshot_rig(objects.get('rig'), objects.get('root'), scene):
         return _capture(data, instance, entity, objects, scene, manifest_dir,
                         attachments, inventory, observed)
@@ -132,7 +132,7 @@ def validate_saved_inputs(package, data, scene, manifest_dir):
     require(len(instances) == 1, 'saved particle identity is ambiguous')
     points, actual = capture_points(data, instances[0], entities[0], dict(rig=rig, root=roots[0]),
         scene, manifest_dir, provider['attachments'], provider['inventory'],
-        package['silence_birth_capture'], package['client_child_capture'])
+        package['silence_birth_capture'], package['client_child_capture'], package.get('silence_input_equivalence'))
     from .recorded_silence_effects import NORMAL_POLICY
     actual['normal_inputs_policy'] = NORMAL_POLICY
     require(digest(actual) == digest(provider)

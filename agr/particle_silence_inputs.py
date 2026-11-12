@@ -26,6 +26,15 @@ def require(ok,message):
     if not ok:raise ValueError('Silence inputs: '+message)
 
 
+def observed_source(scene,instance,birth,child,equivalence=None):
+    if equivalence is None:
+        validate_silence_capture(birth,scene,instance)
+        validate_client_child_capture(child,scene,instance)
+        return scene
+    from .particle_silence_binding import validate_equivalence
+    return validate_equivalence(equivalence,scene,instance,birth,child)
+
+
 def validate_definitions(definitions,resource=SILENCE):
     require(resource==SILENCE and isinstance(definitions,dict) and set(definitions)==set(DEFINITIONS),
             'complete four-system definition tree required')
@@ -33,12 +42,11 @@ def validate_definitions(definitions,resource=SILENCE):
 
 
 def scene_point_bindings(instance,start,end,entity_ids,*,client_child_capture=None,
-        silence_birth_capture=None,birth_override_capture=None,custom_origin_capture=None,scene=None):
+        silence_birth_capture=None,birth_override_capture=None,custom_origin_capture=None,scene=None,equivalence=None):
     require(birth_override_capture is None and custom_origin_capture is None,
             'Silence captures cannot be combined with other creation profiles')
     require(isinstance(scene,dict) and instance.get('resource')==SILENCE, 'exact source scene/resource required')
-    validate_silence_capture(silence_birth_capture,scene,instance)
-    validate_client_child_capture(client_child_capture,scene,instance)
+    observed_source(scene,instance,silence_birth_capture,client_child_capture,equivalence)
     require(type(start)is int and type(end)is int and start<=instance['created_tick']<=end,
             'birth must be inside available input history')
     require(instance['entity_id'] in entity_ids, 'owner must be explicitly exported')
@@ -78,9 +86,8 @@ def scene_point_bindings(instance,start,end,entity_ids,*,client_child_capture=No
     return [rows[i] for i in sorted(rows)]
 
 
-def model_controls(instance,bindings,capture,scene,*,silence_birth_capture=None):
-    validate_silence_capture(silence_birth_capture,scene,instance)
-    validate_client_child_capture(capture,scene,instance)
+def model_controls(instance,bindings,capture,scene,*,silence_birth_capture=None,equivalence=None):
+    observed_source(scene,instance,silence_birth_capture,capture,equivalence)
     require(instance.get('resource')==SILENCE and [b.get('control_point') for b in bindings]==[0,1,2]
         and [b.get('provider') for b in bindings]==['root_origin','point_follow','literal_transform']
         and all(b.get('target_entity_id')==instance['entity_id'] for b in bindings[:2]),
@@ -117,16 +124,18 @@ def validate_hitbox_provider(provider,scene,row):
     validate_hitbox_response(dict(instances=[row]),row['id'],[h])
 
 
-def prepare_observed_inputs(scene,instance,birth,child):
+def prepare_observed_inputs(scene,instance,birth,child,equivalence=None):
     """Preserve both original envelopes; return all required observations or none."""
     from .particle_history import history_start
     bindings=scene_point_bindings(instance,history_start(scene),scene['end_tick'],
-        [e['id'] for e in scene['entities']],scene=scene,client_child_capture=child,silence_birth_capture=birth)
-    controls=model_controls(instance,bindings,child,scene,silence_birth_capture=birth)
+        [e['id'] for e in scene['entities']],scene=scene,client_child_capture=child,silence_birth_capture=birth,equivalence=equivalence)
+    controls=model_controls(instance,bindings,child,scene,silence_birth_capture=birth,equivalence=equivalence)
+    source=observed_source(scene,instance,birth,child,equivalence)
     value=dict(policy='agr_observed_silence_inputs_v1',instance_id=instance['id'],
         birth=copy.deepcopy(birth),child=copy.deepcopy(child),bindings=bindings,model_controls=controls,
-        birth_header=request_header(birth,scene,instance),
+        birth_header=request_header(birth,source,instance),
         scope='Independent legacy birth/body-selection inputs only; no pose acquisition, hitbox frames or current native-reader qualification')
+    if equivalence is not None:value['equivalence']=copy.deepcopy(equivalence)
     return dict(value,content_sha256=digest(value))
 
 
@@ -164,7 +173,8 @@ def validate_package(package,scene):
         and row.get('entity_id')==matches[0].get('entity_id'), 'recorded identity/resource/birth differs')
     instance=matches[0]
     require(package.get('entity_ids')==[instance['entity_id']], 'exact selected owner required')
-    observed=prepare_observed_inputs(scene,instance,package.get('silence_birth_capture'),package.get('client_child_capture'))
+    observed=prepare_observed_inputs(scene,instance,package.get('silence_birth_capture'),package.get('client_child_capture'),
+        package.get('silence_input_equivalence'))
     validate_definitions(package.get('assets',{}).get('definitions'))
     validate_hitbox_provider(package.get('hitbox_provider'),scene,row)
     validate_response(sim,instance['id'],observed['birth_header'])
