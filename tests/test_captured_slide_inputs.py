@@ -136,6 +136,18 @@ def test_bad_or_unqualified_asset_paths_refused(supplied, assets):
         inputs.read_cohort(save_descriptor(supplied))
 
 
+def test_scene_boolean_schema_is_not_integer_one(supplied):
+    path, document, _ = supplied
+    source_path = path.parent / document['source_scene']['path']
+    source = json.loads(source_path.read_text())
+    source['schema_version'] = True
+    raw = json.dumps(source).encode()
+    source_path.write_bytes(raw)
+    document['source_scene']['sha256'] = hashlib.sha256(raw).hexdigest()
+    with pytest.raises(ValueError, match='scene schema'):
+        inputs.read_cohort(save_descriptor(supplied))
+
+
 def test_changed_bytes_and_per_file_aggregate_node_bounds(supplied, monkeypatch):
     path, descriptor, _ = supplied
     file = path.parent / descriptor['packages'][3]['file']['path']

@@ -156,7 +156,8 @@ def read_cohort(path, *, reserved=()):
         files.append(file_receipt)
         values.append(value)
     source, packages = values[0], values[1:]
-    require(type(source) is dict, 'invalid original scene')
+    require(type(source) is dict and type(source.get('schema_version')) is int
+            and source['schema_version'] == 1, 'invalid original scene schema')
     validate_scene(source)
     for entity in source['entities']:
         for key in ('model_file', 'skeleton_file', 'pose_file', 'secondary_motion_file'):
