@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(ParticleGeometryVrfProject)' != ''">
+    <ProjectReference Include="$(ParticleGeometryVrfProject)" />
+  </ItemGroup>
+  <Target Name="RequireIsolatedGeometryDependency" BeforeTargets="PrepareForBuild">
+    <Error Condition="'$(ParticleGeometryVrfProject)' == ''" Text="Set ParticleGeometryVrfProject to the isolated pinned geometry dependency prepared by tools/codeql_build_helpers.py. Do not reuse the material parser project." />
+  </Target>
+</Project>

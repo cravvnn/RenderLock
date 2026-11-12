@@ -1,4 +1,4 @@
-"""Restore pinned public dependencies, then compile all four C# helpers for CodeQL.
+"""Restore pinned public dependencies, then compile all five C# helpers for CodeQL.
 
 Prepare dependencies BEFORE CodeQL initialization, then run `build` while tracing.
 This keeps the scan focused on RenderLock rather than rebuilding upstream code.
@@ -16,11 +16,12 @@ ROOT = Path(__file__).resolve().parents[1]
 UPSTREAM = "https://github.com/ValveResourceFormat/ValveResourceFormat.git"
 LIGHTING_REVISION = "9e2e6c7f67e3c4e5a5f443a60c3a5d841ba8f304"  # Source 2 Viewer 20.1
 PARTICLE_REVISION = "42743fb93030c552f834fabb30708dad84d0cbf5"
-PROJECTS = ("ParticleProbe", "WorldRegionProbe", "ProbeAtlasDecode", "CubemapDecode")
+PROJECTS = ("ParticleProbe", "WorldRegionProbe", "ProbeAtlasDecode", "CubemapDecode", "ParticleGeometryProbe")
 PATCHES = ("vrf-ramp-scalar-spline.patch", "vrf-invalid-transform-identity.patch",
            "vrf-create-on-model-bones.patch", "vrf-kv3-v5-unsigned-constants.patch",
            "vrf-bounded-model-extraction.patch", "vrf-set-child-control-points.patch",
            "vrf-per-child-control-point.patch")
+GEOMETRY_PATCHES = ("vrf-skeletonless-morph-animation.patch",)
 
 
 def run(*args, cwd=ROOT):
@@ -46,6 +47,7 @@ def checkout(path, revision):
 
 def properties(work):
     return ["-p:ParticleVrfProject=" + str(work / "particle/ValveResourceFormat/ValveResourceFormat.csproj"),
+            "-p:ParticleGeometryVrfProject=" + str(work / "geometry/ValveResourceFormat/ValveResourceFormat.csproj"),
             "-p:ProbeReferences=" + str(work / "lighting/ValveResourceFormat/bin/Debug")]
 
 
@@ -63,9 +65,14 @@ def prepare(work, dotnet):
     work.mkdir(parents=True, exist_ok=True)
     lighting = checkout(work / "lighting", LIGHTING_REVISION)
     particle = checkout(work / "particle", PARTICLE_REVISION)
+    # Separate assembly directory: never add geometry patches to the material
+    # parser or change its qualified runtime hash as a side effect.
+    geometry = checkout(work / "geometry", PARTICLE_REVISION)
     for name in PATCHES:
         apply_patch(work / "particle", ROOT / "tools/patches" / name, work / "patches")
-    for project in (lighting, particle):
+    for name in GEOMETRY_PATCHES:
+        apply_patch(work / "geometry", ROOT / "tools/patches" / name, work / "patches")
+    for project in (lighting, particle, geometry):
         run(dotnet, "build", project, "--configuration", "Debug",
             "-p:CopyLocalLockFileAssemblies=true", "-p:UseSharedCompilation=false")
     refs = work / "lighting/ValveResourceFormat/bin/Debug"
@@ -73,13 +80,17 @@ def prepare(work, dotnet):
         raise ValueError("Lighting dependency output is missing the Windows Skia native asset")
     for name in PROJECTS:
         run(dotnet, "restore", ROOT / "research" / name / (name + ".csproj"), *properties(work))
-    (work / "prepared.json").write_text(json.dumps(dict(lighting=LIGHTING_REVISION,
-        particle=PARTICLE_REVISION,projects=list(PROJECTS)), indent=2), encoding="utf-8")
+    (work / "prepared.json").write_text(json.dumps(configuration(), indent=2), encoding="utf-8")
+
+
+def configuration():
+    return dict(lighting=LIGHTING_REVISION, particle=PARTICLE_REVISION,
+                geometry=PARTICLE_REVISION, geometry_patches=list(GEOMETRY_PATCHES), projects=list(PROJECTS))
 
 
 def build(work, dotnet):
     state = json.loads((work / "prepared.json").read_text(encoding="utf-8"))
-    if state != dict(lighting=LIGHTING_REVISION,particle=PARTICLE_REVISION,projects=list(PROJECTS)):
+    if state != configuration():
         raise ValueError("Dependency preparation does not match this build configuration")
     for name in PROJECTS:
         # A rebuild ensures every helper's compiler invocation is traced. The

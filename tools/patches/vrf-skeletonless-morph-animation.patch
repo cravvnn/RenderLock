@@ -1,0 +1,17 @@
+--- a/ValveResourceFormat/IO/Gltf/GltfModelExporter.cs
++++ b/ValveResourceFormat/IO/Gltf/GltfModelExporter.cs
+@@ -548,6 +548,6 @@
+                 // meshNode is set even for skinned meshes, where the returned node is null.
+-                if (skeletonNode != null && meshNode != null && m.Mesh.MorphData?.FlexRules.Length > 0)
++                if (ExportAnimations && meshNode != null && m.Mesh.MorphData?.FlexRules.Length > 0)
+                 {
+                     morphedMeshNodes.Add((meshNode, m.Mesh));
+                 }
+             }
+@@ -555,5 +555,5 @@
+             // Morph weights are written as a second pass over the animations once the mesh nodes exist.
+-            if (skeletonNode != null && morphedMeshNodes.Count > 0)
++            if (ExportAnimations && morphedMeshNodes.Count > 0)
+             {
+                 WriteMorphAnimations(exportedModel, model, morphedMeshNodes, animationFilter);
+             }
