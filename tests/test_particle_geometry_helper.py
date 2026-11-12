@@ -29,8 +29,28 @@ def test_geometry_capability_keeps_materials_separate(helper):
         upstream_revision='42743fb93030c552f834fabb30708dad84d0cbf5',
         patches=['vrf-skeletonless-morph-animation.patch','vrf-kv3-v5-unsigned-constants.patch'],
         commands=['particle-model-v1','particle-authored-model-v1','particle-static-model-v1',
-            'inventory-particle-model-materials','inventory-particle-owner-model','particle-texture-sheet-v1'],
+            'inventory-particle-model-materials','inventory-particle-owner-model','particle-texture-sheet-v1','inventory-model-rest'],
         material_exported=False)
+
+
+@pytest.mark.parametrize('resource',['../actor.vmdl','/actor.vmdl','a//actor.vmdl','a/./actor.vmdl',
+    'a\\actor.vmdl','C:/actor.vmdl','a/\nactor.vmdl','actor.vmdl_c'])
+def test_rest_inventory_rejects_invalid_names_before_loading(helper,tmp_path,resource):
+    output=tmp_path/'rest.json'
+    result=run(helper,'--inventory-model-rest',tmp_path/'absent-gameinfo.gi',resource,output)
+    assert result.returncode!=0 and 'relative compiled model'in result.stderr
+    assert not output.exists()
+
+
+@pytest.mark.parametrize('directory',[False,True])
+def test_rest_inventory_preserves_existing_files_and_directories_before_loading(helper,tmp_path,directory):
+    output=tmp_path/'rest.json'
+    if directory:output.mkdir();sentinel=output/'prior'
+    else:sentinel=output
+    sentinel.write_bytes(b'preserve')
+    result=run(helper,'--inventory-model-rest',tmp_path/'absent-gameinfo.gi','actor.vmdl',output)
+    assert result.returncode!=0 and 'fresh model rest output'in result.stderr
+    assert sentinel.read_bytes()==b'preserve'
 
 
 @pytest.mark.parametrize('resource', ['../bat.vmdl', '/bat.vmdl', 'a//bat.vmdl',

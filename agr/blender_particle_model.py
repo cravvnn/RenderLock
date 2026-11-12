@@ -67,7 +67,8 @@ def capture_root_model_points(data, entity, objects, scene, instance, manifest_d
 
 
 def capture_model_bones(rig, model, scene, *, entity_id, start_tick, end_tick,
-                        scene_start_tick, tick_rate, available_ticks, unit_scale=.0254):
+                        scene_start_tick, tick_rate, available_ticks, unit_scale=.0254,
+                        required_names=None):
     """Return Source-unit world transforms without changing the caller's frame.
 
     Requires the model identity/hierarchy used by the authored-constraint bake.
@@ -104,7 +105,13 @@ def capture_model_bones(rig, model, scene, *, entity_id, start_tick, end_tick,
         raise ValueError('Particle model capture lacks complete pose/root history')
     if len(ticks)*len(solver.names)>2_000_000:
         raise ValueError('Particle model capture exceeds bounded pose allocation')
-    values=np.empty((len(ticks),len(solver.names),8),dtype=np.float32)
+    selected=list(solver.names)if required_names is None else list(required_names)
+    if (not selected or len(selected)!=len(set(selected))
+            or any(name not in solver.names for name in selected)):
+        raise ValueError('Particle capture requires exact selected model bones')
+    indices=[solver.names.index(name)for name in selected]
+    # Unselected rows stay explicitly unavailable; they are never rigidized.
+    values=np.full((len(ticks),len(solver.names),8),np.nan,dtype=np.float32)
     fps=scene.render.fps/scene.render.fps_base
     if not math.isfinite(fps) or fps<=0:
         raise ValueError('Invalid particle model scene frame rate')
@@ -112,7 +119,7 @@ def capture_model_bones(rig, model, scene, *, entity_id, start_tick, end_tick,
         for row,tick in enumerate(ticks):
             frame=1+(int(tick)-scene_start_tick)*fps/tick_rate
             scene.frame_set(math.floor(frame),subframe=frame-math.floor(frame))
-            for index,name in enumerate(solver.names):
+            for index,name in zip(indices,selected):
                 matrix=rig.matrix_world@rig.pose.bones[name].matrix
                 position,rotation,scale=matrix.decompose()
                 if min(scale)<=0 or max(scale)-min(scale)>1e-5:
@@ -122,11 +129,12 @@ def capture_model_bones(rig, model, scene, *, entity_id, start_tick, end_tick,
                     raise ValueError('Particle model cannot capture sheared bone: '+name)
                 values[row,index]=[*(position/unit_scale),sum(scale)/3,
                                    rotation.x,rotation.y,rotation.z,rotation.w]
-        if not np.isfinite(values).all():
+        if not np.isfinite(values[:,indices]).all():
             raise ValueError('Nonfinite particle model transforms')
     finally:
         scene.frame_set(old_frame,subframe=old_subframe)
     return {'ticks':ticks,'transforms':values,'names':list(solver.names),
+            'required_names':selected,
             'entity_id':entity_id,'resource':model['resource'],
             'resource_sha256':model['resource_sha256'],
             'rig_fingerprint':snapshot_rig_fingerprint(rig),

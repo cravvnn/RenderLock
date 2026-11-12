@@ -51,3 +51,12 @@ that admission and competing creation; decoder/image arithmetic still needs
 actual helper validation. See `agr/ParticleTextureAnimation_COVERAGE.md` for the
 current pending Python/Blender integration scope. Material parsing remains in its
 separate directory and is not replaced by this helper.
+# Authored owner-model rest inventory (pending provider integration)
+
+`--inventory-model-rest GAMEINFO MODEL.vmdl FRESH_OUTPUT.json` emits typed compiled
+model-order parent positions, rotations and scales with the source digest. It
+does not export geometry/materials or infer a runtime model/attachment provider.
+Existing files/directories refuse before loading; exclusive create also protects
+a competing writer. Consumers must check process success, bounds and metadata.
+The Python collector reads at most4MiB and verifies source/order/parents/runtime.
+See `ModelRestInventory.tla` and `agr/ParticleSnapshotProvider_COVERAGE.md`.

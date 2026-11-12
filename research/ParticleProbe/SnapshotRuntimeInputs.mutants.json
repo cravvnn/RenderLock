@@ -1,0 +1,9 @@
+[
+  {"name":"ignore changed binding identity","replace":[["IF bindingOK /\\ framesOK THEN","IF framesOK THEN"]],"expect":"Qualified"},
+  {"name":"ignore missing model frame","replace":[["IF bindingOK /\\ framesOK THEN","IF bindingOK THEN"]],"expect":"Qualified"},
+  {"name":"read the provider before a frame is active","replace":[["valid == active>=0 /\\ key=\"A\"","valid == key=\"A\""]],"expect":"NoEarlyRead"},
+  {"name":"publish before completing history","replace":[["response' = (active=1 /\\ used)","response' = used"]],"expect":"Completed"},
+  {"name":"publish an unqueried provider","replace":[["response' = (active=1 /\\ used)","response' = (active=1)"]],"expect":"Completed"},
+  {"name":"silently use another CP or bone","replace":[["valid == active>=0 /\\ key=\"A\"","valid == active>=0"]],"expect":"ExactBone"},
+  {"name":"skip a model history frame","replace":[["valid == tick = active+1 /\\ tick<=1","valid == tick<=1"]],"expect":"Sequential"}
+]

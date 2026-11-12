@@ -22,7 +22,8 @@ PATCHES = ("vrf-ramp-scalar-spline.patch", "vrf-invalid-transform-identity.patch
            "vrf-bounded-model-extraction.patch", "vrf-set-child-control-points.patch",
            "vrf-per-child-control-point.patch")
 GEOMETRY_PATCHES = ("vrf-skeletonless-morph-animation.patch", "vrf-kv3-v5-unsigned-constants.patch")
-SIMULATION_PATCHES = PATCHES + ("vrf-vector-expression-initializer.patch", "vrf-shader-extra-fields.patch")
+SIMULATION_PATCHES = PATCHES + ("vrf-vector-expression-initializer.patch", "vrf-shader-extra-fields.patch",
+                                  "vrf-explicit-snapshot-skinning.patch")
 
 
 def run(*args, cwd=ROOT):

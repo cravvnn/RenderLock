@@ -1,0 +1,32 @@
+[
+  {
+    "name": "remove exclusive create",
+    "replace": [
+      [
+        "fresh == ~exists",
+        "fresh == TRUE"
+      ]
+    ],
+    "expect": "PreservePrior"
+  },
+  {
+    "name": "accept failed write",
+    "replace": [
+      [
+        "IF exit=\"success\" /\\ content=\"complete\" /\\ identityOK THEN TRUE ELSE accepted",
+        "IF content=\"complete\" /\\ identityOK THEN TRUE ELSE accepted"
+      ]
+    ],
+    "expect": "AcceptedSuccess"
+  },
+  {
+    "name": "accept mismatched source metadata",
+    "replace": [
+      [
+        "IF exit=\"success\" /\\ content=\"complete\" /\\ identityOK THEN TRUE ELSE accepted",
+        "IF exit=\"success\" /\\ content=\"complete\" THEN TRUE ELSE accepted"
+      ]
+    ],
+    "expect": "QualifiedMetadata"
+  }
+]

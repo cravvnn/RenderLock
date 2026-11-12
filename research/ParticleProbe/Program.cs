@@ -8,6 +8,12 @@ using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Buffers.Binary;
+#if AGR_SIMULATION_SNAPSHOT
+if(args.Length==3 && args[0]=="--snapshot-row-cursor-oracle") { SnapshotRowCursorOracle.Check(args[1],args[2]);return; }
+if(args.Length==3 && args[0]=="--snapshot-skinning-oracle") { SnapshotSkinningOracle.Check(args[1],args[2]);return; }
+if(args.Length==3 && args[0]=="--snapshot-runtime-oracle") { SnapshotRuntimeOracle.Check(args[1],args[2]);return; }
+if(args.Length==2 && args[0]=="--snapshot-inputs-oracle") { SnapshotInputOracle.Check(args[1]);return; }
+#endif
 if(args.Length==1 && args[0]=="--capabilities-v1") {
  Console.WriteLine(JsonSerializer.Serialize(new { schema_version=1, commands=new[] {
   "physics-json-v1", "material-bundle-v1", "decompile-cloth", "inventory-cloth-physics",
@@ -53,6 +59,9 @@ foreach(var instance in config.GetProperty("instances").EnumerateArray()) {
  var controls=(instance.TryGetProperty("control_points",out var ownControls)?ownControls:config.GetProperty("control_points")).EnumerateArray().ToDictionary(x=>x.GetProperty("tick").GetInt32(),x=>x);
  var replayEvents=ReplayEventTimeline.Parse(instance,birth,end,start,tickRate);
  if(birth<0||birth>end)throw new Exception("Instance birth must precede output end and be nonnegative");
+#if AGR_SIMULATION_SNAPSHOT
+ var snapshotInputs=SnapshotRuntimeInputs.Parse(instance,controls,birth,end);
+#endif
  // Pre-roll must use an explicit complete history. Never hold the first shot
  // transform backwards or restart an older effect at the output boundary.
  int? modelCount=null;string? extraLayout=null;
@@ -72,10 +81,16 @@ foreach(var instance in config.GetProperty("instances").EnumerateArray()) {
  log.Prefix=id!;
  using var resource=loader.LoadFileCompiled(name)??throw new Exception("Missing "+name);
  var sim=new ParticleSystemSimulation((ParticleSystem)resource.DataBlock!,loader,log);var frames=new List<object>();
+#if AGR_SIMULATION_SNAPSHOT
+ if(snapshotInputs is not null)sim.RenderState.SnapshotModelBoneProvider=snapshotInputs.Query;
+#endif
  var seedBindings=seed.HasValue?SeedBinding.Apply(sim,seed.Value,id!):new List<SeedBinding>();
  var seedResets=new List<object>();
  bool destroyedImmediately=false;
  for(int tick=birth;tick<=end;tick++) {
+#if AGR_SIMULATION_SNAPSHOT
+  snapshotInputs?.Advance(tick);
+#endif
   if(!destroyedImmediately) {
   var cp=controls[tick];var p=cp.GetProperty("position").EnumerateArray().Select(v=>v.GetSingle()).ToArray();var q=cp.GetProperty("rotation").EnumerateArray().Select(v=>v.GetSingle()).ToArray();
   sim.MainControlPoint.Position=new Vector3(p[0],p[1],p[2]);sim.MainControlPoint.Rotation=Quaternion.Normalize(new Quaternion(q[0],q[1],q[2],q[3]));
@@ -127,8 +142,18 @@ hitbox_index=x.HitboxIndex,hitbox_coordinates=V(x.HitboxOffsetPosition),trail=x.
   Capture(sim,"root");frames.Add(new{tick,systems});
  }
  var outputRow=new{id,resource=name,birth,frames,model_bone_count=modelCount??0,control_point_indices=new[]{0}.Concat((extraLayout??"").Split(',',StringSplitOptions.RemoveEmptyEntries).Select(int.Parse)).ToArray(),materialized_control_point_indices=ControlPointAudit.Indices(sim),control_point_input_policy=ControlPointAudit.InputProvenance(sim,"ControlPointInputPolicy"),declared_control_point_inputs=ControlPointAudit.InputProvenance(sim,"DeclaredControlPointInputs"),authored_control_point_indices=ControlPointAudit.InputProvenance(sim,"AuthoredControlPointIndices"),unprovided_control_point_indices=ControlPointAudit.InputProvenance(sim,"UnprovidedControlPointIndices"),system_seeds=seedBindings.Select(b=>new{path=b.Path,resource=b.Resource,seed=b.Value}).ToArray(),system_seed_resets=seedResets,replay_event_policy=ReplayEventTimeline.Policy,literal_transforms_applied=replayEvents.LiteralReport,destroy_applied=replayEvents.DestroyReport,release_ticks=replayEvents.ReleaseTicks};
- if(replayEvents.WorldOriginProvider is null)output.Add(outputRow);
- else { var row=JsonSerializer.SerializeToElement(outputRow).EnumerateObject().ToDictionary(p=>p.Name,p=>(object)p.Value.Clone());row.Add("world_origin_provider",replayEvents.WorldOriginProvider.Value);output.Add(row); }
+ object qualifiedOutput=outputRow;
+#if AGR_SIMULATION_SNAPSHOT
+ if(snapshotInputs is not null) {
+  var snapshotRow=JsonSerializer.SerializeToElement(outputRow).EnumerateObject().ToDictionary(p=>p.Name,p=>(object)p.Value.Clone());
+  snapshotRow.Add("snapshot_model_input_policy",SnapshotRuntimeInputs.Policy);
+  snapshotRow.Add("snapshot_model_bindings",snapshotInputs.Bindings);
+  snapshotRow.Add("snapshot_model_queried_binding_ids",snapshotInputs.Complete());
+  qualifiedOutput=snapshotRow;
+ }
+#endif
+ if(replayEvents.WorldOriginProvider is null)output.Add(qualifiedOutput);
+ else { var row=JsonSerializer.SerializeToElement(qualifiedOutput).EnumerateObject().ToDictionary(p=>p.Name,p=>(object)p.Value.Clone());row.Add("world_origin_provider",replayEvents.WorldOriginProvider.Value);output.Add(row); }
 }
 File.WriteAllText(args[1],JsonSerializer.Serialize(new{schema_version=1,backend="ValveResourceFormat 42743fb93030c552f834fabb30708dad84d0cbf5 + AGR RampScalarSpline v1 + PT_TYPE_INVALID identity v1 + experimental CreateOnModel bones v1",control_point_snapshot_policy=RenderControlSnapshot.Policy,
 #if AGR_SIMULATION_SHADER_EXTRAS

@@ -48,6 +48,25 @@ all3,974 existing particle samples and all other output metadata remain exact.
 The material parser remains separately pinned; never replace its DLL with this
 simulation assembly. The actual managed build is separate from AOT app packaging.
 
+## Pending explicit snapshot simulator
+
+The simulation-only `vrf-explicit-snapshot-skinning.patch` registers the bounded
+sequential single-bone snapshot initializer and full-strength rigid position-pair
+operator. The immutable bone binding travels with the particle and its initial
+array through compaction. Snapshot CP and model CP remain distinct; no root,
+missing-bone or imported-rest fallback is supplied.
+
+Only this project defines `AGR_SIMULATION_SNAPSHOT`. The shared host reads a
+complete birth-to-end named-bone history before simulation, advances exactly one
+tick before Start/Update, and acknowledges only the bindings actually queried.
+Ordinary requests retain their previous output shape. The material helper keeps
+its unchanged parser and does not compile snapshot-dependent commands.
+
+This is an unaccepted component port. It does not qualify current replay owner
+selection, attachment-mode changes, automatic model input acquisition, Crossbow
+rendering or normal-export support. See `agr/ParticleSnapshotProvider_COVERAGE.md`
+for the separate admission and saved-scene gates.
+
 Only ParticleSimulationProbe defines`AGR_SIMULATION_SHADER_EXTRAS`. Shared probe
 source conditionally emits these new fields/oracle/policy; ParticleProbe still
 compiles against the unchanged material parser without the simulation patch.

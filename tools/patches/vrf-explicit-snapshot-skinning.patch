@@ -1,0 +1,559 @@
+--- /dev/null
++++ b/ValveResourceFormat/Particles/SnapshotRowCursor.cs
+@@ -0,0 +1,34 @@
++namespace ValveResourceFormat.Particles;
++
++/// <summary>
++/// One initializer's qualified non-random snapshot-row context, increment 1 and
++/// no full-loop increment. Model/snapshot lookup and restart timing are separate.
++/// </summary>
++public sealed class SnapshotRowCursor
++{
++    private readonly int start;
++    private int position;
++
++    /// <summary>Current context value, before the next native modulo operation.</summary>
++    public int Position => position;
++
++    /// <summary>Constructs a separate initializer context with an explicit start.</summary>
++    public SnapshotRowCursor(int start = 0)
++    {
++        ArgumentOutOfRangeException.ThrowIfNegative(start);
++        this.start = start;
++        Reset();
++    }
++
++    /// <summary>Initializes this context as native InitializeContext does.</summary>
++    public void Reset() => position = start;
++
++    /// <summary>Read cursor modulo row count, then store that row plus one.</summary>
++    public int Take(int rowCount)
++    {
++        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(rowCount);
++        var row = position % rowCount;
++        position = row + 1;
++        return row;
++    }
++}
+--- /dev/null
++++ b/ValveResourceFormat/Particles/Utils/SnapshotSkinningMath.cs
+@@ -0,0 +1,97 @@
++using System;
++using System.Numerics;
++
++namespace ValveResourceFormat.Particles.Utils
++{
++    /// <summary>
++    /// Prepared Source 3x4 skinning matrix, with column-vector rows in Source units.
++    /// Model identity, bone order, CP selection and pose acquisition belong to the caller.
++    /// This is deliberately distinct from System.Numerics' row-vector Matrix4x4.
++    /// </summary>
++    public readonly struct SnapshotSkinningMatrix
++    {
++        private readonly Vector4 x;
++        private readonly Vector4 y;
++        private readonly Vector4 z;
++
++        /// <summary>Copies twelve finite values in Source row-major 3x4 order.</summary>
++        public SnapshotSkinningMatrix(ReadOnlySpan<float> rows)
++        {
++            if (rows.Length != 12)
++            {
++                throw new ArgumentException("Snapshot skinning matrix requires twelve row-major values.", nameof(rows));
++            }
++
++            foreach (var value in rows)
++            {
++                if (!float.IsFinite(value))
++                {
++                    throw new ArgumentException("Snapshot skinning matrix must be finite.", nameof(rows));
++                }
++            }
++
++            x = new(rows[0], rows[1], rows[2], rows[3]);
++            y = new(rows[4], rows[5], rows[6], rows[7]);
++            z = new(rows[8], rows[9], rows[10], rows[11]);
++        }
++
++        /// <summary>Transforms a finite Source point, refusing numerical overflow.</summary>
++        public Vector3 TransformPoint(Vector3 point)
++        {
++            SnapshotSkinningMath.RequireFinite(point);
++            var result = new Vector3(
++                ((x.X * point.X + x.Y * point.Y) + x.Z * point.Z) + x.W,
++                ((y.X * point.X + y.Y * point.Y) + y.Z * point.Z) + y.W,
++                ((z.X * point.X + z.Y * point.Y) + z.Z * point.Z) + z.W);
++            SnapshotSkinningMath.RequireFinite(result);
++            return result;
++        }
++    }
++
++    /// <summary>
++    /// Qualified prepared position kernels only: zero bone/normal velocity and no
++    /// color, alpha, radius or normal copying. No operator is registered by this class.
++    /// InitialPrevious is the actual initial attribute supplied by the caller; it is
++    /// not inferred from velocity, zeroed, or converted between spaces here.
++    /// </summary>
++    public static class SnapshotSkinningMath
++    {
++        /// <summary>Returns the prepared zero-velocity initialization position pair.</summary>
++        public static (Vector3 Position, Vector3 Previous) InitializePositionPair(
++            Vector3 snapshotPosition, SnapshotSkinningMatrix? skinning, bool rigid)
++        {
++            RequireFinite(snapshotPosition);
++            // Native rigid initialization starts both positions at zero. With no
++            // valid bone, non-rigid initialization uses the identity transform.
++            var position = rigid ? Vector3.Zero : skinning?.TransformPoint(snapshotPosition) ?? snapshotPosition;
++            return (position, position);
++        }
++
++        /// <summary>Updates a prepared pair with the literal supplied initial previous attribute.</summary>
++        public static (Vector3 Position, Vector3 Previous) UpdatePositionPair(
++            Vector3 snapshotPosition, Vector3 initialPrevious, SnapshotSkinningMatrix? skinning,
++            Vector3 position, Vector3 previous)
++        {
++            RequireFinite(snapshotPosition);
++            RequireFinite(initialPrevious);
++            RequireFinite(position);
++            RequireFinite(previous);
++            if (!skinning.HasValue)
++            {
++                // Unlike initialization, a failed bone lookup leaves both outputs alone.
++                return (position, previous);
++            }
++
++            return (skinning.Value.TransformPoint(snapshotPosition),
++                skinning.Value.TransformPoint(snapshotPosition + initialPrevious));
++        }
++
++        internal static void RequireFinite(Vector3 value)
++        {
++            if (!float.IsFinite(value.X) || !float.IsFinite(value.Y) || !float.IsFinite(value.Z))
++            {
++                throw new ArgumentException("Snapshot position input or result is not finite.");
++            }
++        }
++    }
++}
+--- /dev/null
++++ b/ValveResourceFormat/Particles/SnapshotSkinningInput.cs
+@@ -0,0 +1,42 @@
++using ValveResourceFormat.Particles.Utils;
++using System.Linq;
++
++namespace ValveResourceFormat.Particles;
++
++/// <summary>Explicit model-order bone-to-world * inverse-rest input for one named bone.</summary>
++public readonly record struct SnapshotModelBinding(string Identity, SnapshotSkinningMatrix Matrix);
++
++/// <summary>
++/// Immutable per-particle ownership, copied with the particle through compaction.
++/// The rest position remains the native hitbox-offset attribute, not a second
++/// hidden position. InitialPrevious remains the literal initialized attribute.
++/// </summary>
++public sealed record SnapshotSkinningInput
++{
++    /// <summary>Model provider control point, separate from the snapshot control point.</summary>
++    public int ControlPoint { get; }
++    /// <summary>Exact model-order bone name from the authored snapshot.</summary>
++    public string BoneName { get; }
++    /// <summary>Stable replay entity, model, bone order and named-bone binding identity.</summary>
++    public string BindingIdentity { get; }
++
++    /// <summary>Validate and retain explicit per-particle bone ownership.</summary>
++    public SnapshotSkinningInput(int controlPoint, string boneName, string bindingIdentity)
++    {
++        if (controlPoint is < 0 or > 63 || string.IsNullOrEmpty(boneName) || boneName.Length > 256
++            || string.IsNullOrEmpty(bindingIdentity) || bindingIdentity.Length != 64 || bindingIdentity.Any(c => !char.IsAsciiHexDigit(c)))
++            throw new ArgumentException("Snapshot skinning requires explicit CP, named bone and model binding hash");
++        ControlPoint = controlPoint;
++        BoneName = boneName;
++        BindingIdentity = bindingIdentity;
++    }
++
++    /// <summary>Read this frame's matrix while refusing a changed model binding.</summary>
++    public SnapshotSkinningMatrix RequireCurrentMatrix(ParticleSystemState state)
++    {
++        var current = state.GetSnapshotModelBone(ControlPoint, BoneName);
++        if (current.Identity != BindingIdentity)
++            throw new InvalidOperationException("Snapshot skinning model/bone binding changed after initialization");
++        return current.Matrix;
++    }
++}
+--- /dev/null
++++ b/ValveResourceFormat/Particles/Initializers/InitSkinnedPositionFromCPSnapshot.cs
+@@ -0,0 +1,60 @@
++using ValveResourceFormat.Blocks;
++using ValveResourceFormat.Particles.Utils;
++using System.Linq;
++
++namespace ValveResourceFormat.Particles.Initializers;
++
++/// <summary>Qualified sequential single-bone, zero-velocity snapshot initialization.</summary>
++class InitSkinnedPositionFromCPSnapshot : ParticleFunctionInitializer
++{
++    private readonly int snapshotControlPoint;
++    private readonly int modelControlPoint;
++    private readonly SnapshotRowCursor cursor;
++
++    public InitSkinnedPositionFromCPSnapshot(ParticleDefinitionParser parse) : base(parse)
++    {
++        snapshotControlPoint = parse.Int32("m_nSnapshotControlPointNumber", 1);
++        modelControlPoint = parse.Int32("m_nControlPointNumber", 0);
++        if (snapshotControlPoint is < 0 or > 63 || modelControlPoint is < 0 or > 63
++            || parse.Boolean("m_bRandom") || parse.Int32("m_nRandomSeed") != 0
++            || parse.Boolean("m_bRigid") || parse.Boolean("m_bSetNormal") || parse.Boolean("m_bIgnoreDt")
++            || parse.Boolean("m_bCopyColor") || parse.Boolean("m_bCopyAlpha") || parse.Boolean("m_bSetRadius")
++            || parse.Float("m_flMinNormalVelocity") != 0 || parse.Float("m_flMaxNormalVelocity") != 0
++            || parse.Float("m_flBoneVelocity") != 0 || parse.Float("m_flBoneVelocityMax") != 0
++            || parse.Int32("m_nIndexType") != 0 || parse.Float("m_flIncrement", 1) != 1
++            || parse.Int32("m_nFullLoopIncrement") != 0 || parse.Data.ContainsKey("m_flReadIndex")
++            || parse.Data.ContainsKey("m_strSnapshotSubset"))
++            throw new NotSupportedException("AGR skinned snapshot requires sequential rows, zero inherited velocity and default copy/normal modes");
++        cursor = new SnapshotRowCursor(parse.Int32("m_nSnapShotStartPoint", 0));
++    }
++
++    public override ulong WrittenFields => 0x180008005UL;
++    public override void Reset() => cursor.Reset();
++
++    public override Particle Initialize(ref Particle particle, ParticleCollection particles, ParticleSystemState state)
++    {
++        var snapshot = state.GetControlPointSnapshot(snapshotControlPoint)
++            ?? throw new InvalidOperationException("AGR skinned snapshot CP has no snapshot");
++        var positions = snapshot.AttributeData.Where(p => p.Key.Name == "position").Select(p => p.Value).ToArray();
++        var skinning = snapshot.AttributeData.Where(p => p.Key.Name == "skinning").Select(p => p.Value).ToArray();
++        if (positions.Length != 1 || skinning.Length != 1 || positions[0] is not Vector3[] points
++            || skinning[0] is not ParticleSnapshot.SkinningData[] skins || points.Length == 0
++            || points.Length != skins.Length || points.Length != snapshot.NumParticles)
++            throw new InvalidOperationException("AGR skinned snapshot needs complete unique position/skinning columns");
++        var row = cursor.Take(points.Length);
++        var skin = skins[row];
++        if (skin.JointNames.Length != 4 || skin.Weights.Length != 4
++            || string.IsNullOrEmpty(skin.JointNames[0])
++            || skin.Weights[0] != 1 || skin.Weights.Skip(1).Any(w => w != 0))
++            throw new NotSupportedException("AGR skinned snapshot currently requires one explicit unit-weight bone per row");
++        var binding = state.GetSnapshotModelBone(modelControlPoint, skin.JointNames[0]);
++        var input = new SnapshotSkinningInput(modelControlPoint, skin.JointNames[0], binding.Identity);
++        var pair = SnapshotSkinningMath.InitializePositionPair(points[row], binding.Matrix, rigid: false);
++        particle.HitboxOffsetPosition = points[row];
++        particle.Position = pair.Position;
++        particle.PositionPrevious = pair.Previous;
++        particle.Velocity = Vector3.Zero;
++        particle.SnapshotSkinningInput = input;
++        return particle;
++    }
++}
+--- /dev/null
++++ b/ValveResourceFormat/Particles/Operators/SnapshotRigidSkinToBones.cs
+@@ -0,0 +1,35 @@
++using ValveResourceFormat.Particles.Utils;
++
++namespace ValveResourceFormat.Particles.Operators;
++
++/// <summary>Qualified position-pair update; no guessed previous-position normalization.</summary>
++class SnapshotRigidSkinToBones : ParticleFunctionOperator
++{
++    private readonly int modelControlPoint;
++
++    public SnapshotRigidSkinToBones(ParticleDefinitionParser parse) : base(parse)
++    {
++        modelControlPoint = parse.Int32("m_nControlPointNumber", 0);
++        if (modelControlPoint is < 0 or > 63 || parse.Boolean("m_bTransformNormals") || parse.Boolean("m_bTransformRadii"))
++            throw new NotSupportedException("AGR rigid snapshot currently supports position pairs without normal/radius transforms");
++    }
++
++    public override void Operate(ParticleCollection particles, float frameTime, ParticleSystemState state, float strength)
++    {
++        if (strength != 1)
++            throw new NotSupportedException("AGR rigid snapshot currently requires full operator strength");
++        for (var index = 0; index < particles.Count; index++)
++        {
++            ref var particle = ref particles.Current[index];
++            var input = particle.SnapshotSkinningInput
++                ?? throw new InvalidOperationException("AGR rigid snapshot particle lacks initialized bone ownership");
++            if (input.ControlPoint != modelControlPoint)
++                throw new InvalidOperationException("AGR rigid snapshot model CP differs from its initializer");
++            var matrix = input.RequireCurrentMatrix(state);
++            var pair = SnapshotSkinningMath.UpdatePositionPair(particle.HitboxOffsetPosition,
++                particles.Initial[index].PositionPrevious, matrix, particle.Position, particle.PositionPrevious);
++            particle.Position = pair.Position;
++            particle.PositionPrevious = pair.Previous;
++        }
++    }
++}
+--- /dev/null
++++ b/ValveResourceFormat/Particles/SnapshotRowCursor.tla
+@@ -0,0 +1,30 @@
++------------------------ MODULE SnapshotRowCursor ------------------------
++EXTENDS Integers, Naturals, TLC
++\* Entire new default non-random, increment1/fullLoop0 cursor component.
++\* Each C_INIT snapshot initializer owns one context, not a global particle id.
++\* Reset maps native context-init leaf; Take maps actual load/row-prefix/store.
++\* Restart timing/CP binding/full initializer stay outside this component.
++CONSTANT Start
++Contexts == {0,1}
++VARIABLES position, reference, last, refLast
++vars == <<position,reference,last,refLast>>
++Key(context) == context
++Init == /\ position=[c \in Contexts |-> Start]
++        /\ reference=position /\ last=[c \in Contexts |-> -1] /\ refLast=last
++Reset(context) ==
++  /\ position'=[position EXCEPT ![Key(context)]=Start]
++  /\ reference'=[reference EXCEPT ![context]=Start]
++  /\ UNCHANGED <<last,refLast>>
++Take(context,count) ==
++  LET valid == count>0
++      row == IF count#0 THEN position[Key(context)]%(IF count>0 THEN count ELSE -count) ELSE -1
++      refRow == IF valid THEN reference[context]%count ELSE -1
++  IN /\ position'=IF valid THEN [position EXCEPT ![Key(context)]=row+1] ELSE position
++     /\ reference'=IF count>0 THEN [reference EXCEPT ![context]=refRow+1] ELSE reference
++     /\ last'=IF valid THEN [last EXCEPT ![context]=row] ELSE last
++     /\ refLast'=IF count>0 THEN [refLast EXCEPT ![context]=refRow] ELSE refLast
++Next == (\E context \in Contexts: Reset(context))
++        \/ (\E context \in Contexts,count \in -1..3: Take(context,count))
++Spec == Init /\ [][Next]_vars
++Reference == /\ position=reference /\ last=refLast
++==========================================================================
+--- /dev/null
++++ b/ValveResourceFormat/Particles/SnapshotRowCursor.cfg
+@@ -0,0 +1,3 @@
++CONSTANT Start = 0
++SPECIFICATION Spec
++INVARIANT Reference
+--- /dev/null
++++ b/ValveResourceFormat/Particles/SnapshotRowCursor-offset.cfg
+@@ -0,0 +1,3 @@
++CONSTANT Start = 2
++SPECIFICATION Spec
++INVARIANT Reference
+--- /dev/null
++++ b/ValveResourceFormat/Particles/SnapshotRowCursor.mutants.json
+@@ -0,0 +1,6 @@
++[
++  {"name":"share cursor across contexts","replace":[["Key(context) == context","Key(context) == 0"]],"expect":"Reference"},
++  {"name":"ignore reset","replace":[["position'=[position EXCEPT ![Key(context)]=Start]","position'=position"]],"expect":"Reference"},
++  {"name":"advance without native modulo","replace":[["![Key(context)]=row+1","![Key(context)]=position[Key(context)]+1"]],"expect":"Reference"},
++  {"name":"accept negative row count","replace":[["valid == count>0","valid == count#0"]],"expect":"Reference"}
++]
+--- /dev/null
++++ b/ValveResourceFormat/Particles/SnapshotRowCursor_COVERAGE.md
+@@ -0,0 +1,22 @@
++SnapshotRowCursor models the complete new default row-context component:
++constructor/Reset initialization, Take modulo/update and independent instances.
++Two initializer contexts, start0/start2, count-1..3 produce the bounded checks.
++Four mutants share the cursor, ignore reset, advance without native wrapping,
++and admit negative row counts. C# remainder for positive cursor/negative divisor
++is modeled as modulo absolute count so the invalid-count mutant matches code.
++Invalid constructor starts and zero/negative counts are also actual-code checks.
++
++Native context-init leaf15eb70 and actual batch context load, row prefix and
++context store are executed on current5d5e particles module: two prepared contexts,
++three starts, empty and split batches, changing counts,303selected rows. No full
++initializer or engine reset/restart scheduling is inferred. Reset means context
++initialization only; do not wire it to arbitrary lifecycle events without proof.
++
++No model binding, emitted-particle id substitution, row cache or shared cursor is
++introduced. Each caller must own one instance. Current runtime initializer is
++not connected yet; the actual C# component is exercised by the standalone
++SnapshotRowCursorOracle. Full effect coverage and initial attribute spaces remain
++separate obligations. This is not a whole-application proof.
++
++Simplification: one integer per initializer context, rather than deriving row
++selection from global emitted-particle ids or adding cache/reset/rebind phases.
+--- /dev/null
++++ b/ValveResourceFormat/Particles/SnapshotSkinningRuntime.tla
+@@ -0,0 +1,51 @@
++---------------------- MODULE SnapshotSkinningRuntime ----------------------
++EXTENDS Integers, Sequences, TLC
++\* Entire new immutable per-particle ownership path: registered snapshot init ->
++\* EmitParticle final initial-copy -> registered rigid operator. Existing
++\* ParticleCollection compaction and Add/template-reset carry the new property.
++\* Synchronous spawn+initial copy are grouped: there is no observer or interleave
++\* between them in EmitParticle. SnapshotRowCursor independently checks the two
++\* initializer contexts, modulo and reset. Native math/field acquisition and
++\* future model-frame request admission are separate code/oracle obligations.
++\* Bounds: capacity2, total3spawns, oneclear; binding A/B. Transform is abstract
++\* x+10 solely to distinguish literal INITIAL previous from current or zero.
++VARIABLES current, initial, nextId, provider, clears, phase
++vars == <<current,initial,nextId,provider,clears,phase>>
++Init == /\ current = <<>> /\ initial = <<>> /\ nextId = 1
++        /\ provider = "A" /\ clears = 0 /\ phase = "active"
++Spawn ==
++  LET particle == [id |-> nextId, owner |-> nextId, binding |-> provider,
++                   usedBinding |-> provider, previous |-> nextId+100, updated |-> FALSE]
++  IN /\ phase = "active" /\ Len(current)<2 /\ nextId<=3
++     /\ current' = Append(current,particle)
++     /\ initial' = Append(initial,particle)
++     /\ nextId' = nextId+1
++     /\ UNCHANGED <<provider,clears,phase>>
++Update ==
++  LET valid == \A i \in 1..Len(current): current[i].binding = provider
++  IN /\ phase = "active" /\ Len(current)>0
++     /\ phase' = IF valid THEN "active" ELSE "rejected"
++     /\ current' = IF valid THEN
++          [i \in 1..Len(current) |-> [current[i] EXCEPT
++             !.previous = initial[i].previous+10, !.usedBinding = provider, !.updated = TRUE]]
++          ELSE current
++     /\ UNCHANGED <<initial,nextId,provider,clears>>
++Prune == /\ phase = "active" /\ Len(current)=2
++         /\ current' = Tail(current) /\ initial' = Tail(initial)
++         /\ UNCHANGED <<nextId,provider,clears,phase>>
++Clear == /\ phase = "active" /\ clears=0
++         /\ current' = <<>> /\ initial' = <<>> /\ clears' = 1
++         /\ UNCHANGED <<nextId,provider,phase>>
++ChangeProvider == /\ phase = "active" /\ provider' \in {"A","B"}
++                  /\ UNCHANGED <<current,initial,nextId,clears,phase>>
++Next == Spawn \/ Update \/ Prune \/ Clear \/ ChangeProvider
++Spec == Init /\ [][Next]_vars
++Aligned == /\ Len(current) = Len(initial)
++           /\ \A i \in 1..Len(current):
++                /\ current[i].id = initial[i].id
++                /\ current[i].owner = current[i].id
++                /\ initial[i].owner = initial[i].id
++LiteralInitial == \A i \in 1..Len(current):
++    ~current[i].updated \/ current[i].previous = initial[i].previous+10
++StableModel == \A i \in 1..Len(current): current[i].usedBinding = current[i].binding
++============================================================================
+--- /dev/null
++++ b/ValveResourceFormat/Particles/SnapshotSkinningRuntime.cfg
+@@ -0,0 +1,3 @@
++SPECIFICATION Spec
++INVARIANTS Aligned LiteralInitial StableModel
++CHECK_DEADLOCK FALSE
+--- /dev/null
++++ b/ValveResourceFormat/Particles/SnapshotSkinningRuntime.mutants.json
+@@ -0,0 +1,7 @@
++[
++  {"name":"reuse the first particle's bone ownership","replace":[["owner |-> nextId","owner |-> 1"]],"expect":"Aligned"},
++  {"name":"forget initial arrays during compaction","replace":[["initial' = Tail(initial)","initial' = initial"]],"expect":"Aligned"},
++  {"name":"zero the stored previous position","replace":[["initial[i].previous+10, !.usedBinding","10, !.usedBinding"]],"expect":"LiteralInitial"},
++  {"name":"use updated previous instead of initialized previous","replace":[["initial[i].previous+10, !.usedBinding","current[i].previous+10, !.usedBinding"]],"expect":"LiteralInitial"},
++  {"name":"allow a different model binding on update","replace":[["valid == \\A i \\in 1..Len(current): current[i].binding = provider","valid == TRUE"]],"expect":"StableModel"}
++]
+--- /dev/null
++++ b/ValveResourceFormat/Particles/SnapshotSkinningRuntime_COVERAGE.md
+@@ -0,0 +1,49 @@
++# Registered snapshot skinning subset
++
++`InitSkinnedPositionFromCPSnapshot`, `SnapshotRigidSkinToBones`, and the immutable
++`SnapshotSkinningInput` now connect the previously checked position kernels.
++Each initializer owns its `SnapshotRowCursor`. Only sequential rows, a single
++unit-weight named bone, zero inherited velocity and default copy/normal/radius
++modes are admitted. The rigid operator requires full strength. Missing providers,
++changed binding identities and unsupported variants fail explicitly.
++
++The new particle property travels through the existing collection's current and
++initial arrays. It adds no parallel index map. Rest positions use the existing
++native hitbox-offset attribute; the rigid update reads the literal final initial
++previous position from the corresponding initial array slot. It does not zero,
++subtract, normalize or reinterpret that value. A loop index selects both arrays,
++so this path does not trust a writable particle identity as an array offset.
++
++`SnapshotSkinningRuntime.tla` checks this synchronous spawn/initial-copy/update
++path plus compaction, slot reuse and changed provider identities. Its capacity is
++2, total spawns 3, clears 1, bindings A/B: 218 states, depth 10, all five mutants
++killed. The matrix transform is abstract in the model; code oracles check math.
++`SnapshotRowCursor` separately checks two independent initializer cursors and
++reset/modulo behavior. No new mutable cache or lifecycle is introduced by the
++immutable binding record or the pure position kernels.
++
++The host's `research/ParticleProbe/SnapshotRuntimeInputs.tla` checks explicit
++frame admission, one-frame advances, exact CP/bone queries and completion before
++publishing acknowledgements: ticks 0..1, one supplied key and one wrong key,
++18 states/depth 6, all seven mutants killed. Host JSON parsing, resource/model
++identity and finite rigid-matrix checks are exercised by actual parser tests.
++
++Actual registered classes match 28 eligible native initializer fixtures and
++100 eligible native update fixtures. The older pure kernel oracle still covers
++the broader 84/140 prepared cases, including rigid and missing-matrix behavior
++that this registered subset deliberately refuses. Full simulation exercises
++initial copy, distinct initializer contexts, wrap, replay, removal, compaction
++and reuse. These are synthetic explicit matrix inputs, not a normal exporter
++acquisition proof or a full-scene/render certification.
++
++Live authored crossbow samples independently established nonzero world-like
++InitialPosition == InitialPrevious and 44 particles per snapshot trace. Fitted
++transform consistency is indirect evidence, not independently acquired live bone
++parity. Normal recorded CP0/attachment acquisition, saved-package binding,
++normal moving export and remaining rope shader inputs are unfinished. The normal
++package validator continues to withhold unqualified snapshot-model states.
++
++Simplification: one immutable per-particle binding replaces a proposed side map
++keyed by particle id, eliminating separate prune/reset/reuse bookkeeping. Existing
++arrays carry ownership and initialized attributes together. One root frame
++provider serves children; no child-local pose history or root CP alias is added.
+--- /dev/null
++++ b/ValveResourceFormat/Particles/Utils/SnapshotSkinningMath_COVERAGE.md
+@@ -0,0 +1,25 @@
++SnapshotSkinningMath is stateless prepared numerical code. It owns no model,
++snapshot, particle lifetime, mutable arrays, cursor or CP cache, so it needs no
++additional lifecycle model. Each call returns a new position pair. Input matrix
++rows are copied into an immutable value; malformed/nonfinite data and overflow
++fail explicitly. SnapshotRowCursor.tla covers the separate row context.
++
++Actual C# isolated compile/run agrees with current native prepared initializer
++outputs for 84 rows and actual rigid-update outputs for 140 particles, maximum
++coordinate error 3.8146973e-6 Source units. These include rigid initialization,
++invalid-bone identity initialization versus unchanged update, and multiple
++weighted bone influences. Thirteen actual malformed/nonfinite/overflow inputs
++are refused. Native matrix inputs are independently computed by the executed
++native matrix helper, not the C# kernel under test.
++
++The position kernels exclude normal/radius/color/alpha copying and inherited
++bone or normal velocity. No initializer/operator registration or CP/model
++provider is introduced. InitialPrevious is passed through literally; this class
++does not assign its field space or replace it with zero. A prepared native mask
++aggregation/allocation/copy composition retains nonzero initial previous values
++unchanged, which rules out assuming that copy step normalizes them. The complete
++spawn/pre-simulation schedule and normal export integration remain unverified.
++
++Simplification: two pure position-pair functions and one immutable Source 3x4
++matrix replace no existing path and add no cache or alternative lifecycle. Keep
++matrix convention explicit to avoid accidental System.Numerics transposition.
+--- a/ValveResourceFormat/Particles/Particle.cs
++++ b/ValveResourceFormat/Particles/Particle.cs
+@@ -195,6 +195,8 @@
+ 
+         /// <summary>Resolved model shape index emitted by AGR bone sampling.</summary>
+         public int HitboxIndex { get; set; }
++        /// <summary>Explicit named-bone snapshot ownership; null on ordinary particles.</summary>
++        public SnapshotSkinningInput? SnapshotSkinningInput { get; set; }
+         /// <summary>Gets or sets a general-purpose scratch vector.</summary>
+         public Vector3 ScratchVector { get; set; } = Vector3.Zero;
+         /// <summary>Gets or sets a second general-purpose scratch vector.</summary>
+--- a/ValveResourceFormat/Particles/ParticleSystemState.cs
++++ b/ValveResourceFormat/Particles/ParticleSystemState.cs
+@@ -60,6 +60,15 @@
+         /// <summary>Explicit AGR model-order world poses; inherited by child systems.</summary>
+         public Func<int, IReadOnlyList<ModelBonePose>>? ModelBoneProvider { get; set; }
+ 
++        /// <summary>Explicit stable-model named-bone matrices, inherited by children.</summary>
++        public Func<int, string, SnapshotModelBinding>? SnapshotModelBoneProvider { get; set; }
++
++        /// <summary>Require the exact named-bone provider without a root or missing-bone fallback.</summary>
++        public SnapshotModelBinding GetSnapshotModelBone(int controlPoint, string boneName)
++            => SnapshotModelBoneProvider?.Invoke(controlPoint, boneName)
++                ?? ParentSystem?.GetSnapshotModelBone(controlPoint, boneName)
++                ?? throw new InvalidOperationException("AGR snapshot skinning model provider is missing");
++
+         /// <summary>Require a supplied model provider instead of inventing root-only geometry.</summary>
+         public IReadOnlyList<ModelBonePose> GetModelBones(int controlPoint)
+             => ModelBoneProvider?.Invoke(controlPoint) ?? ParentSystem?.GetModelBones(controlPoint)
+--- a/ValveResourceFormat/Particles/ParticleControllerFactory.cs
++++ b/ValveResourceFormat/Particles/ParticleControllerFactory.cs
+@@ -55,6 +55,7 @@
+             = new()
+             {
+                 ["C_INIT_CreateOnModel"] = parse => new CreateOnModel(parse),
++                ["C_INIT_InitSkinnedPositionFromCPSnapshot"] = parse => new InitSkinnedPositionFromCPSnapshot(parse),
+                 ["C_INIT_AgeNoise"] = initializerInfo => new AgeNoise(initializerInfo),
+                 ["C_INIT_CreateAlongPath"] = initializerInfo => new CreateAlongPath(initializerInfo),
+                 ["C_INIT_CreateOnGrid"] = initializerInfo => new CreateOnGrid(initializerInfo),
+@@ -154,6 +155,7 @@
+                 ["C_OP_QuantizeFloat"] = operatorInfo => new QuantizeFloat(operatorInfo),
+                 ["C_OP_RampScalarLinear"] = operatorInfo => new RampScalarLinear(operatorInfo),
+                 ["C_OP_RampScalarSpline"] = operatorInfo => new RampScalarSpline(operatorInfo),
++                ["C_OP_SnapshotRigidSkinToBones"] = parse => new SnapshotRigidSkinToBones(parse),
+                 ["C_OP_RampScalarLinearSimple"] = operatorInfo => new RampScalarLinearSimple(operatorInfo),
+                 ["C_OP_RemapCrossProductOfTwoVectorsToVector"] = operatorInfo => new RemapCrossProductOfTwoVectorsToVector(operatorInfo),
+                 ["C_OP_RemapControlPointDirectionToVector"] = operatorInfo => new RemapControlPointDirectionToVector(operatorInfo),

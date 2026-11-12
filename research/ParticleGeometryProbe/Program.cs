@@ -17,8 +17,13 @@ try
             upstream_revision = "42743fb93030c552f834fabb30708dad84d0cbf5",
             patches = new[] { "vrf-skeletonless-morph-animation.patch", "vrf-kv3-v5-unsigned-constants.patch" },
             commands = new[] { "particle-model-v1", "particle-authored-model-v1", "particle-static-model-v1",
-                "inventory-particle-model-materials", "inventory-particle-owner-model", "particle-texture-sheet-v1" },
+                "inventory-particle-model-materials", "inventory-particle-owner-model", "particle-texture-sheet-v1", "inventory-model-rest" },
             material_exported = false }));
+        return 0;
+    }
+    if (args.Length == 4 && args[0] == "--inventory-model-rest")
+    {
+        ModelRestInventory.Run(args[1], args[2], args[3]);
         return 0;
     }
     if (args.Length == 3 && args[0] == "--particle-texture-sheet-v1")

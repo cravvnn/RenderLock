@@ -63,3 +63,11 @@ belongs between these commands. The second command rebuilds every helper under
 the extractor without rebuilding the upstream dependency. No game, replay,
 private binaries or running services are required. These are analysis builds,
 not a replacement for qualified release-tool packaging.
+
+The simulation-only `vrf-explicit-snapshot-skinning.patch` is applied after the
+existing simulation patches. It adds explicit named-bone inputs, a sequential
+snapshot-row cursor and registered position-pair kernels, with adjacent lifecycle
+models. It deliberately excludes the retained authored-hitbox, LockToBone,
+creation-admission and lighting research. The material and geometry dependencies
+must never receive it. Normal support requires additional current owner/provider
+qualification and export/render acceptance; a compiled simulator is insufficient.
