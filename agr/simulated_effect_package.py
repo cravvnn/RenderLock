@@ -258,7 +258,11 @@ def build_package_effects(package, data, manifest_file, scene, camera):
             from .blender_modifier_masks import build_modifier_mask
             report = build_modifier_mask(package, data, assets, scene, camera)
         else:
-            report = build_simulated_effects(package['simulation'], assets, scene, camera)
+            if 'silence_birth_capture' in package:
+                report = build_simulated_effects(package['simulation'], assets, scene, camera,
+                    silence_context=(package,data))
+            else:
+                report = build_simulated_effects(package['simulation'], assets, scene, camera)
         if (package.get('backend')=='simulated_projectile_flight_v2'
                 and report.get('objects',0)<=0 and report.get('point_lights',0)<=0):
             raise ValueError('Projectile package produced no rendered geometry or lights')

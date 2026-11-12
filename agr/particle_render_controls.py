@@ -18,7 +18,7 @@ def finite(value):
     return float(value)
 
 
-def render_contexts(simulation):
+def render_contexts(simulation, *, silence_context=None):
     """Index validated effective values by exact instance, child path and tick.
 
     Legacy packages can still render literal settings. Dynamic settings require
@@ -29,13 +29,30 @@ def render_contexts(simulation):
         return {}
     if policy != SNAPSHOT_POLICY:
         raise UnsupportedEffect('Unknown particle render control-point snapshot policy')
+    qualified_silence = None
+    if silence_context is not None:
+        # A generic v4 acknowledgement is deliberately insufficient. Only the
+        # complete identity-bound package/scene pair can admit authored roots.
+        if (not isinstance(silence_context, tuple) or len(silence_context) != 2
+                or not isinstance(silence_context[0], dict)
+                or silence_context[0].get('simulation') is not simulation):
+            raise UnsupportedEffect('Silence renderer requires its exact validated package and scene')
+        from .particle_silence_inputs import SILENCE
+        if ('silence_birth_capture' not in silence_context[0]
+                or len(simulation.get('instances', [])) != 1
+                or simulation['instances'][0].get('resource') != SILENCE):
+            raise UnsupportedEffect('Authored root renderer context is restricted to the complete Silence package')
+        from .simulated_effect_package import validate_package
+        validate_package(*silence_context)
+        qualified_silence = simulation['instances'][0]['id']
     result = {}
     for instance in simulation['instances']:
         supplied = instance.get('control_point_indices')
         if (not isinstance(supplied, list) or not supplied
                 or any(type(cp) is not int or not 0 <= cp <= 63 for cp in supplied)
                 or supplied != sorted(set(supplied))
-                or not confirmed_materialized_points(instance, supplied)):
+                or not (confirmed_materialized_points(instance, supplied)
+                        or qualified_silence is not None and instance['id'] == qualified_silence)):
             raise UnsupportedEffect('Renderer control points lack qualified input provenance')
         allowed = set(instance['materialized_control_point_indices'])
         for frame in instance['frames']:

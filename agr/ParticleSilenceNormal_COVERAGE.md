@@ -36,6 +36,14 @@ and original native profiles remain distinct. Newly evaluated Blender poses and
 saved recapture are still mandatory. Numeric/source equivalence cannot establish
 the output image or current native acquisition.
 
+`particle_render_controls.render_contexts` keeps the generic v1/v2/v3 gate.
+Authored-root v4 snapshots require an explicit `(package, scene_data)` pair,
+the exact simulation object from that package, and full Silence package
+validation before any snapshot is indexed. The package renderer supplies this
+pair only after ordinary package and saved-rig validation. No bare policy name,
+boolean flag, copied simulation or unrelated effect can authorize root inputs.
+This is another pure admission check, with no new lifecycle/cache/token state.
+
 `blender_silence_inputs.capture_points` reuses `evaluated_snapshot_rig` and
 `capture_model_bones`, selecting only authored hitbox bones. Full tick history,
 model order, positive uniform scale and finite poses remain mandatory. CP0 uses

@@ -329,7 +329,7 @@ def validate_renderer_classes(tracks, assets, simulation=None, *, scene=None):
     return projected
 
 
-def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254):
+def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254, *, silence_context=None):
     import bpy
     from mathutils import Vector, Quaternion, Matrix
     from .blender_effects import _linear, _channels
@@ -342,7 +342,7 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
     tracks=collect_particle_tracks(simulation)
     validate_render_samples(tracks)
     from .particle_render_controls import render_contexts
-    contexts=render_contexts(simulation)
+    contexts=render_contexts(simulation,silence_context=silence_context)
     native_lights='native_standard_light' in assets.get('provenance',{})
     projected=validate_renderer_classes(tracks,assets,simulation,scene=scene)
     collection=bpy.data.collections.new('AGR Simulated Effects')
