@@ -1,5 +1,6 @@
 [
  {"name":"skip-geometry-identity","replace":[["SkipIdentity == FALSE","SkipIdentity == TRUE"]],"expect":"QualifiedOnly"},
+ {"name":"guess-constructor-default","replace":[["SkipDefaults == FALSE","SkipDefaults == TRUE"]],"expect":"QualifiedOnly"},
  {"name":"invent-missing-sequence","replace":[["GuessCapture == FALSE","GuessCapture == TRUE"]],"expect":"QualifiedOnly"},
  {"name":"retain-sibling-on-failure","replace":[["KeepFailedObjects == FALSE","KeepFailedObjects == TRUE"]],"expect":"WholeInstanceRollback"},
  {"name":"count-failed-instance","replace":[["AcceptFailure == FALSE","AcceptFailure == TRUE"]],"expect":"QualifiedOnly"}

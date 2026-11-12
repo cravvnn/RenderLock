@@ -105,7 +105,7 @@ def test_model_material_attributes_must_match_renderer(tmp_path):
 
 def test_model_preflight_runs_before_supported_sprite_siblings(tmp_path):
     a=assets(tmp_path);a['definitions']={'effects/test.vpcf':{'m_Renderers':[
-        {'_class':'C_OP_RenderSprites'},renderer()]}}
+        {'_class':'C_OP_RenderSprites','m_vecTexturesInput':[{'m_hTexture':'materials/test/sprite.vtex'}]},renderer()]}}
     s=samples();s[0][2].pop('second_sequence')
     with pytest.raises(UnsupportedEffect,match='sequence selector'):
         validate_renderer_classes({('instance','root','effects/test.vpcf',0):s},a)

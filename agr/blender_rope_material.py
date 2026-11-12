@@ -8,6 +8,8 @@ import numpy as np
 
 from .installed_effects import scalar, UnsupportedEffect
 from .blender_simulated_effects import build_texture_uv_nodes
+from .particle_texture_channels import texture_channel_mode
+from .particle_texture_layers import enabled_texture_layers,build_layer_stack,gradient_pixels
 
 
 def rope_color_scale(renderer):
@@ -78,20 +80,21 @@ def build_rope_material(renderer, images, *, scene_light, age=0., name='AGR text
         raise UnsupportedEffect('Rope outline/HSV shader input is not implemented')
     if scalar(renderer.get('m_flDepthBias'), default=0) != 0:
         raise UnsupportedEffect('Rope depth-bias shader input is not implemented')
-    layers = [layer for layer in renderer.get('m_vecTexturesInput', []) if layer.get('m_hTexture')]
+    layers = renderer.get('m_vecTexturesInput', [])
     if not layers:
         raise UnsupportedEffect('Rope material requires explicit texture layers')
-    for layer in layers:
-        if layer.get('m_nTextureChannels', 'SPRITECARD_TEXTURE_CHANNEL_MIX_RGBA') != 'SPRITECARD_TEXTURE_CHANNEL_MIX_RGBA' or scalar(layer.get('m_flTextureBlend'), default=1) != 1:
-            raise UnsupportedEffect('Rope texture channel masks/partial blending are not implemented')
+    for _,layer in enabled_texture_layers(layers):
+        texture_channel_mode(layer)
+        if scalar(layer.get('m_flTextureBlend'), default=1) != 1:
+            raise UnsupportedEffect('Rope partial texture blending is not qualified')
         if layer.get('m_nTextureType', 'SPRITECARD_TEXTURE_COLOR') != 'SPRITECARD_TEXTURE_COLOR' or layer.get('m_nTextureBlendMode', 'SPRITECARD_TEXTURE_BLEND_MULTIPLY') != 'SPRITECARD_TEXTURE_BLEND_MULTIPLY':
             raise UnsupportedEffect('Rope material currently requires multiplied color layers')
-        if layer.get('m_bReplaceTextureWithGradient') or layer.get('m_TextureControls', {}).get('m_bRandomizeOffsets'):
-            raise UnsupportedEffect('Rope gradient/random texture mapping is not implemented')
+        if layer.get('m_TextureControls', {}).get('m_bRandomizeOffsets'):
+            raise UnsupportedEffect('Rope random texture offsets require qualified segment inputs')
         if layer.get('m_TextureControls', {}).get('m_bClampUVs'):
             raise UnsupportedEffect('Rope clamped UVs require per-vertex texture placement')
-        if layer['m_hTexture'] not in images:
-            raise UnsupportedEffect('Missing rope texture image: '+layer['m_hTexture'])
+        if not layer.get('m_bReplaceTextureWithGradient') and layer.get('m_hTexture') not in images:
+            raise UnsupportedEffect('Missing rope texture image: '+str(layer.get('m_hTexture')))
     values = {key: scalar(renderer.get(key), default=default) for key, default in (
         ('m_flSelfIllumAmount', 0), ('m_flDiffuseAmount', 1), ('m_flOverbrightFactor', 1),
         ('m_flAddSelfAmount', 0), ('m_flSourceAlphaValueToMapToZero', 0),
@@ -131,14 +134,21 @@ def build_rope_material(renderer, images, *, scene_light, age=0., name='AGR text
     vertex = nodes.new('ShaderNodeVertexColor');vertex.layer_name = 'AGR Rope Shader Color'
     uv = nodes.new('ShaderNodeTexCoord')
     color = vertex.outputs['Color']
-    alpha = 1.
-    for layer in layers:
-        tex = nodes.new('ShaderNodeTexImage');tex.image = images[layer['m_hTexture']]
-        tex.image.pack();tex.extension = 'REPEAT'
+    def sample_layer(layer,index,raw=False):
+        tex = nodes.new('ShaderNodeTexImage')
+        if layer.get('m_bReplaceTextureWithGradient'):
+            image=bpy.data.images.new('AGR rope gradient',width=256,height=1,float_buffer=True)
+            image.colorspace_settings.name='Non-Color';image.alpha_mode='STRAIGHT'
+            image.pixels.foreach_set(gradient_pixels(layer.get('m_Gradient',{})));image.pack()
+            tex.image=image;tex.extension='EXTEND'
+        else:
+            tex.image=images[layer['m_hTexture']];tex.image.pack();tex.extension='REPEAT'
         mapping = build_texture_uv_nodes(nodes, links, uv.outputs['UV'], layer.get('m_TextureControls', {}), [(1, age, (0., 0.))])
         links.new(mapping.outputs['Vector'], tex.inputs['Vector'])
-        color = vector_node('MULTIPLY', color, tex.outputs['Color'])
-        alpha = math_node('MULTIPLY', alpha, tex.outputs['Alpha'])
+        return tex,mapping.outputs['Vector']
+    layer_color,alpha=build_layer_stack(nodes,links,layers,sample_layer,
+        lambda value,default:scalar(value,age=age,default=default))
+    color=vector_node('MULTIPLY',color,layer_color)
     low, high = (values['m_flSourceAlphaValueToMapTo'+word] for word in ('Zero', 'One'))
     if low < high:
         remap = nodes.new('ShaderNodeMapRange');remap.interpolation_type = 'SMOOTHSTEP';remap.clamp = True

@@ -255,11 +255,20 @@ def collect_system_samples(simulation):
 
 def validate_renderer_classes(tracks, assets, simulation=None, *, scene=None):
     """Refuse unsupported live renderers before baking sibling geometry."""
+    from .particle_texture_control_defaults import validate_defaults
+    validate_defaults({name:assets['definitions'][name] for name in {key[2] for key in tracks}},assets.get('provenance',{}))
     supported={'C_OP_RenderSprites','C_OP_RenderTrails','C_OP_RenderStandardLight','C_OP_RenderRopes'}
     projected={}
     for resource in sorted({key[2] for key in tracks}):
         for renderer in assets['definitions'][resource].get('m_Renderers',[]):
             kind=renderer.get('_class')
+            if kind in ('C_OP_RenderSprites','C_OP_RenderTrails'):
+                from .particle_texture_layers import enabled_texture_layers
+                layers=enabled_texture_layers(renderer.get('m_vecTexturesInput',[]))
+                if (not layers or any(not layer.get('m_bReplaceTextureWithGradient')
+                        and (not isinstance(layer.get('m_hTexture'),str) or not layer['m_hTexture'])
+                        for _,layer in layers)):
+                    raise UnsupportedEffect('Missing explicit spritecard texture; native fallback is not qualified')
             if kind=='C_OP_RenderModels':
                 from .particle_model_assets import validate_model
                 from .blender_particle_models import validate_model_samples
@@ -288,6 +297,8 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
     frame_step = output_fps / simulation['tick_rate']
     tracks=collect_particle_tracks(simulation)
     validate_render_samples(tracks)
+    from .particle_render_controls import render_contexts
+    contexts=render_contexts(simulation)
     projected=validate_renderer_classes(tracks,assets,simulation,scene=scene)
     collection=bpy.data.collections.new('AGR Simulated Effects')
     scene.collection.children.link(collection)
@@ -316,11 +327,20 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
         nodes=mat.node_tree.nodes;links=mat.node_tree.links;nodes.clear()
         info=nodes.new('ShaderNodeObjectInfo');coord=nodes.new('ShaderNodeTexCoord')
         color=info.outputs['Color'];alpha=info.outputs['Alpha']
-        layers=[t for t in renderer.get('m_vecTexturesInput',[]) if t.get('m_hTexture')]
+        from .particle_texture_layers import needs_extended_sprite_layers,build_layer_stack,gradient_pixels
+        authored_layers=renderer.get('m_vecTexturesInput',[])
+        extended=needs_extended_sprite_layers(authored_layers)
+        layers=authored_layers if extended else [t for t in authored_layers if t.get('m_hTexture')]
         from .particle_texture_channels import texture_channel_mode,RGB_ALPHA,LUMA
-        channel_modes=[texture_channel_mode(layer) for layer in layers]
+        channel_modes=[] if extended else [texture_channel_mode(layer) for layer in layers]
         def mapped_texture(tex, layer_index, raw=False):
-            image=nodes.new('ShaderNodeTexImage');image.image=texture(tex['m_hTexture'],sequence)
+            image=nodes.new('ShaderNodeTexImage')
+            if tex.get('m_bReplaceTextureWithGradient'):
+                generated=bpy.data.images.new('AGR particle gradient',width=256,height=1,float_buffer=True)
+                generated.colorspace_settings.name='Non-Color';generated.alpha_mode='STRAIGHT'
+                generated.pixels.foreach_set(gradient_pixels(tex.get('m_Gradient',{})));generated.pack()
+                image.image=generated;image.extension='EXTEND'
+            else:image.image=texture(tex['m_hTexture'],sequence)
             if raw:
                 raw_key=('raw',image.image.name)
                 if raw_key not in images:
@@ -334,42 +354,73 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
                 digest=hashlib.sha256(f'{identity}/{particle_id}/{index}/{layer_index}'.encode()).digest()
                 random_uv=tuple(int.from_bytes(digest[j:j+4],'little')/2**32 for j in (0,4))
                 omissions.append(resource+': UV random offsets use a deterministic substitute seed; recorded engine seed unavailable')
-            uv_samples=[(1+(tick-simulation['start_tick'])*frame_step,
-                         (tick-births[instance])/simulation['tick_rate'],random_uv) for tick,_,_ in samples]
+            uv_samples=[]
+            for tick,_,_ in samples:
+                context=contexts.get((instance,system_path,tick))
+                if extended and context is None:
+                    raise UnsupportedEffect('Extended texture composition requires actual per-system age snapshots')
+                age=context['age'] if extended else (tick-births[instance])/simulation['tick_rate']
+                uv_samples.append((1+(tick-simulation['start_tick'])*frame_step,age,random_uv))
             mapping=build_texture_uv_nodes(nodes,links,coord.outputs['UV'],controls,uv_samples,
                                            trail=renderer['_class']=='C_OP_RenderTrails')
             links.new(mapping.outputs['Vector'],image.inputs['Vector'])
             return image,mapping
-        for layer_index,tex in enumerate(layers):
-            if not tex.get('m_hTexture'):continue
-            texture_type=tex.get('m_nTextureType','SPRITECARD_TEXTURE_COLOR')
-            if texture_type=='SPRITECARD_TEXTURE_UVDISTORTION':
-                if layer_index!=1 or len(layers)!=2 or layers[0].get('m_nTextureType','SPRITECARD_TEXTURE_COLOR')!='SPRITECARD_TEXTURE_COLOR':
-                    raise UnsupportedEffect('UV distortion requires a preceding color layer')
-                continue  # Consumed with its preceding color layer below.
-            if texture_type!='SPRITECARD_TEXTURE_COLOR':
-                raise UnsupportedEffect('Unsupported texture type '+texture_type)
-            if tex.get('m_bReplaceTextureWithGradient') or tex.get('m_nTextureBlendMode','SPRITECARD_TEXTURE_BLEND_MULTIPLY')!='SPRITECARD_TEXTURE_BLEND_MULTIPLY':
-                raise UnsupportedEffect('Unsupported simulated texture-layer operation')
-            image,mapping=mapped_texture(tex,layer_index)
-            if layer_index+1<len(layers) and layers[layer_index+1].get('m_nTextureType')=='SPRITECARD_TEXTURE_UVDISTORTION':
-                distortion=layers[layer_index+1]
-                if layer_index!=0 or len(layers)!=2 or distortion.get('m_nTextureBlendMode')!='SPRITECARD_TEXTURE_BLEND_REPLACE':
-                    raise UnsupportedEffect('Only a color layer followed by replacing UV distortion is implemented')
-                noise,_=mapped_texture(distortion,layer_index+1,raw=True)
-                shift=nodes.new('ShaderNodeVectorMath');shift.operation='SUBTRACT';shift.inputs[1].default_value=(.5,.5,0)
-                links.new(noise.outputs['Color'],shift.inputs[0])
-                power=nodes.new('ShaderNodeMath');power.operation='MULTIPLY';links.new(noise.outputs['Alpha'],power.inputs[0]);power.inputs[1].default_value=-.25*scalar(distortion.get('m_TextureControls',{}).get('m_flDistortion'),default=0)
-                offset=nodes.new('ShaderNodeVectorMath');offset.operation='SCALE';links.new(shift.outputs['Vector'],offset.inputs[0]);links.new(power.outputs[0],offset.inputs['Scale'])
-                add_uv=nodes.new('ShaderNodeVectorMath');add_uv.operation='ADD';links.new(mapping.outputs['Vector'],add_uv.inputs[0]);links.new(offset.outputs['Vector'],add_uv.inputs[1]);links.new(add_uv.outputs['Vector'],image.inputs['Vector'])
+        if extended:
+            from .particle_render_controls import render_scalar
+            def sample_layer(layer,index,raw=False):
+                image,mapping=mapped_texture(layer,index,raw)
+                return image,mapping.outputs['Vector']
+            def parameter(value,default):
+                if not isinstance(value,dict) or value.get('m_nType','PF_TYPE_LITERAL')=='PF_TYPE_LITERAL':
+                    return render_scalar(value,default=default)
+                node=nodes.new('ShaderNodeValue')
+                for tick,_,_ in samples:
+                    context=contexts.get((instance,system_path,tick))
+                    if context is None:raise UnsupportedEffect('Missing extended texture parameter snapshot')
+                    node.outputs[0].default_value=render_scalar(value,context=context,default=default)
+                    node.outputs[0].keyframe_insert('default_value',frame=1+(tick-simulation['start_tick'])*frame_step)
+                return node.outputs[0]
+            layer_color,layer_alpha=build_layer_stack(nodes,links,layers,sample_layer,parameter)
             mix=nodes.new('ShaderNodeMixRGB');mix.blend_type='MULTIPLY';mix.inputs[0].default_value=1
-            links.new(color,mix.inputs[1]);links.new(image.outputs['Color'],mix.inputs[2]);color=mix.outputs[0]
-            layer_alpha=image.outputs['Alpha']
-            if channel_modes[layer_index]==RGB_ALPHA:
-                luminance=nodes.new('ShaderNodeVectorMath');luminance.operation='DOT_PRODUCT'
-                links.new(image.outputs['Color'],luminance.inputs[0]);luminance.inputs[1].default_value=LUMA
-                layer_alpha=luminance.outputs['Value']
-            mult=nodes.new('ShaderNodeMath');mult.operation='MULTIPLY';links.new(alpha,mult.inputs[0]);links.new(layer_alpha,mult.inputs[1]);alpha=mult.outputs[0]
+            links.new(color,mix.inputs[1]);links.new(layer_color,mix.inputs[2]);color=mix.outputs[0]
+            mult=nodes.new('ShaderNodeMath');mult.operation='MULTIPLY'
+            links.new(alpha,mult.inputs[0])
+            if isinstance(layer_alpha,(int,float)):mult.inputs[1].default_value=layer_alpha
+            else:links.new(layer_alpha,mult.inputs[1])
+            alpha=mult.outputs[0]
+            mat['agr_layer_composition_policy']='agr_shared_layer_stack_v1'
+            _linear(mat.node_tree)
+        else:
+            for layer_index,tex in enumerate(layers):
+                if not tex.get('m_hTexture'):continue
+                texture_type=tex.get('m_nTextureType','SPRITECARD_TEXTURE_COLOR')
+                if texture_type=='SPRITECARD_TEXTURE_UVDISTORTION':
+                    if layer_index!=1 or len(layers)!=2 or layers[0].get('m_nTextureType','SPRITECARD_TEXTURE_COLOR')!='SPRITECARD_TEXTURE_COLOR':
+                        raise UnsupportedEffect('UV distortion requires a preceding color layer')
+                    continue  # Consumed with its preceding color layer below.
+                if texture_type!='SPRITECARD_TEXTURE_COLOR':
+                    raise UnsupportedEffect('Unsupported texture type '+texture_type)
+                if tex.get('m_bReplaceTextureWithGradient') or tex.get('m_nTextureBlendMode','SPRITECARD_TEXTURE_BLEND_MULTIPLY')!='SPRITECARD_TEXTURE_BLEND_MULTIPLY':
+                    raise UnsupportedEffect('Unsupported simulated texture-layer operation')
+                image,mapping=mapped_texture(tex,layer_index)
+                if layer_index+1<len(layers) and layers[layer_index+1].get('m_nTextureType')=='SPRITECARD_TEXTURE_UVDISTORTION':
+                    distortion=layers[layer_index+1]
+                    if layer_index!=0 or len(layers)!=2 or distortion.get('m_nTextureBlendMode')!='SPRITECARD_TEXTURE_BLEND_REPLACE':
+                        raise UnsupportedEffect('Only a color layer followed by replacing UV distortion is implemented')
+                    noise,_=mapped_texture(distortion,layer_index+1,raw=True)
+                    shift=nodes.new('ShaderNodeVectorMath');shift.operation='SUBTRACT';shift.inputs[1].default_value=(.5,.5,0)
+                    links.new(noise.outputs['Color'],shift.inputs[0])
+                    power=nodes.new('ShaderNodeMath');power.operation='MULTIPLY';links.new(noise.outputs['Alpha'],power.inputs[0]);power.inputs[1].default_value=-.25*scalar(distortion.get('m_TextureControls',{}).get('m_flDistortion'),default=0)
+                    offset=nodes.new('ShaderNodeVectorMath');offset.operation='SCALE';links.new(shift.outputs['Vector'],offset.inputs[0]);links.new(power.outputs[0],offset.inputs['Scale'])
+                    add_uv=nodes.new('ShaderNodeVectorMath');add_uv.operation='ADD';links.new(mapping.outputs['Vector'],add_uv.inputs[0]);links.new(offset.outputs['Vector'],add_uv.inputs[1]);links.new(add_uv.outputs['Vector'],image.inputs['Vector'])
+                mix=nodes.new('ShaderNodeMixRGB');mix.blend_type='MULTIPLY';mix.inputs[0].default_value=1
+                links.new(color,mix.inputs[1]);links.new(image.outputs['Color'],mix.inputs[2]);color=mix.outputs[0]
+                layer_alpha=image.outputs['Alpha']
+                if channel_modes[layer_index]==RGB_ALPHA:
+                    luminance=nodes.new('ShaderNodeVectorMath');luminance.operation='DOT_PRODUCT'
+                    links.new(image.outputs['Color'],luminance.inputs[0]);luminance.inputs[1].default_value=LUMA
+                    layer_alpha=luminance.outputs['Value']
+                mult=nodes.new('ShaderNodeMath');mult.operation='MULTIPLY';links.new(alpha,mult.inputs[0]);links.new(layer_alpha,mult.inputs[1]);alpha=mult.outputs[0]
         power=nodes.new('ShaderNodeMath');power.operation='MULTIPLY';power.inputs[0].default_value=1
         if blend=='PARTICLE_OUTPUT_BLEND_MODE_ADD':links.new(alpha,power.inputs[0])
         power.inputs[1].default_value=scalar(renderer.get('m_flOverbrightFactor'),default=1)
@@ -418,17 +469,28 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
                 if renderer.get('m_bOnlyRenderInEffectsBloomPass'):
                     omissions.append(resource+': source bloom-only pass omitted; use scene compositor glare')
                     continue
-                baked=bake_rope_geometry(camera_samples,renderer,scene,collection,
+                from .particle_rope_inputs import resolve_rope_inputs
+                renderer_samples=[]
+                for sample in camera_samples:
+                    context=contexts.get((instance,system_path,sample['tick']))
+                    resolved,notes=resolve_rope_inputs(renderer,context,
+                        f'{instance}/{system_path}/{index}',simulation.get('seed'))
+                    renderer_samples.append(dict(sample,renderer=resolved,
+                        age=context['age'] if context is not None else sample['age']))
+                    omissions.extend(resource+': '+note for note in notes)
+                baked=bake_rope_geometry(renderer_samples,renderer,scene,collection,
                     start_tick=simulation['start_tick'],tick_rate=simulation['tick_rate'],
                     unit_scale=unit_scale,definition=definition,triangle_pairs=True)
-                by_tick={sample['tick']:sample for sample in camera_samples}
+                by_tick={sample['tick']:sample for sample in renderer_samples}
                 for obj in baked:
                     tick=obj['agr_rope_geometry_tick'];sample=by_tick[tick]
                     sequence=sample['particles'][0]['sequence']
                     layer_images={layer['m_hTexture']:texture(layer['m_hTexture'],sequence)
-                        for layer in renderer.get('m_vecTexturesInput',[]) if layer.get('m_hTexture')}
-                    prepare_rope_shader_colors(obj.data,renderer)
-                    mat,limitations=build_rope_material(renderer,layer_images,scene_light=(1,1,1),age=sample['age'])
+                        for layer in renderer.get('m_vecTexturesInput',[]) if layer.get('m_hTexture')
+                        and layer.get('m_bEnabled',True) and not layer.get('m_bReplaceTextureWithGradient')}
+                    resolved=sample['renderer']
+                    prepare_rope_shader_colors(obj.data,resolved)
+                    mat,limitations=build_rope_material(resolved,layer_images,scene_light=(1,1,1),age=sample['age'])
                     obj.data.materials.append(mat);omissions.extend(resource+': '+item for item in limitations)
                     obj.name=f'AGR FX rope | {instance} | {system_path} | {index} | {tick}'
                     obj['agr_particle_resource']=resource;obj['agr_particle_instance']=instance

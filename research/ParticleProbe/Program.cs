@@ -23,6 +23,10 @@ if(args.Length==4 && args[0]=="--inventory-model-hitboxes") { ModelHitboxInvento
 if(args.Length>0 && args[0]=="--model-sampling-oracle") { ModelSamplingOracle.Check(args[1],args[2]);return; }
 if(args.Length>0 && args[0]=="--ramp-spline-oracle") { RampSplineOracle.Check(args[1],args[2]);return; }
 if(args.Length>0 && args[0]=="--invalid-transform-oracle") { TransformOracle.Check(args[1]);return; }
+if(args.Length>0 && args[0]=="--render-control-snapshot-oracle") {
+ if(args.Length!=2)throw new ArgumentException("--render-control-snapshot-oracle OUTPUT_JSON");
+ RenderControlSnapshot.Check(args[1]);return;
+}
 if(args.Length>0 && args[0]=="--control-point-oracle") { ControlPointAudit.Check(args[1]);return; }
 if(args.Length>0 && args[0]=="--replay-lifecycle-oracle") { ReplayLifecycle.Check(args[1]);return; }
 if(args.Length>0 && args[0]=="--set-child-control-oracle") { SetChildControlOracle.Check(args[1],args[2]);return; }
@@ -110,7 +114,7 @@ foreach(var instance in config.GetProperty("instances").EnumerateArray()) {
   void Capture(ParticleSystemSimulation s,string path) {
    var particles=new List<object>();
    foreach(ref var x in s.Particles.Current)particles.Add(new{id=x.UniqueParticleId,position=V(x.Position),previous=V(x.PositionPrevious),velocity=V(x.Velocity),radius=x.Radius,alpha=x.Alpha,alpha_alternate=x.AlphaAlternate,color=V(x.Color),life=x.Lifetime,age=x.Age,creation_time=x.CreationTime,scratch_float0=x.ScratchFloat0,hitbox_index=x.HitboxIndex,hitbox_coordinates=V(x.HitboxOffsetPosition),trail=x.TrailLength,normal=V(x.Normal),rotation=V(x.Rotation),sequence=x.SequenceNumber,second_sequence=x.SecondSequenceNumber,manual_frame=x.ManualAnimationFrame});
-   systems.Add(new{name=s.Name,system_path=path,step=s.Particles.CurrentFrameTime,particles});
+   systems.Add(new{name=s.Name,system_path=path,step=s.Particles.CurrentFrameTime,system_age=s.RenderState.Age,control_points=RenderControlSnapshot.Capture(s.RenderState),particles});
    for(int childIndex=0;childIndex<s.Children.Count;childIndex++)Capture(s.Children[childIndex],path+"/"+childIndex);
   }
   Capture(sim,"root");frames.Add(new{tick,systems});
@@ -119,7 +123,7 @@ foreach(var instance in config.GetProperty("instances").EnumerateArray()) {
  if(replayEvents.WorldOriginProvider is null)output.Add(outputRow);
  else { var row=JsonSerializer.SerializeToElement(outputRow).EnumerateObject().ToDictionary(p=>p.Name,p=>(object)p.Value.Clone());row.Add("world_origin_provider",replayEvents.WorldOriginProvider.Value);output.Add(row); }
 }
-File.WriteAllText(args[1],JsonSerializer.Serialize(new{schema_version=1,backend="ValveResourceFormat 42743fb93030c552f834fabb30708dad84d0cbf5 + AGR RampScalarSpline v1 + PT_TYPE_INVALID identity v1 + experimental CreateOnModel bones v1",request_sha256=requestSha256,seed,seed_policy=seed.HasValue?"agr_substitute_sha256_v1":"upstream_random",tick_rate=tickRate,start_tick=start,end_tick=end,warnings=log.Messages,instances=output},new JsonSerializerOptions{WriteIndented=true}));
+File.WriteAllText(args[1],JsonSerializer.Serialize(new{schema_version=1,backend="ValveResourceFormat 42743fb93030c552f834fabb30708dad84d0cbf5 + AGR RampScalarSpline v1 + PT_TYPE_INVALID identity v1 + experimental CreateOnModel bones v1",control_point_snapshot_policy=RenderControlSnapshot.Policy,request_sha256=requestSha256,seed,seed_policy=seed.HasValue?"agr_substitute_sha256_v1":"upstream_random",tick_rate=tickRate,start_tick=start,end_tick=end,warnings=log.Messages,instances=output},new JsonSerializerOptions{WriteIndented=true}));
 Console.WriteLine($"Simulated {output.Count} recorded instances; {log.Messages.Count} warnings");
 if(log.Messages.Count>0)Environment.ExitCode=2;
 // Version-bound instrumentation of the pinned simulator, not the game process.

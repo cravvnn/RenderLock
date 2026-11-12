@@ -2,6 +2,7 @@
 from .asset_converter import compiled
 from .installed_effects import UnsupportedEffect
 from .particle_model_assets import prepare_model, model_resource
+from .particle_texture_layers import enabled_texture_layers
 
 
 def prepare_render_assets(names, decoder, adapter, provider, runtime, *, definitions=None, textures=None):
@@ -12,7 +13,8 @@ def prepare_render_assets(names, decoder, adapter, provider, runtime, *, definit
             definitions[name] = decoder.dump(name, provider)
     texture_names = {layer['m_hTexture'] for name in names
         for renderer in definitions[name].get('m_Renderers', [])
-        for layer in renderer.get('m_vecTexturesInput', []) if layer.get('m_hTexture')}
+        for _,layer in enabled_texture_layers(renderer.get('m_vecTexturesInput', [])) if layer.get('m_hTexture')
+        and not layer.get('m_bReplaceTextureWithGradient')}
     for name in texture_names:
         if name not in textures:
             directory, descriptor = adapter.texture(name, provider)
@@ -35,4 +37,8 @@ def prepare_render_assets(names, decoder, adapter, provider, runtime, *, definit
             input_sha256={n: provider.resolve(compiled(n)).sha256 for n in names | texture_names}))
     if models:
         result['models'] = models
+    from .particle_texture_control_defaults import prepare_defaults
+    defaults=prepare_defaults(result['definitions'],provider)
+    if defaults is not None:
+        result['provenance']['texture_control_defaults']=defaults
     return result

@@ -16,7 +16,7 @@ def bake_rope_geometry(samples,renderer,scene,collection,*,start_tick,tick_rate,
         if type(tick) is not int or (previous is not None and tick<=previous):
             raise ValueError('Rope sample ticks must be unique and increasing')
         previous=tick
-        mesh=build_rope_geometry(sample['particles'],renderer,sample['age'],sample.get('camera_position'),
+        mesh=build_rope_geometry(sample['particles'],sample.get('renderer',renderer),sample['age'],sample.get('camera_position'),
                                  camera_projection=sample.get('camera_projection'),definition=definition)
         vertices+=len(mesh['vertices'])
         if vertices>2_000_000:raise ValueError('Rope geometry bake exceeds vertex budget')
