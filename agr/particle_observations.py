@@ -1,7 +1,7 @@
 """Read once, then bind qualified observations to fresh export inputs.
 
 This is an input transport, not a game reader or authenticity proof. The
-Crossbow validator still owns module, replay, birth, model and graph admission.
+profile validators own module, replay, birth, model and graph admission.
 No observations means unavailable, never a claim that an effect does not exist.
 """
 import hashlib
@@ -69,25 +69,36 @@ def read_observations(path, *, reserved=()):
     if (not isinstance(document, dict)
             or set(document) != {'format', 'schema_version', 'captures'}
             or document['format'] != FORMAT
-            or type(document['schema_version']) is not int or document['schema_version'] != 1
+            or type(document['schema_version']) is not int or document['schema_version'] not in (1, 2)
             or not isinstance(document['captures'], list)
             or not 1 <= len(document['captures']) <= MAX_CAPTURES):
-        raise ValueError('Particle observations require schema 1 and 1..64 captures')
+        raise ValueError('Particle observations require schema 1 or 2 and 1..64 captures')
     captures = {}
     for row in document['captures']:
-        if (not isinstance(row, dict) or set(row) != {'instance_id', 'capture'}
-                or not isinstance(row['instance_id'], str)
+        if (not isinstance(row, dict)
+                or not isinstance(row.get('instance_id'), str)
                 or re.fullmatch(r'(0|[1-9][0-9]{0,9}):[1-9][0-9]{0,9}', row['instance_id']) is None
-                or not isinstance(row['capture'], dict) or set(row['capture']) != CAPTURE_FIELDS
                 or row['instance_id'] in captures):
             raise ValueError('Particle observations contain invalid or duplicate instance records')
-        captures[row['instance_id']] = row['capture']
-    return dict(captures=captures, source=str(source), sha256=hashlib.sha256(raw).hexdigest(), bytes=len(raw))
+        if document['schema_version'] == 1:
+            if (set(row) != {'instance_id', 'capture'} or not isinstance(row['capture'], dict)
+                    or set(row['capture']) != CAPTURE_FIELDS):
+                raise ValueError('Particle observations contain invalid Crossbow records')
+            captures[row['instance_id']] = row['capture']
+        else:
+            if (set(row) != {'instance_id', 'profile', 'birth', 'child'} or row['profile'] != 'silence'
+                    or not isinstance(row['birth'], dict) or not isinstance(row['child'], dict)):
+                raise ValueError('Schema 2 requires separate original bound Silence birth and child envelopes')
+            captures[row['instance_id']] = dict(birth=row['birth'], child=row['child'])
+    return dict(schema_version=document['schema_version'], captures=captures, source=str(source),
+                sha256=hashlib.sha256(raw).hexdigest(), bytes=len(raw))
 
 
 def bind_observations(document, scene):
     """All supplied rows must bind; never return a partly accepted batch."""
     from .particle_crossbow_owner import bind_capture
+    if document.get('schema_version', 1) != 1:
+        raise ValueError('Use the typed runtime importer for Silence observations')
     instances = {}
     for row in scene.get('particle_instances', []):
         key = row['id']
@@ -104,3 +115,29 @@ def bind_observations(document, scene):
                    status='imported_qualified_observations', acquisition='supplied_file',
                    scope='Imported observations do not establish complete particle coverage')
     return bound, receipt
+
+
+def bind_runtime_observations(document, scene):
+    """Preserve v1; v2 only validates original envelopes, never rebinds them."""
+    if document.get('schema_version', 1) == 1:
+        bound, receipt = bind_observations(document, scene)
+        return dict(crossbow_owner_captures=bound), receipt
+    if document.get('schema_version') != 2:
+        raise ValueError('Unknown particle observation schema')
+    import copy
+    from .particle_silence_inputs import prepare_observed_inputs
+    instances = {}
+    for instance in scene.get('particle_instances', []):
+        if instance['id'] in instances:
+            raise ValueError('Particle observation target identity is ambiguous')
+        instances[instance['id']] = instance
+    birth, child = {}, {}
+    for key, envelopes in document['captures'].items():
+        if key not in instances:
+            raise ValueError(f'Particle observation {key} is absent from the selected replay history')
+        prepare_observed_inputs(scene, instances[key], envelopes['birth'], envelopes['child'])
+        birth[key], child[key] = copy.deepcopy(envelopes['birth']), copy.deepcopy(envelopes['child'])
+    receipt = dict(schema_version=2, format=FORMAT, sha256=document['sha256'], bytes=document['bytes'],
+        instance_ids=sorted(birth), status='imported_qualified_observations', acquisition='supplied_file',
+        profile='silence', scope='Original historical native observations; no current reader or complete particle coverage claim')
+    return dict(silence_birth_captures=birth, client_child_captures=child), receipt

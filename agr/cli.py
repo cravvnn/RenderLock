@@ -815,9 +815,9 @@ def _convert(args, diagnostics):
             runtime={key:str(asset_source[key]) for key in ('install_path','cache_dir','converter')}
             observation_receipt = None
             if observations is not None:
-                from .particle_observations import bind_observations
-                bound, observation_receipt = bind_observations(observations, read_scene(segment))
-                runtime['crossbow_owner_captures'] = bound
+                from .particle_observations import bind_runtime_observations
+                observed_runtime, observation_receipt = bind_runtime_observations(observations, read_scene(segment))
+                runtime.update(observed_runtime)
             if captured_inputs is not None:
                 from .captured_slide_inputs import bind_cohort
                 from .captured_slide_render import expected_receipt

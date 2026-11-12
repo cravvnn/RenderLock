@@ -168,3 +168,6 @@ def validate_package(package,scene):
     validate_definitions(package.get('assets',{}).get('definitions'))
     validate_hitbox_provider(package.get('hitbox_provider'),scene,row)
     validate_response(sim,instance['id'],observed['birth_header'])
+    if any(k in package['hitbox_provider'] for k in ('normal_inputs_policy','points_sha256','inventory','attachments')):
+        from .recorded_silence_effects import validate_normal_request
+        validate_normal_request(package,scene,instance)

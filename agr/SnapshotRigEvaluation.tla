@@ -2,6 +2,9 @@
 EXTENDS Integers, TLC
 \* evaluated_snapshot_rig is called by capture_source_snapshot_provider and
 \* recorded_crossbow_effects.capture_points, also during saved-rig recapture.
+\* blender_silence_inputs.capture_points now uses the same single enclosing
+\* borrow for selected hitbox bones and CPs, including saved-input recapture.
+\* It allocates no Blender IDs and adds no independent visibility/frame state.
 \* Validate complete ancestry first; borrow ONLY the exporter's cosmetic rig
 \* disable flag; finally restore original frame then original visibility even
 \* if restoring the frame itself fails. No timer, worker or persistent cache.

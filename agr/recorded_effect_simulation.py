@@ -484,6 +484,24 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
                 continue
             if entities[instance['entity_id']].get('model_tracks'):
                 raise ValueError('Particle model/attachment providers across recorded model changes are not yet qualified')
+            from .particle_silence_inputs import SILENCE
+            if instance.get('resource') == SILENCE:
+                from .recorded_silence_effects import prepare_package as prepare_silence_package
+                package, package_path = prepare_silence_package(data, instance, entities[instance['entity_id']],
+                    entity_objects[instance['entity_id']], scene, manifest_dir, attachments,
+                    runtime, provider, decoder, adapter, out / f'silence-{number:06d}')
+                report['attempted_instances'] += 1
+                result = build_package_effects(package, data, package_path, scene, camera)
+                if result.get('objects', 0) <= 0:
+                    raise ValueError('Silence package produced no rendered objects')
+                report['rendered_instances'] += 1
+                report['instances'].append(dict(id=instance['id'], resource=instance['resource'],
+                    package=str(package_path), rendering=result, hitbox_provider=package['hitbox_provider']['policy']))
+                for key in ('objects', 'particle_tracks', 'point_lights'):
+                    report[key] += result.get(key, 0)
+                if instance['created_tick'] < data['start_tick']:
+                    report['pre_shot_rendered_instances'] += 1
+                continue
             from .particle_snapshot_provider import RESOURCE as CROSSBOW_RESOURCE
             if instance.get('resource') == CROSSBOW_RESOURCE:
                 from .recorded_crossbow_effects import prepare_package as prepare_crossbow_package

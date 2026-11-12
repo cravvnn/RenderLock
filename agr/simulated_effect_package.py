@@ -211,6 +211,9 @@ def build_package_effects(package, data, manifest_file, scene, camera):
     import bpy
     from .blender_simulated_effects import build_simulated_effects
     validate_package(package, data)
+    if package.get('hitbox_provider', {}).get('normal_inputs_policy') is not None:
+        from .blender_silence_inputs import validate_saved_inputs
+        validate_saved_inputs(package, data, scene, Path(manifest_file).parent)
     if 'snapshot_model_provider' in package:
         from .blender_particle_skinning import validate_source_snapshot_rig
         validate_source_snapshot_rig(package['snapshot_model_provider'], data, scene, Path(manifest_file).parent)
