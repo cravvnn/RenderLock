@@ -631,6 +631,17 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
         from .modifier_mask_effects import build_modifier_mask_effects,merge_modifier_mask_report
         derived=build_modifier_mask_effects(data,scene,camera,entity_objects,runtime,provider,decoder,adapter)
         merge_modifier_mask_report(report,derived)
+    if runtime.get('captured_slide_cohort') is not None:
+        from .captured_slide_render import build_captured_slide_cohort, merge_captured_slide_report
+        # Preserve the accepted raw input/binding alongside the effect audit.
+        # A failure leaves the file as diagnostics but rolls back all sibling
+        # slide allocations; CLI publication additionally requires its receipt.
+        captured_path = out / 'captured-slide-cohort.json'
+        with captured_path.open('x', encoding='utf-8') as stream:
+            json.dump(runtime['captured_slide_cohort'], stream, allow_nan=False)
+        captured = build_captured_slide_cohort(runtime['captured_slide_cohort'], data,
+                                              captured_path, scene, camera)
+        merge_captured_slide_report(report, captured)
     report['unsupported_occurrences']=sum(r['occurrences'] for r in report['unsupported'])
     if not report['objects']:report.update(status='unavailable',reason='No recorded instance completed simulation and rendering')
     (out/'coverage.json').write_text(json.dumps(report,indent=2),encoding='utf-8')

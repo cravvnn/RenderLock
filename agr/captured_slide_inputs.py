@@ -30,6 +30,15 @@ COMMON_PROVENANCE = ('report_sha256', 'observer_sha256', 'field_reader_sha256',
                      'freeze_sha256', 'cleanup_sha256')
 
 
+def require_options(path, *, simulation, constraints, partial, start_tick, end_tick, history_ticks):
+    if path:
+        require(simulation and constraints,
+                'supplied cohort requires installed simulation and --model-constraints')
+        require(partial, 'captured renderer/clock scope is incomplete; explicitly select --partial')
+        require((start_tick, end_tick, history_ticks) == (17920, 18240, 62),
+                'qualified cohort requires ticks 17920..18240 and --particle-history-ticks 62')
+
+
 def require(value, reason):
     if not value:
         raise ValueError('Captured slide inputs: ' + reason)

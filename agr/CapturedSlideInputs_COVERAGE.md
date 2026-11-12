@@ -3,8 +3,10 @@
 `read_cohort`, `bind_cohort` and `validate_bound_cohort` are read-only snapshot
 and pure admission functions. They own no persistent state, retry, writer,
 process, renderer allocation or cache. No additional lifecycle machine is needed.
-Later rendering must stay inside the existing package allocation/rollback owner;
-this change does not yet add rendering or ordinary CLI dispatch.
+Rendering stays inside the existing package allocation/rollback owner, composed
+by `CapturedSlideRender.tla` for all four siblings. The ordinary CLI now passes
+the bound snapshot through its particle runtime; actual normal-export/save/render
+acceptance for that path is still pending.
 
 The descriptor names one source scene and four ordered component JSON files,
 each with a SHA-256 byte digest. Its paths may be relative to the descriptor.
@@ -23,6 +25,6 @@ and frame/root counts. The trail's embedded sprite reference must equal the
 standalone sprite reference. There is no partial batch return or empty fallback.
 
 Digests detect changes to a snapshot; they are not capture authenticity proofs.
-No recorded particle birth or prior unsupported count is removed here. Ordinary
-export integration, all-component allocation rollback, a fresh normal scene,
-saved-scene checks and short Cycles output remain required acceptance gates.
+No recorded particle birth or prior unsupported count is removed here. Actual
+all-component allocation rollback, a fresh normal scene, saved-scene checks and
+short Cycles output remain required acceptance gates.

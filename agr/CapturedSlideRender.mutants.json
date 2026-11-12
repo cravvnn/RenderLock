@@ -1,0 +1,7 @@
+[
+  {"name":"omit fresh binding","replace":[["SkipBinding == FALSE","SkipBinding == TRUE"]],"expect":"QualifiedAllocation"},
+  {"name":"omit cohort admission","replace":[["SkipCohort == FALSE","SkipCohort == TRUE"]],"expect":"QualifiedAllocation"},
+  {"name":"publish incomplete cohort","replace":[["EarlyPublish == FALSE","EarlyPublish == TRUE"]],"expect":"AllOrNothingPublication"},
+  {"name":"leave sibling allocations after failure","replace":[["SkipRollback == FALSE","SkipRollback == TRUE"]],"expect":"NoFailedLeak"},
+  {"name":"remove preexisting datablocks","replace":[["DeleteOld == FALSE","DeleteOld == TRUE"]],"expect":"ExistingUntouched"}
+]
