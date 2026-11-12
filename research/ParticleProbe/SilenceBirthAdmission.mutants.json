@@ -1,0 +1,12 @@
+[
+  {"name":"omit original observed header","replace":[["headerOK /\\ transformOK /\\ fallbackOK","transformOK /\\ fallbackOK"]],"expect":"ObservedHeader"},
+  {"name":"omit unit identity transform","replace":[["headerOK /\\ transformOK /\\ fallbackOK","headerOK /\\ fallbackOK"]],"expect":"EquivalentTransform"},
+  {"name":"omit distinct fallback check","replace":[["transformOK /\\ fallbackOK /\\ modelOK","transformOK /\\ modelOK"]],"expect":"FallbackPreserved"},
+  {"name":"infer model from birth","replace":[["fallbackOK /\\ modelOK /\\ ~otherProvider","fallbackOK /\\ ~otherProvider"]],"expect":"ModelIndependent"},
+  {"name":"combine unrelated providers","replace":[["/\\ modelOK /\\ ~otherProvider","/\\ modelOK"]],"expect":"NoCombined"},
+  {"name":"reinterpret original creation","replace":[["IF creationOK /\\ literalOK /\\ hitboxesOK THEN","IF literalOK /\\ hitboxesOK THEN"]],"expect":"OriginalEvents"},
+  {"name":"ignore recorded literals","replace":[["IF creationOK /\\ literalOK /\\ hitboxesOK THEN","IF creationOK /\\ hitboxesOK THEN"]],"expect":"OriginalEvents"},
+  {"name":"infer history from birth","replace":[["IF creationOK /\\ literalOK /\\ hitboxesOK THEN","IF creationOK /\\ literalOK THEN"]],"expect":"IndependentHistory"},
+  {"name":"respond before inclusive end","replace":[["phase = \"simulate\" /\\ frame = 2","phase = \"simulate\" /\\ frame >= 0"]],"expect":"Complete"},
+  {"name":"lose birth acknowledgement","replace":[["/\\ ack' = 1","/\\ ack' = 0"]],"expect":"Acknowledged"}
+]

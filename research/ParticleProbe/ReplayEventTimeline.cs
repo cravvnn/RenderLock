@@ -10,6 +10,9 @@ sealed class ReplayEventTimeline
     private bool destroyImmediately;
     public const string Policy = "agr_recorded_control_lifecycle_v1";
     public JsonElement? WorldOriginProvider { get; private init; }
+#if AGR_SIMULATION_HITBOX
+    public JsonElement? SilenceBirthProvider { get; private init; }
+#endif
 #if AGR_SIMULATION_SNAPSHOT
     public JsonElement? CrossbowOwnerProvider { get; private init; }
 #endif
@@ -41,6 +44,9 @@ sealed class ReplayEventTimeline
     {
         var result = new ReplayEventTimeline {
             WorldOriginProvider = WorldOriginInputs.Qualify(instance, birth, end, start, rate),
+#if AGR_SIMULATION_HITBOX
+            SilenceBirthProvider = SilenceBirthInputs.Qualify(instance),
+#endif
 #if AGR_SIMULATION_SNAPSHOT
             CrossbowOwnerProvider = CrossbowOwnerInputs.Qualify(instance),
 #endif
@@ -51,6 +57,10 @@ sealed class ReplayEventTimeline
 #else
         if (instance.TryGetProperty("crossbow_owner_provider", out _))
             throw new InvalidDataException("Current Crossbow inputs require the simulation snapshot build");
+#endif
+#if !AGR_SIMULATION_HITBOX
+        if (instance.TryGetProperty("silence_birth_provider", out _))
+            throw new InvalidDataException("Silence birth inputs require the simulation hitbox build");
 #endif
         if (!instance.TryGetProperty("events", out var events)) return result;
         var previousTick = birth;
@@ -150,14 +160,19 @@ sealed class ReplayEventTimeline
                 || instance.GetProperty("id").GetString() != $"{index}:{generation}"
                 || instance.GetProperty("entity_id").GetString() != $"{handle & 0x3fff}:{handle >> 14}")
                 throw new Exception("Recorded control/lifecycle requires exact particle generation and full entity identity");
+            // This local fact is derived from independently validated inputs;
+            // do not reinterpret the original CREATE or store another mode flag.
+            var observedModeThree = false;
+#if AGR_SIMULATION_SNAPSHOT
+            observedModeThree |= result.CrossbowOwnerProvider.HasValue;
+#endif
+#if AGR_SIMULATION_HITBOX
+            observedModeThree |= result.SilenceBirthProvider.HasValue;
+#endif
             if (creation.ValueKind != JsonValueKind.Object
                 || creation.GetProperty("entity_handle").GetUInt32() != handle
-#if AGR_SIMULATION_SNAPSHOT
-                || (result.CrossbowOwnerProvider.HasValue ? creation.GetProperty("attach_type").GetInt32() != 3
+                || (observedModeThree ? creation.GetProperty("attach_type").GetInt32() != 3
                     : creation.GetProperty("attach_type").GetInt32() is not (2 or 5))
-#else
-                || creation.GetProperty("attach_type").GetInt32() is not (2 or 5)
-#endif
                 || (creation.TryGetProperty("cluster", out var cluster) && cluster.GetBoolean()))
                 throw new Exception("Recorded control/lifecycle requires a qualified entity-owned creation provider");
             if (instance.TryGetProperty("resource_hash", out var resourceHash)

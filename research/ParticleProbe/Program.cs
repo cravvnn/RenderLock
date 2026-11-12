@@ -9,6 +9,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Buffers.Binary;
 #if AGR_SIMULATION_HITBOX
+if(args.Length==3 && args[0]=="--silence-birth-input-oracle") { SilenceBirthInputOracle.Check(args[1],args[2]);return; }
 if(args.Length==3 && args[0]=="--hitbox-inputs-oracle") { HitboxInputOracle.Check(args[1],args[2]);return; }
 if(args.Length==3 && args[0]=="--hitbox-runtime-oracle") { HitboxRuntimeOracle.Check(args[1],args[2]);return; }
 #endif
@@ -70,6 +71,8 @@ foreach(var instance in config.GetProperty("instances").EnumerateArray()) {
 #endif
 #if AGR_SIMULATION_HITBOX
  var hitboxInputs=HitboxRuntimeInputs.Parse(instance,controls,birth,end);
+ if(replayEvents.SilenceBirthProvider.HasValue && hitboxInputs is null)
+  throw new InvalidDataException("Silence birth requires its independent complete hitbox history");
  if(hitboxInputs is not null && snapshotInputs is not null)
   throw new InvalidDataException("Hitbox and snapshot histories cannot be combined");
 #else
@@ -183,6 +186,13 @@ hitbox_index=x.HitboxIndex,hitbox_coordinates=V(x.HitboxOffsetPosition),trail=x.
   hitboxRow.Add("model_hitbox_input_policy",HitboxRuntimeInputs.Policy);
   hitboxRow.Add("model_hitbox_bindings",hitboxInputs.Bindings);
   qualifiedOutput=hitboxRow;
+ }
+ if(replayEvents.SilenceBirthProvider.HasValue) {
+  var silenceRow=JsonSerializer.SerializeToElement(qualifiedOutput).EnumerateObject().ToDictionary(p=>p.Name,p=>(object)p.Value.Clone());
+  silenceRow.Add("silence_birth_provider",replayEvents.SilenceBirthProvider.Value);
+  silenceRow.Add("authored_root_position_indices",ControlPointAudit.InputProvenance(sim,"AuthoredRootPositionIndices")
+   ?? throw new InvalidOperationException("Silence helper lacks root-position provenance"));
+  qualifiedOutput=silenceRow;
  }
 #endif
  if(replayEvents.WorldOriginProvider is null)output.Add(qualifiedOutput);
