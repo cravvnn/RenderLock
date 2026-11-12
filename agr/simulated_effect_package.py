@@ -123,8 +123,12 @@ def validate_package(package, scene):
                 or provider.get('bone_count') != len(model.get('names', []))):
             raise ValueError('Prepared model particles do not match authored constraints; regenerate them')
     sim = package['simulation']
+    from .particle_silence_inputs import SILENCE,validate_package as validate_silence_package
+    silence_package=('silence_birth_capture' in package or any(row.get('resource')==SILENCE or 'silence_birth_provider' in row
+                    for row in sim.get('instances',[])))
+    if silence_package:validate_silence_package(package,scene)
     from .particle_snapshot_provider import RESOURCE as CROSSBOW_RESOURCE
-    if ('snapshot_model_provider' in package or 'crossbow_owner_capture' in package
+    if not silence_package and ('snapshot_model_provider' in package or 'crossbow_owner_capture' in package
             or any(row.get('resource') == CROSSBOW_RESOURCE or 'snapshot_model_input_policy' in row
                    or 'crossbow_owner_provider' in row for row in sim.get('instances', []))):
         _validate_crossbow_package(package, scene)
@@ -154,7 +158,8 @@ def validate_package(package, scene):
             if (not isinstance(supplied, list) or not isinstance(observed, list)
                     or not supplied or any(type(i) is not int or not 0 <= i <= 63 for i in supplied + observed)
                     or supplied != sorted(set(supplied))
-                    or not confirmed_materialized_points(instance, supplied)):
+                    or not ((silence_package and instance.get('resource')==SILENCE)
+                            or confirmed_materialized_points(instance, supplied))):
                 raise ValueError('Prepared particles have unqualified control-point dependencies')
         birth = instance.get('birth', scene['start_tick'])
         if type(birth) is not int or not 0 <= birth <= scene['end_tick']:
