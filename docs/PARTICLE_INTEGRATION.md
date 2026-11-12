@@ -56,8 +56,25 @@ precede triangle interpolation, avoiding wrapped-endpoint animation artifacts.
 Actual fractional-frame pixel tests cover both paths, packed save/reopen and
 late missing-input rollback. The saved normal scene passed 2,878 alpha checks and
 eight CPU Cycles preview frames over both firing moments. This establishes the
-input/rendering connection; visible smoke-card edges and approximate lighting
-remain fidelity limits rather than Source pixel equivalence.
+input/rendering connection; approximate lighting remains a fidelity limit rather
+than Source pixel equivalence.
+
+## Static-sheet UV correction
+
+Fresh static sprite-sheet assets bind the measured feature/vertex/pixel shader
+identities. Their sheet branch omits the ordinary texture's random UV displacement;
+ordinary noise textures retain their explicit substitute seed and warning. This
+repairs hard smoke rectangles without an artificial edge fade or simulation change.
+Unknown shader inputs and incomplete sheet inventories refuse. Legacy packets
+without this proof retain their old behavior; regenerate exports to use the fix.
+Typed original animated-sheet sampling remains separate unintegrated work.
+
+A short fresh muzzle export has21simulation frames exactly equal to the earlier
+export, unchanged definitions/textures/input hashes and45unchanged mesh/UV hashes.
+Independent reopen and fourCPU Cycles frames verify the normal path;3150bone
+checks and21root checks pass the existing saved-scene verifier. Synthetic pixel,
+legacy-negative and late sibling rollback checks distinguish both texture branches.
+This is a rendering-path correction, not all shader variants or Source pixel parity.
 
 ## Remaining limits
 

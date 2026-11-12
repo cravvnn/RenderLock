@@ -41,4 +41,11 @@ def prepare_render_assets(names, decoder, adapter, provider, runtime, *, definit
     defaults=prepare_defaults(result['definitions'],provider)
     if defaults is not None:
         result['provenance']['texture_control_defaults']=defaults
+    if any(renderer.get('_class')=='C_OP_RenderSprites'
+           and any(layer.get('m_TextureControls',{}).get('m_bRandomizeOffsets')
+                   and textures.get(layer.get('m_hTexture'),{}).get('is_sprite_sheet') is True
+                   for _,layer in enabled_texture_layers(renderer.get('m_vecTexturesInput',[])))
+           for name in names for renderer in definitions[name].get('m_Renderers',[])):
+        from .particle_sheet_uv import collect_shader_inputs
+        result['provenance']['spritecard_sheet_uv']=collect_shader_inputs(provider)
     return result

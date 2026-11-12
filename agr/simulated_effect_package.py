@@ -56,6 +56,10 @@ def scene_identity(scene, entity_ids):
 
 
 def validate_package(package, scene):
+    provenance=package.get('assets',{}).get('provenance',{})
+    if 'spritecard_sheet_uv' in provenance:
+        from .particle_sheet_uv import validate_shader_inputs
+        validate_shader_inputs(provenance['spritecard_sheet_uv'])
     if package.get('backend') == 'simulated_projectile_flight_v2':
         from .projectile_particles import validate_package as validate_projectile_package
         validate_projectile_package(package,scene)

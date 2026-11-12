@@ -1,4 +1,4 @@
-﻿"""Bake explicit particle states into Blender; simulation and rendering are separate.
+"""Bake explicit particle states into Blender; simulation and rendering are separate.
 
 Input must include backend identity and diagnostics. This adapter currently renders
 additive/alpha static-sheet sprites/trails and point lights, with a bounded
@@ -312,7 +312,7 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
     projected=validate_renderer_classes(tracks,assets,simulation,scene=scene)
     collection=bpy.data.collections.new('AGR Simulated Effects')
     scene.collection.children.link(collection)
-    materials={};images={};omissions=[]
+    materials={};images={};omissions=[];sheet_uv_bypasses=set()
     resource_paths={}
     for instance,path,resource,_ in tracks:
         resource_paths.setdefault((instance,resource),set()).add(path)
@@ -362,11 +362,16 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
             controls=tex.get('m_TextureControls',{})
             random_uv=(0.,0.)
             if controls.get('m_bRandomizeOffsets'):
-                # Retain prior substitute offsets for unambiguous resources.
-                identity=instance if len(resource_paths[(instance,resource)])==1 else instance+'/'+system_path
-                digest=hashlib.sha256(f'{identity}/{particle_id}/{index}/{layer_index}'.encode()).digest()
-                random_uv=tuple(int.from_bytes(digest[j:j+4],'little')/2**32 for j in (0,4))
-                omissions.append(resource+': UV random offsets use a deterministic substitute seed; recorded engine seed unavailable')
+                from .particle_sheet_uv import sheet_random_offset_bypass,POLICY as SHEET_UV_POLICY
+                if sheet_random_offset_bypass(renderer,assets['textures'].get(tex.get('m_hTexture'),{}),assets.get('provenance',{})):
+                    mat['agr_sheet_uv_policy']=SHEET_UV_POLICY
+                    sheet_uv_bypasses.add(tex['m_hTexture'])
+                else:
+                    # Ordinary texture randomness remains an explicit substitute.
+                    identity=instance if len(resource_paths[(instance,resource)])==1 else instance+'/'+system_path
+                    digest=hashlib.sha256(f'{identity}/{particle_id}/{index}/{layer_index}'.encode()).digest()
+                    random_uv=tuple(int.from_bytes(digest[j:j+4],'little')/2**32 for j in (0,4))
+                    omissions.append(resource+': UV random offsets use a deterministic substitute seed; recorded engine seed unavailable')
             uv_samples=[]
             for tick,_,_ in samples:
                 context=contexts.get((instance,system_path,tick))
@@ -645,6 +650,10 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
         report['rope_systems']=rope_systems
         report['rope_lighting']={'policy':'explicit neutral RGB; Source lighting is not reconstructed','rgb':[1,1,1]}
         report['limitations'].append('Rope geometry samples camera position and projection per replay tick. Moving, animating or replacing the camera afterward requires rebuilding rope geometry.')
+    if sheet_uv_bypasses:
+        from .particle_sheet_uv import POLICY as SHEET_UV_POLICY
+        report['sheet_uv_policy']=SHEET_UV_POLICY
+        report['sheet_uv_textures']=sorted(sheet_uv_bypasses)
     if depth_report:
         report['live_depth_cards']=depth_report
         report['camera_binding']='sampled_rope_geometry_with_live_projective_cards' if rope_objects else 'live_constraints_with_qualified_projective_depth'
