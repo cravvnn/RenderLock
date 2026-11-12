@@ -111,12 +111,23 @@ def test_without_effects_drops_supplied_input_value_units(extra):
         particle_history_ticks='0',particle_observations='',captured_slide_inputs='')
 
 
-@pytest.mark.parametrize('option', ['--particle-observations','--captured-slide-inputs'])
+@pytest.mark.parametrize('option', ['--particle-observations','--captured-slide-inputs','--captured-ambient-inputs'])
 def test_model_rule_omission_cannot_keep_an_input_requiring_those_rules(option):
     failure=dict(stage='prepare_installed_assets',error='Requested model bone rules could not be prepared: missing bone')
     command=BASE+['--model-constraints',option,'capture.json']
     assert recovery_choices(command,failure)==[]
     assert 'supplied particle inputs require model bone rules' in recovery_summary(command,failure).lower()
+
+
+@pytest.mark.parametrize('extra',[
+    ['--captured-ambient-inputs','ambient.json'],
+    ['--captured-ambient-inputs=ambient.json'],
+    ['--captured-ambient-inputs','--model-constraints'],
+])
+def test_without_effects_removes_ambient_option_as_one_value_unit(extra):
+    choice=single(BASE+extra,EFFECTS)
+    assert choice.command==tuple(BASE+['--no-effects'])
+    assert dict(choice.values_overrides)['captured_ambient_inputs']==''
 
 
 @pytest.mark.parametrize('error', [

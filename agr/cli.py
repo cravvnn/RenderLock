@@ -598,6 +598,16 @@ def _convert(args, diagnostics):
                         start_tick=args.start_tick, end_tick=args.end_tick, history_ticks=history_ticks)
         captured_inputs = read_cohort(captured_path,
                                      reserved=(input_path, output, package, report_path))
+    ambient_inputs = None
+    ambient_expected = None
+    ambient_path = getattr(args, 'captured_ambient_inputs', None)
+    if ambient_path:
+        from .captured_ambient_inputs import require_options, read_inputs
+        require_options(ambient_path, simulation=bool(particle_probe),
+                        constraints=bool(getattr(args, 'model_constraints', False)),
+                        partial=bool(args.partial), start_tick=args.start_tick,
+                        end_tick=args.end_tick, history_ticks=history_ticks)
+        ambient_inputs = read_inputs(ambient_path, reserved=(input_path, output, package, report_path))
     if not args.overwrite and any(p.exists() for p in (output, package, report_path)):
         raise ValueError("Output or its companion package already exists. Choose a new name, or explicitly enable --overwrite.")
     engine = executable(args.blender_python or args.blender)
@@ -814,6 +824,12 @@ def _convert(args, diagnostics):
                 captured_bound = bind_cohort(captured_inputs, read_scene(segment))
                 runtime['captured_slide_cohort'] = captured_bound
                 captured_expected = expected_receipt(captured_bound)
+            if ambient_inputs is not None:
+                from .captured_ambient_inputs import bind_inputs
+                from .captured_ambient_render import expected_receipt
+                ambient_bound = bind_inputs(ambient_inputs, read_scene(segment))
+                runtime['captured_ambient_inputs'] = ambient_bound
+                ambient_expected = expected_receipt(ambient_bound)
             # These plans, diagnostics and prepared states are part of the
             # effect audit, so they must survive normal temporary-work cleanup.
             effect_artifacts=Path(tempfile.mkdtemp(prefix=output.stem+'-effects-',dir=output.parent))
@@ -845,6 +861,10 @@ def _convert(args, diagnostics):
             from .captured_slide_render import validate_completion
             validate_completion(blender_report.get('effects', {}).get('captured_slide_effects'),
                                 captured_expected)
+        if ambient_expected is not None:
+            from .captured_ambient_render import validate_completion
+            validate_completion(blender_report.get('effects', {}).get('captured_ambient_effects'),
+                                ambient_expected)
         save_scene(generated, segment)
         log("[4/4] Saving the scene package and coverage report...")
         set_stage("publish_scene")
@@ -856,6 +876,8 @@ def _convert(args, diagnostics):
             report['particle_observations'] = observation_receipt
         if captured_expected is not None:
             report['captured_slide_inputs'] = captured_expected
+        if ambient_expected is not None:
+            report['captured_ambient_inputs'] = ambient_expected
         report['export_policy'] = {'partial_animation': bool(args.partial),
                                    'partial_cloth': bool(getattr(args,'partial_cloth',False))}
         report["particles"] = report["scene_extras"].get("particles", {"status": "not_requested"})
@@ -993,6 +1015,8 @@ def parser():
                     help='Qualified particle observation JSON; requires particle simulation and --model-constraints; does not launch the game')
     cv.add_argument('--captured-slide-inputs', type=Path,
                     help='Experimental qualified four-component slide input descriptor; requires simulation, model constraints, --partial and the exact captured range/history; no game launch')
+    cv.add_argument('--captured-ambient-inputs', type=Path,
+                    help='Experimental independent ambient sprite/rope input descriptor; requires simulation, model constraints, --partial and the exact captured range/history; no game launch')
     cv.add_argument("--material-repairs", action="store_true",
                     help="Apply experimental hero unlit/emission repairs and calibrated glass; Source shader parity is not implied")
     cv.add_argument('--model-constraints', action='store_true',

@@ -18,7 +18,7 @@ def build_observed_sprites(package, data, assets, scene, camera):
     require(type(scale) in (int,float) and math.isfinite(scale) and scale > 0 and rate > 0 and fps > 0, 'invalid units/timing')
     original = scene.frame_current, scene.frame_subframe
     collection = bpy.data.collections.new('RenderLock | native ambient sprite frames'); scene.collection.children.link(collection)
-    images = {}; materials = {}; objects = []; counts = {}; samples = package['reference']['capture']['samples']
+    images = {}; materials = {}; objects = []; counts = {}; meshes = {}; samples = package['reference']['capture']['samples']
     views = {}
     try:
         for sample in samples:
@@ -40,6 +40,7 @@ def build_observed_sprites(package, data, assets, scene, camera):
                 resource = row['resource']; definition = assets['definitions'][resource]
                 for index, renderer in enumerate(definition['m_Renderers']):
                     key = resource, index
+                    meshes.setdefault(key, 0)
                     if key not in materials: materials[key] = build_material(renderer, assets, images, str(key))
                     geometry = build_frame(row, renderer, assets['textures'], view)
                     counts[key] = counts.get(key, 0)+len(row['points'])
@@ -67,6 +68,7 @@ def build_observed_sprites(package, data, assets, scene, camera):
                             current.data[loop.index].uv = [v*weight for v in values['current'][i]]
                             nxt.data[loop.index].uv = [v*weight for v in values['next'][i]]
                     obj = bpy.data.objects.new(mesh.name, mesh); collection.objects.link(obj); objects.append(obj)
+                    meshes[key] += 1
                     obj.visible_shadow = False
                     obj['agr_observed_sprite_tick'] = tick; obj['agr_particle_resource'] = resource
                     obj['agr_observed_sprite_renderer'] = index; obj['agr_observed_collection_backend'] = BACKEND
@@ -80,9 +82,12 @@ def build_observed_sprites(package, data, assets, scene, camera):
     finally:
         scene.frame_set(original[0], subframe=original[1]); bpy.context.view_layer.update()
     return dict(backend=BACKEND, objects=len(objects), point_lights=0, particle_tracks=0,
-        rendered_collection_layers=sum(value > 0 for value in counts.values()), collection_frame_meshes=len(objects),
+        rendered_collection_layers=sum(value > 0 for value in meshes.values()), collection_frame_meshes=len(objects),
         observed_reference_sha256=package['reference']['capture_sha256'], camera_object=camera.name,
-        layers=[dict(resource=k[0], renderer=k[1], point_samples=v) for k,v in sorted(counts.items())],
+        layers=[dict(resource=k[0], renderer=k[1], point_samples=v, meshes=meshes[k],
+            complete_array_samples=len(samples), empty_array_samples=sum(not row['points']
+                for frame in samples for row in frame['collections'] if row['resource'] == k[0]))
+            for k,v in sorted(counts.items())],
         limitations=['Complete arrays hold between native ticks; no particle lifetime is inferred.',
             'Geometry/UVs use the sampled camera; camera changes require rebaking.',
             'Material uses neutral explicit scene light; Source lighting/fog/depth passes and hero/map interaction remain incomplete.',

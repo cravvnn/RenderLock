@@ -1,8 +1,9 @@
 # Captured ambient component boundary
 
 This is component/API integration for two pinned ambient sprite systems (three
-renderers) and two pinned rope systems. It does not activate ambient input in the
-ordinary CLI, GUI, runtime collector or four-component captured-slide cohort.
+renderers) and two pinned rope systems. The separate ordinary input layer is
+described in `CapturedAmbientRender_COVERAGE.md`; it does not change the
+four-component captured-slide cohort or introduce a runtime collector.
 `simulated_effect_package.validate_package` admits each package independently;
 `build_package_effects` dispatches it inside the existing allocation transaction.
 The ordinary slide loader's same-capture checks are unchanged.
@@ -12,8 +13,8 @@ fingerprint but different raw capture reports, freeze and cleanup provenance.
 Neither shared Source clocks nor a single capture run are implied. References
 keep the original fingerprints, profile definitions, native module pins and
 separate provenance. They refuse the fresh export context directly. The existing
-owner-binding check can separately establish byte-identical poses and assets;
-it does not yet admit an ambient ordinary-export descriptor. Hashes detect
+owner-binding check separately establishes byte-identical poses and assets for
+the ordinary ambient input layer without rewriting original packages. Hashes detect
 inconsistent inputs; they do not authenticate independently edited captures.
 
 ## State and composition

@@ -289,6 +289,21 @@ def build_convert_command(values: dict[str, str], *, partial: bool = False,
         if not Path(captured_path).is_file():
             raise ValueError('Choose an existing captured slide file in Advanced, or clear the field.')
         command += ['--captured-slide-inputs', captured_path]
+    ambient_path = values.get('captured_ambient_inputs', '').strip()
+    if ambient_path:
+        from .captured_ambient_inputs import require_options
+        try:
+            ambient_history = int(values.get('particle_history_ticks', '0').strip() or '0')
+        except ValueError as exc:
+            raise ValueError('Particle history ticks must be a nonnegative whole number.') from exc
+        require_options(ambient_path,
+            simulation=asset_mode == 'installed' and values.get('effects_enabled', '1') == '1'
+                       and values.get('simulate_effects', '0') == '1',
+            constraints=values.get('model_constraints', '0') == '1', partial=partial,
+            start_tick=start, end_tick=end, history_ticks=ambient_history)
+        if not Path(ambient_path).is_file():
+            raise ValueError('Choose an existing captured ambient file in Advanced, or clear the field.')
+        command += ['--captured-ambient-inputs', ambient_path]
     if asset_mode == "installed":
         if values.get("map_enabled", "0") == "1":
             from .game_assets import safe_resource_path
@@ -391,7 +406,7 @@ class AGRApp:
             "map_workflow_revision": MAP_WORKFLOW_REVISION,
             "effects_enabled": "1", "cloth_enabled": "1", "material_repairs": "0", "model_constraints": "0",
             "check_updates": "1", "disable_ui_animations": "0",
-            "simulate_effects": "0", "particle_probe": "", "particle_dotnet": "", "shot_hero": "", "particle_history_ticks": "0", "particle_observations": "", "captured_slide_inputs": "",
+            "simulate_effects": "0", "particle_probe": "", "particle_dotnet": "", "shot_hero": "", "particle_history_ticks": "0", "particle_observations": "", "captured_slide_inputs": "", "captured_ambient_inputs": "",
         }.items()}
         self.partial = tk.BooleanVar(value=False)
         self.partial_cloth = tk.BooleanVar(value=False)
@@ -533,6 +548,12 @@ class AGRApp:
                                          filetypes=[('Captured slide inputs', '*.json'), ('All files', '*')])
         if path:
             self.values['captured_slide_inputs'].set(path)
+
+    def _browse_captured_ambient_inputs(self) -> None:
+        path = filedialog.askopenfilename(parent=self.root, title='Choose captured ambient effects',
+                                         filetypes=[('Captured ambient inputs', '*.json'), ('All files', '*')])
+        if path:
+            self.values['captured_ambient_inputs'].set(path)
 
     def _browse_world_region_probe(self) -> None:
         path = filedialog.askopenfilename(parent=self.root,title='Choose AGR regional exporter',

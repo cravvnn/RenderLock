@@ -36,7 +36,7 @@ _VALUE_OPTIONS = frozenset({
     '--cubemap-decoder', '--particle-probe', '--dotnet', '--output',
     '--start-tick', '--end-tick', '--particle-history-ticks', '--fps',
     '--shot-hero', '--heroes', '--blender', '--blender-python', '--external-map',
-    '--particle-observations', '--captured-slide-inputs',
+    '--particle-observations', '--captured-slide-inputs', '--captured-ambient-inputs',
 })
 _LIGHTING_SWITCHES = frozenset({
     '--source-lighting', '--source-hero-lighting', '--source-npr-lighting',
@@ -216,7 +216,7 @@ def recovery_summary(command: list[str], failure: dict, log_text: str = '') -> s
     """Explain the failure without promising the next export will succeed."""
     rows = _arguments(command)
     kind, _ = _problem(failure, log_text)
-    if kind == 'model_constraints' and any(name in ('--particle-observations', '--captured-slide-inputs')
+    if kind == 'model_constraints' and any(name in ('--particle-observations', '--captured-slide-inputs', '--captured-ambient-inputs')
                                            for name, _ in rows):
         return ('The supplied particle inputs require model bone rules. Review the model-rule failure '
                 'or clear the capture inputs before retrying without those rules. '
@@ -288,7 +288,7 @@ def recovery_choices(command: list[str], failure: dict, log_text: str = '') -> l
             _rewrite(rows, {'--secondary-motion', '--cloth', '--partial-cloth'}), (('cloth_enabled', '0'),)))
         return choices
     if kind == 'model_constraints' and '--model-constraints' in present:
-        if present & {'--particle-observations', '--captured-slide-inputs'}:
+        if present & {'--particle-observations', '--captured-slide-inputs', '--captured-ambient-inputs'}:
             return []  # Omitting their required rules is not the stated compromise.
         return [RecoveryChoice(
             'without_model_constraints', 'Continue without model bone rules',
@@ -300,7 +300,8 @@ def recovery_choices(command: list[str], failure: dict, log_text: str = '') -> l
     if kind == 'effects' and '--no-effects' not in present:
         input_overrides = tuple((key, '') for option, key in (
             ('--particle-observations', 'particle_observations'),
-            ('--captured-slide-inputs', 'captured_slide_inputs')) if option in present)
+            ('--captured-slide-inputs', 'captured_slide_inputs'),
+            ('--captured-ambient-inputs', 'captured_ambient_inputs')) if option in present)
         return [RecoveryChoice(
             'without_effects', 'Continue without effects',
             'Retry without particle effects or particle simulation, including its earlier history. '
@@ -308,7 +309,7 @@ def recovery_choices(command: list[str], failure: dict, log_text: str = '') -> l
             'Character animation and the selected output tick range stay requested. '
             'Settings: Export > Output > Include supported particle effects; Advanced > Particle simulation.',
             _rewrite(rows, {'--particle-probe', '--dotnet', '--particle-history-ticks',
-                            '--particle-observations', '--captured-slide-inputs'}, ('--no-effects',)),
+                            '--particle-observations', '--captured-slide-inputs', '--captured-ambient-inputs'}, ('--no-effects',)),
             (('effects_enabled', '0'), ('simulate_effects', '0'), ('particle_history_ticks', '0'))
             + input_overrides)]
     if kind == 'lighting' and present & (_LIGHTING_SWITCHES - {'--partial-lighting'}):

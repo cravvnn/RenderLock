@@ -642,6 +642,13 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
         captured = build_captured_slide_cohort(runtime['captured_slide_cohort'], data,
                                               captured_path, scene, camera)
         merge_captured_slide_report(report, captured)
+    if runtime.get('captured_ambient_inputs') is not None:
+        from .captured_ambient_render import build_captured_ambient, merge_captured_ambient_report
+        ambient_path = out / 'captured-ambient-inputs.json'
+        with ambient_path.open('x', encoding='utf-8') as stream:
+            json.dump(runtime['captured_ambient_inputs'], stream, allow_nan=False)
+        ambient = build_captured_ambient(runtime['captured_ambient_inputs'], data, ambient_path, scene, camera)
+        merge_captured_ambient_report(report, ambient)
     report['unsupported_occurrences']=sum(r['occurrences'] for r in report['unsupported'])
     if not report['objects']:report.update(status='unavailable',reason='No recorded instance completed simulation and rendering')
     (out/'coverage.json').write_text(json.dumps(report,indent=2),encoding='utf-8')

@@ -942,6 +942,10 @@ def _build_advanced(app, page):
                 "Requires simulation, model bone rules and partial export. Keep referenced files available. "
                 "Captured slide sprites and trails require a new export after camera edits.",
           pady=(0, ROW_GAP))
+    _path_row(app, body, "Captured ambient effects", "captured_ambient_inputs", app._browse_captured_ambient_inputs)
+    _note(body, "Optional matching ambient capture. Current input scope: ticks 17920 to 18240 with 62 earlier ticks. "
+                "Requires simulation, model bone rules and partial export. Separate captures do not share a verified clock. "
+                "Keep referenced files available and export again after camera edits.", pady=(0, ROW_GAP))
     _note(body, "0 keeps the selected range. AGR_Retarget_Effects.py can update supported replay effects "
                 "after changing cameras.", pady=(SECTION_GAP - ROW_GAP, 0))
     _note(body, "New cloth, material repairs and particle simulation use Installed game on Setup. "
