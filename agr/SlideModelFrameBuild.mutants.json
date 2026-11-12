@@ -1,0 +1,5 @@
+[
+ {"name":"allocate unqualified input","replace":[["IF qualified THEN","IF TRUE THEN"]],"expect":"QualifiedAllocation"},
+ {"name":"publish incomplete graph","replace":[["phase=\"build\" /\\ created=4","phase=\"build\" /\\ created=1"]],"expect":"NoFailedPublication"},
+ {"name":"omit rollback removal","replace":[["/\\ created'=0","/\\ created'=created"]],"expect":"NoLeakedFailure"}
+]

@@ -1,0 +1,7 @@
+[
+ {"name":"ignore replay scene identity","replace":[["IF identity /\\ renderer /\\ Complete THEN","IF renderer /\\ Complete THEN"]],"expect":"NoUnqualifiedGeometry"},
+ {"name":"ignore renderer layout profile","replace":[["IF identity /\\ renderer /\\ Complete THEN","IF identity /\\ Complete THEN"]],"expect":"NoUnqualifiedGeometry"},
+ {"name":"missing native graph is empty","replace":[["IF identity /\\ renderer /\\ Complete THEN","IF identity /\\ renderer THEN"]],"expect":"NoUnqualifiedGeometry"},
+ {"name":"reuse previous current roots","replace":[["![cursor]=native[cursor]","![cursor]=native[0]"]],"expect":"ExactCurrentRoots"},
+ {"name":"publish only captured prefix","replace":[["phase=\"project\" /\\ cursor=2","phase=\"project\" /\\ cursor=1"]],"expect":"CompletePublication"}
+]

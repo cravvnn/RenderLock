@@ -56,6 +56,22 @@ def scene_identity(scene, entity_ids):
 
 
 def validate_package(package, scene):
+    if package.get('backend') == 'observed_slide_model_frames_v1':
+        from .observed_slide_model_states import validate_package as validate_slide_models
+        validate_slide_models(package, scene)
+        return
+    if package.get('backend') == 'observed_slide_light_frames_v1':
+        from .observed_slide_light_states import validate_package as validate_slide_lights
+        validate_slide_lights(package, scene)
+        return
+    if package.get('backend') == 'observed_slide_trail_frames_v1':
+        from .observed_slide_trail_states import validate_package as validate_slide_trails
+        validate_slide_trails(package, scene)
+        return
+    if package.get('backend') == 'observed_slide_sprite_frames_v1':
+        from .observed_slide_sprite_states import validate_package as validate_slide_sprites
+        validate_slide_sprites(package, scene)
+        return
     if package.get('backend') == 'modifier_attached_models_v1':
         from .modifier_mask_model import validate_package as validate_mask_package
         validate_mask_package(package, scene)
@@ -204,7 +220,19 @@ def build_package_effects(package, data, manifest_file, scene, camera):
     groups = ('objects', 'collections', 'meshes', 'shape_keys', 'materials', 'lights', 'images', 'actions', 'node_groups', 'texts')
     before = {key: set(getattr(bpy.data, key)) for key in groups}
     try:
-        if package.get('backend') == 'modifier_attached_models_v1':
+        if package['backend'] == 'observed_slide_model_frames_v1':
+            from .blender_observed_slide_models import build_observed_slide_models
+            report = build_observed_slide_models(package, data, assets, scene, camera)
+        elif package['backend'] == 'observed_slide_light_frames_v1':
+            from .blender_observed_slide_lights import build_observed_slide_lights
+            report = build_observed_slide_lights(package, data, assets, scene, camera)
+        elif package['backend'] == 'observed_slide_trail_frames_v1':
+            from .blender_observed_slide_trails import build_observed_slide_trails
+            report = build_observed_slide_trails(package, data, assets, scene, camera)
+        elif package['backend'] == 'observed_slide_sprite_frames_v1':
+            from .blender_observed_slide_sprites import build_observed_slide_sprites
+            report = build_observed_slide_sprites(package, data, assets, scene, camera)
+        elif package.get('backend') == 'modifier_attached_models_v1':
             from .blender_modifier_masks import build_modifier_mask
             report = build_modifier_mask(package, data, assets, scene, camera)
         else:
@@ -217,7 +245,10 @@ def build_package_effects(package, data, manifest_file, scene, camera):
         bpy.data.batch_remove(created)
         raise
     report.update(status='partial', stage='rendering', simulation_backend=report['backend'],
-                  backend=package['backend'] if package.get('backend') == 'modifier_attached_models_v1' else 'simulated_states_v1',
+                  backend=package['backend'] if package.get('backend') in (
+                      'modifier_attached_models_v1', 'observed_slide_model_frames_v1',
+                      'observed_slide_light_frames_v1', 'observed_slide_trail_frames_v1',
+                      'observed_slide_sprite_frames_v1') else 'simulated_states_v1',
                   scene_identity=package['scene_identity'], entity_ids=package['entity_ids'],
                   coverage_scope=package['coverage_scope'])
     return report
