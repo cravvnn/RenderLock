@@ -264,6 +264,16 @@ def build_convert_command(values: dict[str, str], *, partial: bool = False,
         validate_hero_decoder_paths(atlas,cube,values.get('lighting_dotnet','').strip())
         command += ['--probe-atlas-decoder',atlas,'--cubemap-decoder',cube]
         if values.get('source_hero_lighting','0')=='1':command += ['--source-hero-lighting']
+    observation_path = values.get('particle_observations', '').strip()
+    if observation_path:
+        from .particle_observations import require_options
+        require_options(observation_path,
+            simulation=asset_mode == 'installed' and values.get('effects_enabled', '1') == '1'
+                       and values.get('simulate_effects', '0') == '1',
+            constraints=values.get('model_constraints', '0') == '1')
+        if not Path(observation_path).is_file():
+            raise ValueError('Choose an existing particle observation file in Advanced, or clear the field.')
+        command += ['--particle-observations', observation_path]
     if asset_mode == "installed":
         if values.get("map_enabled", "0") == "1":
             from .game_assets import safe_resource_path
@@ -366,7 +376,7 @@ class AGRApp:
             "map_workflow_revision": MAP_WORKFLOW_REVISION,
             "effects_enabled": "1", "cloth_enabled": "1", "material_repairs": "0", "model_constraints": "0",
             "check_updates": "1", "disable_ui_animations": "0",
-            "simulate_effects": "0", "particle_probe": "", "particle_dotnet": "", "shot_hero": "", "particle_history_ticks": "0",
+            "simulate_effects": "0", "particle_probe": "", "particle_dotnet": "", "shot_hero": "", "particle_history_ticks": "0", "particle_observations": "",
         }.items()}
         self.partial = tk.BooleanVar(value=False)
         self.partial_cloth = tk.BooleanVar(value=False)
@@ -496,6 +506,12 @@ class AGRApp:
                                          filetypes=[('All files', '*')])
         if path:
             self.values['particle_dotnet'].set(path)
+
+    def _browse_particle_observations(self) -> None:
+        path = filedialog.askopenfilename(parent=self.root, title='Choose particle observations',
+                                         filetypes=[('Particle observations', '*.json'), ('All files', '*')])
+        if path:
+            self.values['particle_observations'].set(path)
 
     def _browse_world_region_probe(self) -> None:
         path = filedialog.askopenfilename(parent=self.root,title='Choose AGR regional exporter',

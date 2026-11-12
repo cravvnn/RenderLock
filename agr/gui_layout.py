@@ -934,6 +934,9 @@ def _build_advanced(app, page):
     _path_row(app, body, "Particle simulator", "particle_probe", app._browse_particle_probe)
     _path_row(app, body, ".NET (DLL only)", "particle_dotnet", app._browse_particle_dotnet)
     _path_row(app, body, "Earlier history (ticks)", "particle_history_ticks", None, button=False)
+    _path_row(app, body, "Particle observations", "particle_observations", app._browse_particle_observations)
+    _note(body, "Optional captured observations for this replay. Requires simulation and model bone rules. "
+                "Leave empty unless you have a matching observation file.", pady=(0, ROW_GAP))
     _note(body, "0 keeps the selected range. Effects follow the export camera; "
                 "use AGR_Retarget_Effects.py after changing cameras.", pady=(SECTION_GAP - ROW_GAP, 0))
     _note(body, "New cloth, material repairs and particle simulation use Installed game on Setup. "

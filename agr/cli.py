@@ -579,6 +579,14 @@ def _convert(args, diagnostics):
         raise ValueError("Output cannot replace the input.")
     package = output.with_suffix(".agrscene")
     report_path = output.with_suffix(".agr-report.json")
+    observations = None
+    observation_path = getattr(args, 'particle_observations', None)
+    if observation_path:
+        from .particle_observations import require_options, read_observations
+        require_options(observation_path, simulation=bool(particle_probe),
+                        constraints=bool(getattr(args, 'model_constraints', False)))
+        observations = read_observations(observation_path,
+                                         reserved=(input_path, output, package, report_path))
     if not args.overwrite and any(p.exists() for p in (output, package, report_path)):
         raise ValueError("Output or its companion package already exists. Choose a new name, or explicitly enable --overwrite.")
     engine = executable(args.blender_python or args.blender)
@@ -729,6 +737,12 @@ def _convert(args, diagnostics):
             from .recorded_effect_simulation import preflight_recorded_bindings
             set_stage('particle_preflight')
             particle_check = preflight_recorded_bindings(data, output_start=args.start_tick or data['start_tick'])
+            if particle_check['status'] == 'unavailable' and observations is not None:
+                # The early binding-only scan predates supplied owner inputs.
+                # They are possibilities until bound to freshly evaluated poses;
+                # final simulation/render/strict completion checks still apply.
+                particle_check = dict(particle_check, status='indeterminate',
+                                      supplied_observations_pending=sorted(observations['captures']))
             (work / 'particle-preflight.json').write_text(json.dumps(particle_check, indent=2) + '\n', encoding='utf-8')
             if particle_check['status'] == 'unavailable':
                 log('Particle preflight: no recorded instance has a currently supported creation-time binding; '
@@ -778,6 +792,11 @@ def _convert(args, diagnostics):
             command += ['--partial-lighting']
         if particle_probe:
             runtime={key:str(asset_source[key]) for key in ('install_path','cache_dir','converter')}
+            observation_receipt = None
+            if observations is not None:
+                from .particle_observations import bind_observations
+                bound, observation_receipt = bind_observations(observations, read_scene(segment))
+                runtime['crossbow_owner_captures'] = bound
             # These plans, diagnostics and prepared states are part of the
             # effect audit, so they must survive normal temporary-work cleanup.
             effect_artifacts=Path(tempfile.mkdtemp(prefix=output.stem+'-effects-',dir=output.parent))
@@ -812,6 +831,8 @@ def _convert(args, diagnostics):
         report = {"application": "RenderLock", "version": __version__, "status": "converted", "output": str(output), "scene_package": str(package / "manifest.json"), "start_tick": generated["start_tick"], "end_tick": generated["end_tick"], "tick_rate": generated["tick_rate"], "export_fps": args.fps, "entities": len(generated["entities"]), "coverage": generated.get("coverage", {}), "seconds": round(time.monotonic() - started, 3), "scene_extras": generated.get("coverage", {}).get("scene_extras", {}), "ragdoll": "outside_current_scope", "death_workflow": "user_authored_animation",
                   "map_workflow": "installed_region" if args.include_map else "external_blend", "backward_dash_facing": "not_validated"}
         report['blender_runtime'] = blender_capabilities
+        if observations is not None:
+            report['particle_observations'] = observation_receipt
         report['export_policy'] = {'partial_animation': bool(args.partial),
                                    'partial_cloth': bool(getattr(args,'partial_cloth',False))}
         report["particles"] = report["scene_extras"].get("particles", {"status": "not_requested"})
@@ -939,6 +960,8 @@ def parser():
     cv.add_argument("--no-effects", action="store_true", help="Skip recorded particle extraction and supported effect rendering")
     cv.add_argument("--particle-probe",type=Path,help="Experimental recorded-effect simulation using AGR ParticleProbe.dll or portable ParticleProbe.exe")
     cv.add_argument("--dotnet",help="Dotnet executable for --particle-probe")
+    cv.add_argument('--particle-observations', type=Path,
+                    help='Qualified particle observation JSON; requires particle simulation and --model-constraints; does not launch the game')
     cv.add_argument("--material-repairs", action="store_true",
                     help="Apply experimental hero unlit/emission repairs and calibrated glass; Source shader parity is not implied")
     cv.add_argument('--model-constraints', action='store_true',

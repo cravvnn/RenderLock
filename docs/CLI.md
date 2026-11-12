@@ -100,3 +100,30 @@ viewport proxy by default; pass `--no-map-viewport-proxy` to show the full map
 while editing. Older downloaded libraries retain their existing proxy behavior.
 Keep the complete prepared package; move exported scenes with their adjacent
 `RenderLockMapAssets` folder. See the [map guide](../MAP_WORKFLOW.md).
+
+
+## Qualified particle observation files
+
+`convert --particle-observations observations.json --particle-probe <simulator>
+--model-constraints` imports already captured, qualified owner observations.
+The same optional file is available under Advanced > Particle simulation.
+It requires Installed game assets, particle simulation and model bone rules.
+Leaving it empty preserves normal export behavior. A configured file with those
+requirements disabled is an error; clear the field to export without it.
+
+The UTF-8 JSON envelope is `{"format":"renderlock-particle-observations",
+"schema_version":1,"captures":[{"instance_id":"index:generation",
+"capture":{...}}]}`. Each capture is the normalized
+`observed_crossbow_owner_birth_6861_v1` record validated by
+`agr.particle_crossbow_owner.validate_capture`; it is not a bound package from
+another scene. Up to64 records/1MiB are accepted. Unknown envelope/record fields,
+duplicate keys/identities, oversized/deep/nonfinite JSON, reserved-output aliases
+and captures absent from the selected history refuse. All rows must match the
+fresh replay/model/birth/provider before Blender receives them. The report
+records the imported byte digest and instance IDs separately from FX coverage.
+
+This does not capture anything from a running game, prove that user-edited
+records are authentic, or establish complete particle coverage. Only the current
+qualified Windows Crossbow profile is supported by this importer; positive render
+children, other heroes/builds and Linux need their own qualification. Missing
+observations remain unsupported and strict/explicit-partial rules are unchanged.
