@@ -1,0 +1,383 @@
+--- /dev/null
++++ b/ValveResourceFormat/Particles/HitboxFrameHistory.cs
+@@ -0,0 +1,57 @@
++using System.Collections.Immutable;
++using System.IO;
++using System.Numerics;
++
++namespace ValveResourceFormat.Particles;
++
++/// <summary>Value-only Source-world hitbox record. No mutable pose arrays.</summary>
++public readonly record struct AuthoredHitboxShape(Vector3 Min, Vector3 Max,
++    Vector3 Position, Quaternion Rotation, float Scale, float Weight, int Mapping);
++
++/// <summary>
++/// Export-side CP history, following qualified native CP-cache time/swap rules.
++/// Single-threaded; caller supplies validated immutable snapshots and a stable
++/// replay/entity/model binding. No engine model lookup or implicit rebind.
++/// </summary>
++public sealed class HitboxFrameHistory
++{
++    /// <summary>Immutable current and previous snapshots for one CP query.</summary>
++    public sealed record Frame(float Time, string Binding,
++        ImmutableArray<AuthoredHitboxShape> Current,
++        ImmutableArray<AuthoredHitboxShape> Previous);
++
++    private readonly Dictionary<int, Frame> frames = new();
++
++    /// <summary>Require a stable binding and monotonically advance one CP's history.</summary>
++    public Frame Query(int controlPoint, float time, string binding,
++        ImmutableArray<AuthoredHitboxShape> shapes)
++    {
++        if (controlPoint is < 0 or > 63 || !float.IsFinite(time) || time < 0
++            || string.IsNullOrWhiteSpace(binding) || shapes.IsDefaultOrEmpty || shapes.Length > 4096)
++            throw new InvalidDataException("Invalid explicit hitbox frame input");
++        if (frames.TryGetValue(controlPoint, out var prior))
++        {
++            if (prior.Binding != binding)
++                throw new InvalidDataException("Hitbox CP binding changed during export");
++            if (time < prior.Time)
++                throw new InvalidDataException("Hitbox history cannot rewind; create a fresh simulation");
++            // Native CP cache is shared by consumers. First query in a frame
++            // determines its set/poses; a repeated query does not advance it.
++            if (time == prior.Time) return prior;
++        }
++        foreach (var shape in shapes)
++        {
++            static bool Finite(Vector3 v) => float.IsFinite(v.X) && float.IsFinite(v.Y) && float.IsFinite(v.Z);
++            if (!Finite(shape.Min) || !Finite(shape.Max) || !Finite(shape.Position)
++                || shape.Min.X > shape.Max.X || shape.Min.Y > shape.Max.Y || shape.Min.Z > shape.Max.Z
++                || !float.IsFinite(shape.Scale) || shape.Scale <= 0 || !float.IsFinite(shape.Weight) || shape.Weight < 0
++                || !float.IsFinite(shape.Rotation.LengthSquared()) || MathF.Abs(shape.Rotation.LengthSquared() - 1) > 2e-4f
++                || shape.Mapping != -1)
++                throw new InvalidDataException("Invalid authored CP hitbox shape");
++        }
++        var next = new Frame(time, binding, shapes,
++            prior?.Current ?? ImmutableArray<AuthoredHitboxShape>.Empty);
++        frames[controlPoint] = next;
++        return next;
++    }
++}
+--- a/ValveResourceFormat/Particles/Initializers/CreateOnModel.cs
++++ b/ValveResourceFormat/Particles/Initializers/CreateOnModel.cs
+@@ -1,22 +1,33 @@
++using ValveResourceFormat.Serialization.KeyValues;
++
+ namespace ValveResourceFormat.Particles.Initializers;
+ 
+-/// <summary>AGR's explicit bone-only, literal-input model emission subset.</summary>
++/// <summary>AGR's explicit bone or authored CP-hitbox, literal-input emission subset.</summary>
+ class CreateOnModel : ParticleFunctionInitializer
+ {
+     private readonly Vector3 scale;
+     private readonly Vector3 bias;
++    private readonly bool bonesOnly;
++    private readonly bool weighted;
++    private readonly int modelControlPoint;
++    private readonly int transformControlPoint;
++    private readonly string hitboxSet;
+ 
+     public CreateOnModel(ParticleDefinitionParser parse) : base(parse)
+     {
+         // Defaults checked against the installed constructor 0x17bf70.
+-        if (!parse.Boolean("m_bUseBones") || parse.Boolean("m_bUseMesh")
+-            || parse.Boolean("m_bEvenDistribution") || parse.Boolean("m_bScaleToVolume")
++        bonesOnly = parse.Boolean("m_bUseBones");
++        weighted = parse.Boolean("m_bScaleToVolume");
++        modelControlPoint = ModelHitboxInput.ControlPoint(parse);
++        transformControlPoint = ModelHitboxInput.TransformControlPoint(parse);
++        hitboxSet = parse.Data.GetStringProperty("m_HitboxSetName", "");
++        if (parse.Boolean("m_bUseMesh")
++            || parse.Boolean("m_bEvenDistribution") || (bonesOnly && weighted)
+             || parse.Boolean("m_bLocalCoords") || parse.Int32("m_nForceInModel") != 0
+             || parse.Int32("m_nHitboxValueFromControlPointIndex", -1) != -1
+             || parse.Float("m_flBoneVelocity") != 0 || parse.Float("m_flMaxBoneVelocity") != 0
+-            || parse.Data.ContainsKey("m_modelInput") || parse.Data.ContainsKey("m_transformInput")
+-            || parse.Data.ContainsKey("m_HitboxSetName"))
+-            throw new NotSupportedException("AGR CreateOnModel requires default CP0 bone input, volume sampling, zero inherited velocity and no local/mesh/even/forced modes");
++            || (bonesOnly && (parse.Data.ContainsKey("m_modelInput") || parse.Data.ContainsKey("m_HitboxSetName") || parse.Data.ContainsKey("m_transformInput"))))
++            throw new NotSupportedException("AGR CreateOnModel requires CP inputs, zero inherited velocity and no local/mesh/even/forced modes");
+         var desired = parse.NumberProvider("m_nDesiredHitbox", new LiteralNumberProvider(-1));
+         var shell = parse.NumberProvider("m_flShellSize", new LiteralNumberProvider(1));
+         var box = parse.VectorProvider("m_vecHitBoxScale", new LiteralVectorProvider(Vector3.One));
+@@ -34,8 +45,12 @@
+ 
+     public override Particle Initialize(ref Particle particle, ParticleCollection particles, ParticleSystemState state)
+     {
+-        var sample = ModelBoneSampling.Sample(state.GetModelBones(0), state.GetControlPoint(0).Position,
+-            scale, bias, extra => extra ? state.Random.NextModelCoordinate() : state.Random.Next());
++        var sample = bonesOnly
++            ? ModelBoneSampling.Sample(state.GetModelBones(0), state.GetControlPoint(0).Position,
++                scale, bias, extra => extra ? state.Random.NextModelCoordinate() : state.Random.Next())
++            : ModelHitboxSampling.Sample(state.GetModelHitboxes(modelControlPoint, hitboxSet, weighted).Current,
++                state.GetControlPoint(transformControlPoint).Position, scale, bias, weighted,
++                extra => extra ? state.Random.NextModelCoordinate() : state.Random.Next());
+         particle.Position = sample.Position;
+         particle.PositionPrevious = sample.Position;
+         particle.Velocity = Vector3.Zero;
+--- /dev/null
++++ b/ValveResourceFormat/Particles/ModelHitboxInput.cs
+@@ -0,0 +1,35 @@
++using ValveResourceFormat.Serialization.KeyValues;
++
++namespace ValveResourceFormat.Particles;
++
++/// <summary>Only explicit CP model selection, without named/model/transform aliases.</summary>
++static class ModelHitboxInput
++{
++    internal static int ControlPoint(ParticleDefinitionParser parse)
++    {
++        if (!parse.Data.ContainsKey("m_modelInput")) return 0;
++        var input = parse.Data.GetSubCollection("m_modelInput");
++        if (!input.IsCollection || input.GetStringProperty("m_nType", "PM_TYPE_CONTROL_POINT") != "PM_TYPE_CONTROL_POINT")
++            throw new NotSupportedException("AGR requires an explicit control-point model input");
++        var nested = new ParticleDefinitionParser(input, parse.Logger, parse.InputOrdinal, parse.BehaviorVersion);
++        var cp = nested.Int32("m_nControlPoint");
++        if (cp < 0 || cp > 63) throw new NotSupportedException("Invalid authored model control point");
++        return cp;
++    }
++
++    // Current native bb300 CP branch + CreateOnModel's nonlocal origin pack.
++    // Model CP and transform CP are independent inputs, even when assets use 1/1.
++    internal static int TransformControlPoint(ParticleDefinitionParser parse)
++    {
++        if (!parse.Data.ContainsKey("m_transformInput")) return 0;
++        var input = parse.Data.GetSubCollection("m_transformInput");
++        if (!input.IsCollection || input.GetStringProperty("m_nType", "PT_TYPE_CONTROL_POINT") != "PT_TYPE_CONTROL_POINT")
++            throw new NotSupportedException("AGR requires a literal control-point emission transform");
++        var nested = new ParticleDefinitionParser(input, parse.Logger, parse.InputOrdinal, parse.BehaviorVersion);
++        var cp = nested.Int32("m_nControlPoint");
++        if (cp < 0 || cp > 63 || !nested.Boolean("m_bUseOrientation", true)
++            || nested.Boolean("m_bFollowNamedValue") || !string.IsNullOrEmpty(input.GetStringProperty("m_NamedValue", "")))
++            throw new NotSupportedException("Unsupported authored emission transform mode");
++        return cp;
++    }
++}
+--- /dev/null
++++ b/ValveResourceFormat/Particles/ModelHitboxSampling.cs
+@@ -0,0 +1,86 @@
++using System.Collections.Immutable;
++using System.Numerics;
++
++namespace ValveResourceFormat.Particles;
++
++/// <summary>Qualified prepared CP hitbox sampling; provider acquisition is separate.</summary>
++public static class ModelHitboxSampling
++{
++    /// <summary>Transform local hitbox coordinates into Source-world coordinates.</summary>
++    public static Vector3 Point(AuthoredHitboxShape shape, Vector3 uv)
++    {
++        var local = (shape.Max - shape.Min) * uv + shape.Min;
++        var q = new Vector3(shape.Rotation.X, shape.Rotation.Y, shape.Rotation.Z);
++        var cross = 2 * Vector3.Cross(q, local);
++        return (local + shape.Rotation.W * cross + Vector3.Cross(q, cross)) * shape.Scale + shape.Position;
++    }
++
++    /// <summary>Sample supplied CP records with explicit random-draw consumption.</summary>
++    public static (Vector3 Position, Vector3 Coordinates, int Index) Sample(
++        ImmutableArray<AuthoredHitboxShape> shapes, Vector3 origin, Vector3 scale,
++        Vector3 bias, bool weighted, Func<bool, float> random)
++    {
++        if (shapes.IsDefaultOrEmpty || shapes.Length > 4096 || !Finite(origin) || !Finite(scale)
++            || !Finite(bias) || scale.X < 0 || scale.Y < 0 || scale.Z < 0)
++            throw new InvalidOperationException("Invalid explicit hitbox sample inputs");
++        var total = 0f;
++        foreach (var shape in shapes) total += shape.Weight;
++        if (!float.IsFinite(total) || (weighted && total <= 0)) throw new InvalidOperationException("Invalid hitbox weights");
++        float Draw(bool extra = false)
++        {
++            var value = random(extra);
++            if (!float.IsFinite(value) || value < 0 || value >= 1) throw new InvalidOperationException("Invalid hitbox random draw");
++            return value;
++        }
++        var high = scale * .5f + new Vector3(.5f); var low = Vector3.One - high;
++        var biased = !(bias.X > -.0001f && bias.X < .0001f && bias.Y > -.0001f && bias.Y < .0001f && bias.Z > -.0001f && bias.Z < .0001f);
++        var best = -1e20f; (Vector3 Position, Vector3 Coordinates, int Index) selected = default;
++        for (var attempt = 0; attempt < (biased ? 6 : 1); attempt++)
++        {
++            var index = (int)(shapes.Length * Draw());
++            if (weighted)
++            {
++                var target = total * Draw();
++                for (index = 0; index < shapes.Length - 1; index++) { target -= shapes[index].Weight; if (target <= 0) break; }
++            }
++            var shape = shapes[index];
++            var uv = (high - low) * new Vector3(Draw(true), Draw(true), Draw(true)) + low;
++            var point = Point(shape, uv); var score = float.MaxValue;
++            if (biased)
++            {
++                var delta = point - origin;
++                score = ((delta.Z * bias.Z + delta.Y * bias.Y) + delta.X * bias.X) + Draw() * 72;
++            }
++            if (score > best) { best = score; selected = (point, uv, index); }
++        }
++        if (!Finite(selected.Position)) throw new InvalidOperationException("Nonfinite authored hitbox sample");
++        return selected;
++    }
++
++    /// <summary>Apply the prepared non-rigid position/previous-position native kernel.</summary>
++    public static (Vector3 Position, Vector3 Previous) Lock(HitboxFrameHistory.Frame frame,
++        Vector3 position, Vector3 previous, int index, Vector3 uv, float age, float dt,
++        float start, float end, float strength, float previousScale, bool jumped)
++    {
++        if (frame.Current.Length == 0 || frame.Current.Length != frame.Previous.Length
++            || index < 0 || index >= frame.Current.Length) return (position, previous);
++        if (!float.IsFinite(dt) || dt <= 0 || !float.IsFinite(age) || age < 0 || !float.IsFinite(start) || !float.IsFinite(end)
++            || !float.IsFinite(strength) || strength < 0 || strength > 1 || !float.IsFinite(previousScale) || previousScale < 0 || previousScale > 1
++            || !Finite(position) || !Finite(previous) || !Finite(uv))
++            throw new InvalidOperationException("Invalid prepared hitbox lock input");
++        var cutoff = end <= 0 ? 1e20f : end;
++        if (!jumped && age >= cutoff) return (position, previous);
++        var amount = MathF.Min(age, dt) / dt;
++        if (!jumped && age > start)
++        {
++            var inverse = end > start ? 1 / (end - start) : 0;
++            amount = amount * (1 - (age - start) * inverse) * strength;
++        }
++        var delta = (Point(frame.Current[index], uv) - Point(frame.Previous[index], uv)) * amount;
++        var output = position + delta; var prior = previous + delta * (jumped ? 1 : previousScale);
++        if (!Finite(output) || !Finite(prior)) throw new InvalidOperationException("Hitbox lock overflow");
++        return (output, prior);
++    }
++
++    private static bool Finite(Vector3 v) => float.IsFinite(v.X) && float.IsFinite(v.Y) && float.IsFinite(v.Z);
++}
+--- /dev/null
++++ b/ValveResourceFormat/Particles/Operators/LockToBone.cs
+@@ -0,0 +1,41 @@
++using ValveResourceFormat.Serialization.KeyValues;
++
++namespace ValveResourceFormat.Particles.Operators;
++
++/// <summary>Non-rigid CP hitbox position lock. Missing providers remain errors.</summary>
++class LockToBone : ParticleFunctionOperator
++{
++    private readonly int controlPoint;
++    private readonly string hitboxSet;
++    private readonly float fadeStart, fadeEnd, previousScale, jumpThreshold;
++
++    public LockToBone(ParticleDefinitionParser parse) : base(parse)
++    {
++        if (parse.Boolean("m_bRigid") || parse.Boolean("m_bUseBones") || parse.Boolean("m_bRigidRotationLock")
++            || parse.Int32("m_nRotationSetType") != 0 || parse.Int32("m_nFieldOutput") != 0
++            || parse.Int32("m_nFieldOutputPrev", 2) != 2 || parse.Data.ContainsKey("m_transformInput")
++            || parse.Data.ContainsKey("m_vecRotation") || parse.Data.ContainsKey("m_flRotLerp"))
++            throw new NotSupportedException("AGR LockToBone requires default position fields and non-rigid hitbox mode");
++        controlPoint = ModelHitboxInput.ControlPoint(parse);
++        hitboxSet = parse.Data.GetStringProperty("m_HitboxSetName", "");
++        fadeStart = parse.Float("m_flLifeTimeFadeStart"); fadeEnd = parse.Float("m_flLifeTimeFadeEnd");
++        previousScale = parse.Float("m_flPrevPosScale", 1); jumpThreshold = parse.Float("m_flJumpThreshold", 100);
++        if (!float.IsFinite(fadeStart) || !float.IsFinite(fadeEnd) || !float.IsFinite(previousScale)
++            || previousScale < 0 || previousScale > 1 || !float.IsFinite(jumpThreshold) || jumpThreshold < 0)
++            throw new NotSupportedException("Invalid LockToBone scalar controls");
++    }
++
++    public override void Operate(ParticleCollection particles, float frameTime, ParticleSystemState state, float strength)
++    {
++        var frame = state.GetModelHitboxes(controlPoint, hitboxSet, false);
++        if (frame.Current.Length == 0 || frame.Current.Length != frame.Previous.Length) return;
++        var jumped = state.GetControlPoint(0).StepDelta.LengthSquared() > jumpThreshold;
++        foreach (ref var particle in particles.Current)
++        {
++            var result = ModelHitboxSampling.Lock(frame, particle.Position, particle.PositionPrevious,
++                particle.HitboxIndex, particle.HitboxOffsetPosition, particle.Age, frameTime,
++                fadeStart, fadeEnd, strength, previousScale, jumped);
++            particle.Position = result.Position; particle.PositionPrevious = result.Previous;
++        }
++    }
++}
+--- a/ValveResourceFormat/Particles/ParticleControllerFactory.cs
++++ b/ValveResourceFormat/Particles/ParticleControllerFactory.cs
+@@ -152,6 +152,7 @@
+                 ["C_OP_PointVectorAtNextParticle"] = operatorInfo => new PointVectorAtNextParticle(operatorInfo),
+                 ["C_OP_RestartAfterDuration"] = operatorInfo => new RestartAfterDuration(operatorInfo),
+                 ["C_OP_PositionLock"] = operatorInfo => new PositionLock(operatorInfo),
++                ["C_OP_LockToBone"] = parse => new LockToBone(parse),
+                 ["C_OP_QuantizeFloat"] = operatorInfo => new QuantizeFloat(operatorInfo),
+                 ["C_OP_RampScalarLinear"] = operatorInfo => new RampScalarLinear(operatorInfo),
+                 ["C_OP_RampScalarSpline"] = operatorInfo => new RampScalarSpline(operatorInfo),
+--- a/ValveResourceFormat/Particles/ParticleSystemState.cs
++++ b/ValveResourceFormat/Particles/ParticleSystemState.cs
+@@ -57,6 +57,21 @@
+         /// </summary>
+         internal ParticleRandom Random { get; } = new();
+ 
++        /// <summary>Explicit authored CP shapes/history, never a bone-box fallback.</summary>
++        public Func<ParticleSystemState, int, string, bool, HitboxFrameHistory.Frame>? ModelHitboxProvider { get; set; }
++
++        /// <summary>Resolve the provider while retaining the consuming collection identity.</summary>
++        public HitboxFrameHistory.Frame GetModelHitboxes(int cp, string set, bool weighted)
++        {
++            var provider = ModelHitboxProvider;
++            for (var parent = ParentSystem; provider is null && parent is not null; parent = parent.ParentSystem)
++            {
++                provider = parent.ModelHitboxProvider;
++            }
++            return provider?.Invoke(this, cp, set, weighted)
++                ?? throw new InvalidOperationException("AGR authored hitbox provider is missing");
++        }
++
+         /// <summary>Explicit AGR model-order world poses; inherited by child systems.</summary>
+         public Func<int, IReadOnlyList<ModelBonePose>>? ModelBoneProvider { get; set; }
+ 
+--- /dev/null
++++ b/ValveResourceFormat/Particles/HitboxFrameHistory.tla
+@@ -0,0 +1,40 @@
++----------------------- MODULE HitboxFrameHistory -----------------------
++EXTENDS Naturals, Integers, TLC
++\* Models Query called by HitboxRuntimeInputs and compiled-code oracles.
++\* Single-threaded atomic Query; immutable validated shape arrays represented
++\* by frame times. Two CPs, two identities, three times. Native lookup/math,
++\* allocation, bad numerical inputs and exceptions are outside this model;
++\* native_cp_history.py and actual C# boundary checks cover those separately.
++\* No concurrent callback/cache publication: Query takes prebuilt immutable data.
++CONSTANTS CPs, Owners
++VARIABLES frame, previous, owner, expectedFrame, expectedPrevious, expectedOwner
++vars == <<frame, previous, owner, expectedFrame, expectedPrevious, expectedOwner>>
++Init == /\ frame = [cp \in CPs |-> -1]
++        /\ previous = [cp \in CPs |-> -1]
++        /\ owner = [cp \in CPs |-> "none"]
++        /\ expectedFrame = frame
++        /\ expectedPrevious = previous
++        /\ expectedOwner = owner
++
++Query(cp,t,b) ==
++  LET valid == (owner[cp] = "none" \/ owner[cp] = b) /\ t >= frame[cp]
++      referenceValid == (expectedOwner[cp] = "none" \/ expectedOwner[cp] = b) /\ t >= expectedFrame[cp]
++      advance == valid /\ t # frame[cp]
++      referenceAdvance == referenceValid /\ t # expectedFrame[cp]
++  IN /\ frame' = IF advance THEN [frame EXCEPT ![cp] = t] ELSE frame
++     /\ previous' = IF advance THEN [previous EXCEPT ![cp] = frame[cp]] ELSE previous
++     /\ owner' = IF advance THEN [owner EXCEPT ![cp] = b] ELSE owner
++     /\ expectedFrame' = IF referenceAdvance THEN [expectedFrame EXCEPT ![cp] = t] ELSE expectedFrame
++     /\ expectedPrevious' = IF referenceAdvance THEN [expectedPrevious EXCEPT ![cp] = expectedFrame[cp]] ELSE expectedPrevious
++     /\ expectedOwner' = IF referenceAdvance THEN [expectedOwner EXCEPT ![cp] = b] ELSE expectedOwner
++
++Next == \E cp \in CPs, t \in 0..2, b \in Owners: Query(cp,t,b)
++Spec == Init /\ [][Next]_vars
++TypeOK == /\ frame \in [CPs -> -1..2]
++          /\ previous \in [CPs -> -1..2]
++          /\ owner \in [CPs -> (Owners \cup {"none"})]
++HistoryOrder == \A cp \in CPs: previous[cp] < frame[cp] \/ frame[cp] = -1
++Reference == /\ frame = expectedFrame
++             /\ previous = expectedPrevious
++             /\ owner = expectedOwner
++=============================================================================
+--- /dev/null
++++ b/ValveResourceFormat/Particles/HitboxFrameHistory.cfg
+@@ -0,0 +1,6 @@
++CONSTANTS
++  CPs = {0, 1}
++  Owners = {"mina", "venator"}
++SPECIFICATION Spec
++INVARIANTS TypeOK HistoryOrder Reference
++CHECK_DEADLOCK FALSE
+--- /dev/null
++++ b/ValveResourceFormat/Particles/HitboxFrameHistory.mutants.json
+@@ -0,0 +1,6 @@
++[
++  {"name":"drop identity guard", "replace":[["valid == (owner[cp] = \"none\" \\/ owner[cp] = b) /\\ t >= frame[cp]", "valid == t >= frame[cp]"]], "expect":"Reference"},
++  {"name":"drop monotonic guard", "replace":[["valid == (owner[cp] = \"none\" \\/ owner[cp] = b) /\\ t >= frame[cp]", "valid == (owner[cp] = \"none\" \\/ owner[cp] = b)"]], "expect":"HistoryOrder"},
++  {"name":"advance on repeated query", "replace":[["advance == valid /\\ t # frame[cp]", "advance == valid"]], "expect":"HistoryOrder"},
++  {"name":"invent first previous pose", "replace":[["[previous EXCEPT ![cp] = frame[cp]]", "[previous EXCEPT ![cp] = t]"]], "expect":"HistoryOrder"}
++]

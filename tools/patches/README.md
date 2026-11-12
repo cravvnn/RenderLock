@@ -79,3 +79,15 @@ types and root setters retain unqualified-write diagnostics. A separate summary
 reports root authored writes; snapshot requests acknowledge it, while ordinary
 output keeps its prior shape. This does not add the broader look-at, hitbox or
 root-setter research. Crossbow capture/normal/save/render acceptance is separate.
+
+The simulation-only `vrf-explicit-hitbox-runtime.patch` follows the current
+snapshot and child-position patches. It adds the explicit authored-hitbox
+history/sampler/provider, the non-rigid LockToBone operator, and a strict hitbox
+branch in CreateOnModel while retaining the existing bone-only branch. Its
+seven C# targets deliberately exclude the older broad patch's snapshot, emitter,
+root-CP writer and scalar-warp changes. State models travel beside the dependency
+history type; the host mirror is excluded from compilation. Only the simulation
+helper compiles the bounded request reader. Material/geometry dependencies and
+their parser identity pins stay separate. This is a component integration:
+Silence birth, complete control writers, pose acquisition, normal export and
+saved/Cycles acceptance remain required before a whole-effect support claim.

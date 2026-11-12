@@ -1,0 +1,6 @@
+[
+  {"name":"share histories across consumers","config":"HitboxRuntimeInputs.cfg","replace":[["key == <<context,cp>>","key == <<0,cp>>"]],"expect":"Reference"},
+  {"name":"alias CP1 to CP0","config":"HitboxRuntimeInputs-cps.cfg","replace":[["key == <<context,cp>>","key == <<context,0>>"]],"expect":"Reference"},
+  {"name":"accept skipped request frame","replace":[["IF t = active+1 THEN t ELSE active","IF TRUE THEN t ELSE active"]],"expect":"Reference"},
+  {"name":"advance duplicate query","replace":[["advance == valid /\\ age # ages[key]","advance == valid"]],"expect":"Reference"}
+]

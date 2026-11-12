@@ -1,0 +1,6 @@
+[
+  {"name":"drop identity guard", "replace":[["valid == (owner[cp] = \"none\" \\/ owner[cp] = b) /\\ t >= frame[cp]", "valid == t >= frame[cp]"]], "expect":"Reference"},
+  {"name":"drop monotonic guard", "replace":[["valid == (owner[cp] = \"none\" \\/ owner[cp] = b) /\\ t >= frame[cp]", "valid == (owner[cp] = \"none\" \\/ owner[cp] = b)"]], "expect":"HistoryOrder"},
+  {"name":"advance on repeated query", "replace":[["advance == valid /\\ t # frame[cp]", "advance == valid"]], "expect":"HistoryOrder"},
+  {"name":"invent first previous pose", "replace":[["[previous EXCEPT ![cp] = frame[cp]]", "[previous EXCEPT ![cp] = t]"]], "expect":"HistoryOrder"}
+]

@@ -70,3 +70,20 @@ for the separate admission and saved-scene gates.
 Only ParticleSimulationProbe defines`AGR_SIMULATION_SHADER_EXTRAS`. Shared probe
 source conditionally emits these new fields/oracle/policy; ParticleProbe still
 compiles against the unchanged material parser without the simulation patch.
+
+## Explicit hitbox simulation inputs
+
+The simulation-only `vrf-explicit-hitbox-runtime.patch` adds authored bounds/SRT
+sampling and non-rigid Lock to Bone using explicit CP/model/owner identities.
+`AGR_SIMULATION_HITBOX` enables the complete, bounded request-history reader.
+Each consuming collection has its own current/previous history, while repeated
+queries at one collection time reuse the first cached frame. There is no model,
+root-bone or missing-history fallback. Snapshot/hitbox mixed inputs refuse.
+
+Ordinary non-hitbox requests keep their previous output shape. Material parsing
+stays in its separately pinned helper; the local history mirror is excluded from
+both host projects because the simulation dependency supplies the compiled type.
+Silence birth/root-CP writers, fresh pose acquisition and ordinary-export wiring
+remain separate requirements. This component does not establish full Silence,
+current native capture, saved-scene or Cycles support. See the adjacent hitbox
+coverage documents for the state models, limits and code-oracle scope.

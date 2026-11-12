@@ -4,10 +4,10 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <DefineConstants>$(DefineConstants);AGR_SIMULATION_SHADER_EXTRAS;AGR_SIMULATION_SNAPSHOT</DefineConstants>
+    <DefineConstants>$(DefineConstants);AGR_SIMULATION_SHADER_EXTRAS;AGR_SIMULATION_SNAPSHOT;AGR_SIMULATION_HITBOX</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="../ParticleProbe/*.cs" />
+    <Compile Include="../ParticleProbe/*.cs" Exclude="../ParticleProbe/HitboxFrameHistory.cs" />
   </ItemGroup>
   <ItemGroup Condition="'$(ParticleSimulationVrfProject)' != ''">
     <ProjectReference Include="$(ParticleSimulationVrfProject)" />

@@ -46,6 +46,9 @@ def test_geometry_preparation_cannot_patch_the_material_dependency(tmp_path, mon
     assert ('simulation', 'vrf-explicit-snapshot-skinning.patch') in patches
     assert ('particle', 'vrf-explicit-snapshot-skinning.patch') not in patches
     assert ('geometry', 'vrf-explicit-snapshot-skinning.patch') not in patches
+    assert ('simulation', 'vrf-explicit-hitbox-runtime.patch') in patches
+    assert ('particle', 'vrf-explicit-hitbox-runtime.patch') not in patches
+    assert ('geometry', 'vrf-explicit-hitbox-runtime.patch') not in patches
     properties = codeql_build_helpers.properties(tmp_path / 'work')
     assert '-p:ParticleVrfProject=' + str(tmp_path / 'work/particle/ValveResourceFormat/ValveResourceFormat.csproj') in properties
     assert '-p:ParticleGeometryVrfProject=' + str(tmp_path / 'work/geometry/ValveResourceFormat/ValveResourceFormat.csproj') in properties

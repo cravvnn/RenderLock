@@ -1,4 +1,4 @@
-﻿using System.Numerics;
+using System.Numerics;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using ValveResourceFormat.IO;
@@ -8,6 +8,10 @@ using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Buffers.Binary;
+#if AGR_SIMULATION_HITBOX
+if(args.Length==3 && args[0]=="--hitbox-inputs-oracle") { HitboxInputOracle.Check(args[1],args[2]);return; }
+if(args.Length==3 && args[0]=="--hitbox-runtime-oracle") { HitboxRuntimeOracle.Check(args[1],args[2]);return; }
+#endif
 #if AGR_SIMULATION_SNAPSHOT
 if(args.Length==2 && args[0]=="--single-child-position-oracle") { SingleChildPositionOracle.Check(args[1]);return; }
 if(args.Length==3 && args[0]=="--crossbow-owner-input-oracle") { CrossbowOwnerInputOracle.Check(args[1],args[2]);return; }
@@ -64,6 +68,15 @@ foreach(var instance in config.GetProperty("instances").EnumerateArray()) {
 #if AGR_SIMULATION_SNAPSHOT
  var snapshotInputs=SnapshotRuntimeInputs.Parse(instance,controls,birth,end);
 #endif
+#if AGR_SIMULATION_HITBOX
+ var hitboxInputs=HitboxRuntimeInputs.Parse(instance,controls,birth,end);
+ if(hitboxInputs is not null && snapshotInputs is not null)
+  throw new InvalidDataException("Hitbox and snapshot histories cannot be combined");
+#else
+ if(instance.TryGetProperty("model_hitbox_policy",out _) || instance.TryGetProperty("model_hitbox_bindings",out _)
+    || controls.Values.Any(c=>c.TryGetProperty("model_hitboxes",out _)))
+  throw new InvalidDataException("Explicit hitbox inputs require the simulation hitbox build");
+#endif
  // Pre-roll must use an explicit complete history. Never hold the first shot
  // transform backwards or restart an older effect at the output boundary.
  int? modelCount=null;string? extraLayout=null;
@@ -86,12 +99,18 @@ foreach(var instance in config.GetProperty("instances").EnumerateArray()) {
 #if AGR_SIMULATION_SNAPSHOT
  if(snapshotInputs is not null)sim.RenderState.SnapshotModelBoneProvider=snapshotInputs.Query;
 #endif
+#if AGR_SIMULATION_HITBOX
+ if(hitboxInputs is not null)sim.RenderState.ModelHitboxProvider=hitboxInputs.Query;
+#endif
  var seedBindings=seed.HasValue?SeedBinding.Apply(sim,seed.Value,id!):new List<SeedBinding>();
  var seedResets=new List<object>();
  bool destroyedImmediately=false;
  for(int tick=birth;tick<=end;tick++) {
 #if AGR_SIMULATION_SNAPSHOT
   snapshotInputs?.Advance(tick);
+#endif
+#if AGR_SIMULATION_HITBOX
+  hitboxInputs?.Advance(tick);
 #endif
   if(!destroyedImmediately) {
   var cp=controls[tick];var p=cp.GetProperty("position").EnumerateArray().Select(v=>v.GetSingle()).ToArray();var q=cp.GetProperty("rotation").EnumerateArray().Select(v=>v.GetSingle()).ToArray();
@@ -156,6 +175,14 @@ hitbox_index=x.HitboxIndex,hitbox_coordinates=V(x.HitboxOffsetPosition),trail=x.
   if(replayEvents.CrossbowOwnerProvider.HasValue)
    snapshotRow.Add("crossbow_owner_provider",replayEvents.CrossbowOwnerProvider.Value);
   qualifiedOutput=snapshotRow;
+ }
+#endif
+#if AGR_SIMULATION_HITBOX
+ if(hitboxInputs is not null) {
+  var hitboxRow=JsonSerializer.SerializeToElement(qualifiedOutput).EnumerateObject().ToDictionary(p=>p.Name,p=>(object)p.Value.Clone());
+  hitboxRow.Add("model_hitbox_input_policy",HitboxRuntimeInputs.Policy);
+  hitboxRow.Add("model_hitbox_bindings",hitboxInputs.Bindings);
+  qualifiedOutput=hitboxRow;
  }
 #endif
  if(replayEvents.WorldOriginProvider is null)output.Add(qualifiedOutput);
