@@ -1,0 +1,112 @@
+[
+  {
+    "name": "drop cumulative budget",
+    "replace": [
+      [
+        "withinBudget == rows<1",
+        "withinBudget == TRUE"
+      ]
+    ],
+    "expect": "Bounded"
+  },
+  {
+    "name": "clear sticky failure",
+    "replace": [
+      [
+        "failed'=(failed \\/ fault)",
+        "failed'=fault"
+      ]
+    ],
+    "expect": "Covered"
+  },
+  {
+    "name": "accept truncated scan",
+    "replace": [
+      [
+        "available'=(position=2 /\\ tableSeen /\\ ~failed)",
+        "available'=(tableSeen /\\ ~failed)"
+      ]
+    ],
+    "expect": "Covered"
+  },
+  {
+    "name": "accept unobserved table",
+    "replace": [
+      [
+        "available'=(position=2 /\\ tableSeen /\\ ~failed)",
+        "available'=(position=2 /\\ ~failed)"
+      ]
+    ],
+    "expect": "Covered"
+  },
+  {
+    "name": "accept failed coverage",
+    "replace": [
+      [
+        "available'=(position=2 /\\ tableSeen /\\ ~failed)",
+        "available'=(position=2 /\\ tableSeen)"
+      ]
+    ],
+    "expect": "Covered"
+  },
+  {
+    "name": "crop prerange writes",
+    "replace": [
+      [
+        "keep == event /\\ ~failed /\\ legal",
+        "keep == event /\\ ~failed /\\ legal /\\ position>0"
+      ]
+    ],
+    "expect": "HistoryPreserved"
+  },
+  {
+    "name": "overwrite racing output",
+    "replace": [
+      [
+        "fresh == ~exists",
+        "fresh == TRUE"
+      ]
+    ],
+    "expect": "PreservePrior"
+  },
+  {
+    "name": "accept failed publication",
+    "replace": [
+      [
+        "IF exit=\"success\" /\\ content=\"complete\" /\\ available THEN TRUE ELSE accepted",
+        "IF content=\"complete\" /\\ available THEN TRUE ELSE accepted"
+      ]
+    ],
+    "expect": "AcceptedSuccess"
+  },
+  {
+    "name": "stop core actor progress after capture failure",
+    "replace": [
+      [
+        "actorRows'=actorRows+1",
+        "actorRows'=actorRows+IF failed THEN 0 ELSE 1"
+      ]
+    ],
+    "expect": "CoreIndependent"
+  },
+  {
+    "name": "continue retaining after sticky failure",
+    "replace": [
+      [
+        "keep == event /\\ ~failed /\\ legal",
+        "keep == event /\\ legal"
+      ]
+    ],
+    "expect": "FrozenFailure"
+  },
+  {
+    "name": "accept a malformed retained diagnostic row",
+    "replace": [
+      [
+        "failed'=(failed \\/ fault)",
+        "failed'=(failed \\/ (event /\\ ~legal))"
+      ]
+    ],
+    "expect": "Covered"
+  }
+]

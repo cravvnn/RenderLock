@@ -9,6 +9,7 @@ const ANIM: &str = "CBodyComponent.m_animationController.";
 const SKEL: &str = "CBodyComponent.m_skeletonInstance.";
 const HERO: &str = "m_CCitadelHeroComponent.m_spawnedHero.m_nHeroID";
 mod projectile_particles;
+mod client_modifier_writes;
 
 fn encoded_field(name: &str, value: &boon::FieldValue) -> serde_json::Result<Value> {
     match value {
@@ -70,7 +71,7 @@ fn main() -> anyhow::Result<()> {
     ensure!(heroes.iter().all(|h| *h > 0), "Hero IDs must be positive");
     let output = Path::new(&args[2]);
     fs::create_dir_all(output)?;
-    for name in ["raw_animation_state.json", "network_ticks.json", "native_coverage.json", projectile_particles::FILE] {
+    for name in ["raw_animation_state.json", "network_ticks.json", "native_coverage.json", projectile_particles::FILE, client_modifier_writes::FILE] {
         projectile_particles::require_fresh(&output.join(name))?;
     }
     let parser = boon::Parser::from_file(Path::new(&args[1]))?;
@@ -112,6 +113,7 @@ fn main() -> anyhow::Result<()> {
 
     let filter = HashSet::from(["CCitadelPlayerPawn", "CCitadelGameRulesProxy", projectile_particles::CLASS]);
     let mut projectile_capture = projectile_particles::Capture::default();
+    let mut modifier_capture = client_modifier_writes::Capture::default();
     let mut writer = BufWriter::new(File::create(output.join("raw_animation_state.json"))?);
     writer.write_all(b"[\n")?;
     let mut count = 0usize;
@@ -125,6 +127,14 @@ fn main() -> anyhow::Result<()> {
     eprintln!("AGR: reconstructing entity state from signon through tick {end}");
     parser.decode_segment(None, end + 1, &filter, |ctx| {
         if ctx.tick() > end || callback_error.is_some() { return; }
+        let table = ctx.string_tables().find_table("ActiveModifiers");
+        modifier_capture.observe_tick(ctx.tick(), end, table.is_some());
+        if let Some(table) = table {
+            for change in table.changes() {
+                let kind = format!("{:?}", change.kind);
+                modifier_capture.observe_write(ctx.tick(), &kind, change.index, change.entry.user_data.as_deref());
+            }
+        }
         projectile_capture.capture_tick(ctx.tick(), end, |capture| {
             let mut owner_handles = HashSet::<u32>::new();
             for (_, entity) in ctx.entities().iter() {
@@ -218,6 +228,7 @@ fn main() -> anyhow::Result<()> {
     writer.flush()?;
     ensure!(count > 0, "No matching hero pawn samples in requested tick range");
     projectile_capture.write_new(&output.join(projectile_particles::FILE), start, end)?;
+    modifier_capture.write_new(&output.join(client_modifier_writes::FILE), start, end)?;
     let coverage = json!({"adapter":"agr-extract 0.2.0","boon_version":"0.15.0",
         "state_reconstruction":"from_signon", "tick_range_inclusive":true,
         "source_world_half":32768,
@@ -226,6 +237,7 @@ fn main() -> anyhow::Result<()> {
         "animation_warmup_samples":warmup_count,"unresolved_animation_warmup":unresolved_warmup,
         "dormant_samples":dormant_samples,"network_tick_samples":clock_rows.len(),
         "particles":"not_extracted", "projectile_particles":projectile_capture.summary(end),
+        "client_modifier_writes":modifier_capture.summary(end),
         "map":"not_extracted", "ragdoll":"not_simulated"});
     serde_json::to_writer_pretty(BufWriter::new(File::create(output.join("native_coverage.json"))?), &coverage)?;
     eprintln!("AGR: saved {count} pawn snapshots and {} network clocks", clock_rows.len());

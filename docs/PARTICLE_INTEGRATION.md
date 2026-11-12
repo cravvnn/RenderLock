@@ -99,6 +99,31 @@ exclusive publication across four observations. Rust, Python and actual replay
 checks cover concrete fields, limits and provenance separately. This compatibility
 fix does not qualify additional effect families or relax the coverage gate.
 
+## Raw modifier-history transport
+
+Normal replay extraction now retains bounded, ordered `ActiveModifiers` writes
+from signon before cropping actor output. The portable scene package embeds the
+validated raw bytes and replay/helper/range/payload provenance. Snapshots,
+same-slot writes, removals and absent versus empty protobuf fields remain distinct.
+This is internal extraction data; the extraction signature, CLI and `.crav` v1
+contract are unchanged. An old helper advertises unavailable capture, not absence
+of active modifiers. A failed capture retains an explicitly unavailable diagnostic
+prefix and does not resume copying writes. Real output I/O errors remain fatal.
+
+Fresh native comparisons preserve the existing actor, clock and projectile bytes
+exactly and reproduce the earlier raw modifier reference. A private row-budget
+control preserves those same outputs with unavailable modifier coverage. The
+normal export's saved scene package retains the earlier writes; reopen checks
+find unchanged simulation, assets, geometry and animation. Four CPU Cycles frames
+verify the existing rendering path. The reduced test budget is not a product option.
+
+This dependency does not reconstruct active modifier state, mask activation,
+particle births, phase or stop/endcap scheduling. Those providers remain separate
+work and current partial-export refusals remain in force. Envelope validation
+binds the original extraction range; a later subrange consumer must validate the
+containing capture without rewriting its hashed history or treating snapshots as
+creation events.
+
 ## Remaining limits
 
 This is not complete game-particle support. Other named attachments, derived
