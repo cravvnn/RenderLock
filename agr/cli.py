@@ -549,11 +549,18 @@ def _convert(args, diagnostics):
     elif lighting_probe or lighting_dotnet:
         raise ValueError('--world-region-probe and --lighting-dotnet require --source-lighting')
     shot_hero = getattr(args, 'shot_hero', None)
+    shot_package = getattr(args, 'shot_package', None)
     if shot_hero is not None:
         if shot_hero <= 0:
             raise ValueError('--shot-hero must be a positive hero ID')
         if args.heroes is not None and shot_hero not in args.heroes:
             raise ValueError('--shot-hero must be included in the exported --heroes selection')
+    if shot_package is not None:
+        if shot_hero is not None:
+            raise ValueError('--shot-package and --shot-hero cannot both choose the scene camera')
+        shot_package = shot_package.expanduser().resolve()
+        if not shot_package.is_file():
+            raise ValueError(f'Shot package does not exist: {shot_package}')
     input_path = (args.demo or args.segment).expanduser().resolve()
     if not input_path.exists():
         raise ValueError(f"Input does not exist: {input_path}")
@@ -797,6 +804,8 @@ def _convert(args, diagnostics):
         command += ["--segment", str(segment), "--assets", str(assets), "--output", str(scene_output), "--fps", str(args.fps)]
         if getattr(args, 'shot_hero', None) is not None:
             command += ['--shot-hero', str(args.shot_hero)]
+        if shot_package is not None:
+            command += ['--shot-package', str(shot_package)]
         if character_shader is not None:
             command += ['--character-shader',str(character_shader)]
         if external_map is not None:
@@ -916,6 +925,12 @@ def _convert(args, diagnostics):
                                  prepared_lighting_assets=report['map'])
         if getattr(args, 'map_viewport_proxy', False):
             report['map_proxy'] = blender_report['map_proxy']
+        if shot_package is not None:
+            camera = report.get("blender", {}).get("camera")
+            if (not isinstance(camera, dict) or camera.get("mode") != "shot package"
+                    or type(camera.get("camera_count")) is not int
+                    or camera["camera_count"] < 1):
+                raise RuntimeError('Blender completion report lacks the requested shot-package cameras; the scene was not published.')
         report["secondary_motion"] = merge_secondary_motion_coverage(
             report["scene_extras"].get("secondary_motion", {"status": "not_requested"}),
             report.get("blender", {}).get("entities", []))
@@ -971,6 +986,12 @@ def parser():
     observations.add_argument('--segment', type=Path, required=True)
     observations.add_argument('--instance', action='append', required=True,
                               help='Recorded particle index:generation; repeat for multiple instances')
+    crav = sub.add_parser("plan-crav", help="Validate a .crav and its local replay; plan reconstruction without exporting")
+    crav.add_argument("--package", type=Path, required=True)
+    crav.add_argument("--demo", type=Path, help="Explicit replay location when the portable hint is unavailable")
+    crav.add_argument("--shot", action="append", help="Select a shot ID; repeat for multiple shots")
+    crav.add_argument("--map-package", type=Path,
+                      help="Complete prepared map folder (map-package.json); chosen explicitly, never from the replay header")
     doctor = sub.add_parser("doctor", help="Show available dependencies")
     doctor.add_argument("--blender")
     compat = sub.add_parser("compat", help="Check installed game resources against qualified identities")
@@ -1038,6 +1059,8 @@ def parser():
     cv.add_argument("--end-tick", type=int)
     cv.add_argument("--fps", type=int, default=64)
     cv.add_argument('--shot-hero', type=int, help='Optional hero ID for a fitted follow camera instead of the overview')
+    cv.add_argument('--shot-package', type=Path,
+                    help='RenderLock .crav shot collection; imports recorded cameras before effect stages')
     cv.add_argument("--heroes", type=hero_list,
                     help="Optional comma-separated hero IDs; omit to include all heroes in the range")
     cv.add_argument("--blender")
@@ -1075,6 +1098,10 @@ def main(argv=None):
             report, digest = read_report(args.capture_report)
             document = normalize_report(report, read_scene(args.segment), args.instance, digest)
             print(json.dumps(document, indent=2, allow_nan=False))
+        elif args.command == "plan-crav":
+            from .crav_import import preflight_reconstruction
+            print(json.dumps(preflight_reconstruction(args.package, replay=args.demo,
+                                                      shot_ids=args.shot, map_package=args.map_package), indent=2))
         elif args.command == "doctor":
             import importlib.util
             from .replay import find_native_extractor

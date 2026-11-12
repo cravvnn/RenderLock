@@ -746,7 +746,8 @@ def _review_setup(scene, positions):
 
 def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime=None, shot_hero=None,
                 character_shader=None, character_only=False, allow_partial_lighting=False, external_map=None,
-                map_viewport_proxy=False, map_project_scene=None, pending_world_receivers=False):
+                map_viewport_proxy=False, map_project_scene=None, pending_world_receivers=False,
+                shot_package=None):
     _init_blender()
     if external_map is not None:
         from agr.external_map import validate_map_library
@@ -973,7 +974,15 @@ def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime
             report["warnings"].append("Map import failed: " + str(exc))
     mark("map")
     report["camera"] = _review_setup(scene, all_positions)
-    if shot_hero is not None:
+    if shot_package is not None:
+        if shot_hero is not None:
+            raise ValueError('A shot package and --shot-hero cannot both choose the scene camera')
+        from agr.blender_shot_package import apply_shot_package
+        report['camera'] = apply_shot_package(scene, data, shot_package,
+                                              scene_path=segment, fps=fps,
+                                              coordinates=coordinates)
+        report['warnings'].extend(report['camera'].get('warnings', []))
+    elif shot_hero is not None:
         selected = [root for root in roots if root.get('hero_id') == str(shot_hero)]
         if len(selected) != 1:
             raise ValueError('Hero shot requires exactly one exported entity with the requested hero ID')
@@ -1105,6 +1114,8 @@ def main(argv=None):
     parser.add_argument('--map-project-scene',type=Path,help=argparse.SUPPRESS)
     parser.add_argument('--map-texture-tier',choices=('auto','full','1024'),default='auto')
     parser.add_argument('--map-crop-margin',type=float,default=120.0)
+    parser.add_argument('--shot-package', type=Path,
+                        help='RenderLock .crav shot collection; its cameras replace the overview/follow camera')
     args = parser.parse_args(argv)
     if args.external_map is not None:
         import math
@@ -1119,7 +1130,8 @@ def main(argv=None):
     attach_blender_log(args.output)
     return build_scene(args.segment, args.assets, args.output, args.fps, args.partial,args.particle_runtime,
                        args.shot_hero,args.character_shader,args.character_only,args.partial_lighting,args.external_map,
-                       args.map_viewport_proxy,args.map_project_scene)
+                       args.map_viewport_proxy,args.map_project_scene,
+                       shot_package=args.shot_package)
 
 
 if __name__ == "__main__":

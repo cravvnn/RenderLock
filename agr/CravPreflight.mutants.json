@@ -1,0 +1,7 @@
+[
+ {"name": "skip replay recheck", "replace": [["planned'=(sameReplay /\\ samePackage", "planned'=(samePackage"]], "expect": "StableReplay"},
+ {"name": "skip package recheck", "replace": [["planned'=(sameReplay /\\ samePackage", "planned'=(sameReplay"]], "expect": "StablePackage"},
+ {"name": "ignore decoded identity", "replace": [["/\\ sameMap /\\ metadataOK /\\ ~cancelled)", "/\\ sameMap /\\ ~cancelled)"]], "expect": "MatchingIdentity"},
+ {"name": "return after cancellation", "replace": [["/\\ metadataOK /\\ ~cancelled)", "/\\ metadataOK)"]], "expect": "NotCancelled"},
+ {"name": "skip map recheck", "replace": [["/\\ samePackage /\\ sameMap /\\ metadataOK", "/\\ samePackage /\\ metadataOK"]], "expect": "StableMap"}
+]

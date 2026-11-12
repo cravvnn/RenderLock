@@ -1,0 +1,41 @@
+{
+  "format": "renderlock-shot-collection",
+  "version": 1,
+  "profile": "replay-reconstruction-v1",
+  "created_with": {"name": "RenderLock synthetic contract fixture", "version": "1"},
+  "replay": {
+    "path": "example.dem",
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "tick_rate": 64,
+    "build": 6851,
+    "map": "dl_midtown",
+    "total_ticks": 640
+  },
+  "reconstruction": {
+    "map_selection": {
+      "mode": "camera-path",
+      "margin_source_units": 128,
+      "include_lighting_dependencies": true
+    },
+    "missing_content": "error"
+  },
+  "shots": [{
+    "id": "example",
+    "name": "Synthetic two-frame shot",
+    "range": {"start_tick": 64, "end_tick": 66, "end_tick_exact": 66.13333333333334},
+    "camera": {
+      "source": {"kind": "dolly-recorded-camera", "version": 1},
+      "space": "source-world",
+      "unit_scale": 0.0254,
+      "time_origin": "shot-start",
+      "fps": 30,
+      "width": 1920,
+      "height": 1080,
+      "frame_count": 2,
+      "samples": [
+        {"frame": 0, "video_time": 0, "replay_time": 0, "position": [0,0,0], "right": [0,-1,0], "up": [0,0,1], "forward": [1,0,0], "horizontal_fov": 90, "aspect": 1.7777777777777777, "state": "complete"},
+        {"frame": 1, "video_time": 0.03333333333333333, "replay_time": 0.03333333333333333, "position": [1,0,0], "right": [0,-1,0], "up": [0,0,1], "forward": [1,0,0], "horizontal_fov": 90, "aspect": 1.7777777777777777, "state": "complete"}
+      ]
+    }
+  }]
+}
