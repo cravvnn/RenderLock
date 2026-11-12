@@ -298,6 +298,10 @@ def validate_renderer_classes(tracks, assets, simulation=None, *, scene=None):
                         and (not isinstance(layer.get('m_hTexture'),str) or not layer['m_hTexture'])
                         for _,layer in layers)):
                     raise UnsupportedEffect('Missing explicit spritecard texture; native fallback is not qualified')
+                from .particle_motion_vectors import motion_vector_pair
+                motion_pair = motion_vector_pair(renderer.get('m_vecTexturesInput', []), assets['textures'], renderer)
+                if motion_pair is not None and kind != 'C_OP_RenderSprites':
+                    raise UnsupportedEffect('Paired motion-vector sheets are qualified only for sprite renderers')
             if kind=='C_OP_RenderModels':
                 from .particle_model_assets import validate_model
                 from .blender_particle_models import validate_model_samples
@@ -382,9 +386,12 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
             and value.get('m_nMapType')=='PF_MAP_TYPE_CURVE'
             for layer in authored_layers for value in layer.get('m_TextureControls',{}).values())
         layers=authored_layers if extended else [t for t in authored_layers if t.get('m_hTexture')]
+        from .particle_motion_vectors import motion_vector_pair,build_motion_offsets,POLICY as MOTION_POLICY
+        motion_pair=motion_vector_pair(authored_layers,assets['textures'],renderer)
+        motion_offsets=None
         from .particle_texture_channels import texture_channel_mode,RGB_ALPHA,LUMA
         channel_modes=[] if extended else [texture_channel_mode(layer) for layer in layers]
-        def mapped_texture(tex, layer_index, raw=False):
+        def mapped_texture(tex, layer_index, raw=False, apply_motion=True):
             image=nodes.new('ShaderNodeTexImage')
             if tex.get('m_bReplaceTextureWithGradient'):
                 generated=bpy.data.images.new('AGR particle gradient',width=256,height=1,float_buffer=True)
@@ -431,9 +438,19 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
                 from .particle_texture_animation import build_sheet_nodes,renderer_settings
                 settings=renderer_settings(renderer,assets['definitions'][resource])
                 return build_sheet_nodes(nodes,links,image.image,mapping.outputs['Vector'],sheet,sequence,settings,samples,
-                    lambda tick:1+(tick-simulation['start_tick'])*frame_step,constant_paths)
+                    lambda tick:1+(tick-simulation['start_tick'])*frame_step,constant_paths,
+                    motion=motion_offsets if apply_motion else None)
             links.new(mapping.outputs['Vector'],image.inputs['Vector'])
             return image,mapping
+        if motion_pair is not None:
+            # Source shares base UV controls with flow. Preserve separate raw
+            # current/next samples; neither flow sampler is a color layer.
+            flow=dict(motion_pair['layer'],m_TextureControls=motion_pair['base'].get('m_TextureControls',{}))
+            image,_=mapped_texture(flow,motion_pair['index'],raw=True,apply_motion=False)
+            motion_offsets=build_motion_offsets(nodes,links,image,motion_pair['scale'])
+            mat['agr_motion_vector_policy']=MOTION_POLICY
+            mat['agr_motion_vector_source_sha256']=motion_pair['sheet']['input_sha256']
+            omissions.append(resource+': motion-vector interpolation follows the reference spritecard shader; native filtering/lighting parity is unqualified')
         if extended:
             from .particle_render_controls import render_scalar
             def sample_layer(layer,index,raw=False):
@@ -458,7 +475,8 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
                     node.outputs[0].default_value=value
                     node.outputs[0].keyframe_insert('default_value',frame=1+(tick-simulation['start_tick'])*frame_step)
                 return node.outputs[0]
-            layer_color,layer_alpha=build_layer_stack(nodes,links,layers,sample_layer,parameter,particle_input=particle_parameter)
+            layer_color,layer_alpha=build_layer_stack(nodes,links,layers,sample_layer,parameter,
+                particle_input=particle_parameter,motion_vectors=motion_pair is not None)
             mix=nodes.new('ShaderNodeMixRGB');mix.blend_type='MULTIPLY';mix.inputs[0].default_value=1
             links.new(color,mix.inputs[1]);links.new(layer_color,mix.inputs[2]);color=mix.outputs[0]
             mult=nodes.new('ShaderNodeMath');mult.operation='MULTIPLY'

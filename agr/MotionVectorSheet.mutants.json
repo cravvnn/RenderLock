@@ -1,0 +1,9 @@
+[
+ {"name":"ignore pairing","replace":[["IF paired /\\ metadata THEN","IF metadata THEN"]],"expect":"Qualified"},
+ {"name":"invent absent metadata","replace":[["IF paired /\\ metadata THEN","IF paired THEN"]],"expect":"Qualified"},
+ {"name":"gamma decode flow","replace":[["raw' = TRUE","raw' = FALSE"]],"expect":"RawSeparate"},
+ {"name":"blend or reuse current flow","replace":[["next' = 1","next' = 0"]],"expect":"RawSeparate"},
+ {"name":"skip current warp","replace":[["warpedCurrent' = raw","warpedCurrent' = FALSE"]],"expect":"BothFramesWarped"},
+ {"name":"skip next warp","replace":[["warpedNext' = raw","warpedNext' = FALSE"]],"expect":"BothFramesWarped"},
+ {"name":"composite flow as color","replace":[["flowInColor' = FALSE","flowInColor' = TRUE"]],"expect":"FlowIsData"}
+]
