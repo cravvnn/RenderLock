@@ -9,6 +9,9 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Buffers.Binary;
 #if AGR_SIMULATION_HITBOX
+if(args.Length==2 && args[0]=="--root-position-oracle") { RootPositionOracle.Check(args[1]);return; }
+if(args.Length==2 && args[0]=="--literal-identity-control-oracle") { LiteralIdentityControlOracle.Check(args[1]);return; }
+if(args.Length==3 && args[0]=="--scalar-warp-oracle") { ScalarWarpOracle.Check(args[1],args[2]);return; }
 if(args.Length==3 && args[0]=="--silence-birth-input-oracle") { SilenceBirthInputOracle.Check(args[1],args[2]);return; }
 if(args.Length==3 && args[0]=="--hitbox-inputs-oracle") { HitboxInputOracle.Check(args[1],args[2]);return; }
 if(args.Length==3 && args[0]=="--hitbox-runtime-oracle") { HitboxRuntimeOracle.Check(args[1],args[2]);return; }

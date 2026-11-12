@@ -1,0 +1,400 @@
+--- /dev/null
++++ b/ValveResourceFormat/Particles/Initializers/PositionWarpScalar.cs
+@@ -0,0 +1,69 @@
++namespace ValveResourceFormat.Particles.Initializers
++{
++    /// <summary>Scalar interpolation between literal warp vectors in a control
++    /// point's rigid frame. Current and previous positions are independent.</summary>
++    /// <remarks>No mutable initializer state. Existing numeric-provider and
++    /// collection clocks own scheduling; native prepared kernels cover math.</remarks>
++    class PositionWarpScalar : ParticleFunctionInitializer
++    {
++        private readonly Vector3 warpMin = Vector3.One;
++        private readonly Vector3 warpMax = Vector3.One;
++        private readonly INumberProvider inputValue = new LiteralNumberProvider(0);
++        private readonly float previousScale = 1;
++        private readonly int controlPoint;
++        private readonly int scaleControlPoint = -1;
++
++        public PositionWarpScalar(ParticleDefinitionParser parse) : base(parse)
++        {
++            warpMin = parse.Vector3("m_vecWarpMin", warpMin);
++            warpMax = parse.Vector3("m_vecWarpMax", warpMax);
++            inputValue = parse.NumberProvider("m_InputValue", inputValue);
++            previousScale = parse.Float("m_flPrevPosScale", previousScale);
++            controlPoint = parse.Int32("m_nControlPointNumber", controlPoint);
++            scaleControlPoint = parse.Int32("m_nScaleControlPointNumber", scaleControlPoint);
++            if (!Finite(warpMin) || !Finite(warpMax) || !float.IsFinite(previousScale)
++                || controlPoint is < 0 or > 63 || scaleControlPoint is < -1 or > 63)
++            {
++                throw new NotSupportedException("Scalar position warp requires finite vectors/scales and bounded control points.");
++            }
++        }
++
++        private static bool Finite(Vector3 v) => float.IsFinite(v.X) && float.IsFinite(v.Y) && float.IsFinite(v.Z);
++        public override ulong WrittenFields => FieldMask(ParticleField.Position) | FieldMask(ParticleField.PositionPrevious);
++
++        public override Particle Initialize(ref Particle particle, ParticleCollection particles, ParticleSystemState state)
++        {
++            var minimum = warpMin;
++            var maximum = warpMax;
++            if (scaleControlPoint >= 0)
++            {
++                var scale = state.GetControlPoint(scaleControlPoint).Position;
++                minimum *= scale;
++                maximum *= scale;
++            }
++            var value = inputValue.NextNumber(ref particle, state);
++            var warp = minimum + (maximum - minimum) * value;
++            var cp = state.GetControlPoint(controlPoint);
++            var q = cp.GetRotation();
++            if (!float.IsFinite(value) || !Finite(warp) || !Finite(cp.Position)
++                || !Finite(particle.Position) || !Finite(particle.PositionPrevious)
++                || !float.IsFinite(q.LengthSquared()) || MathF.Abs(q.LengthSquared() - 1) > 2e-5f)
++            {
++                throw new NotSupportedException("Scalar position warp requires finite inputs and a unit control-point rotation.");
++            }
++            var rotation = Matrix4x4.CreateFromQuaternion(q);
++            var inverseRotation = Matrix4x4.Transpose(rotation);
++            var local = Vector3.Transform(particle.Position - cp.Position, inverseRotation);
++            var localPrevious = Vector3.Transform(particle.PositionPrevious - cp.Position, inverseRotation);
++            var position = Vector3.Transform(local * warp, rotation) + cp.Position;
++            var previous = Vector3.Transform(localPrevious * warp * previousScale, rotation) + cp.Position;
++            if (!Finite(position) || !Finite(previous))
++            {
++                throw new NotSupportedException("Scalar position warp overflow.");
++            }
++            particle.Position = position;
++            particle.PositionPrevious = previous;
++            return particle;
++        }
++    }
++}
+--- a/ValveResourceFormat/Particles/ParticleControllerFactory.cs
++++ b/ValveResourceFormat/Particles/ParticleControllerFactory.cs
+@@ -78,6 +78,7 @@
+                 ["C_INIT_PointList"] = initializerInfo => new PointList(initializerInfo),
+                 ["C_INIT_PositionOffset"] = initializerInfo => new PositionOffset(initializerInfo),
+                 ["C_INIT_PositionWarp"] = initializerInfo => new PositionWarp(initializerInfo),
++                ["C_INIT_PositionWarpScalar"] = initializerInfo => new PositionWarpScalar(initializerInfo),
+                 ["C_INIT_RandomColor"] = initializerInfo => new RandomColor(initializerInfo),
+                 ["C_INIT_RandomSequence"] = initializerInfo => new RandomSequence(initializerInfo),
+                 ["C_INIT_SequenceLifeTime"] = initializerInfo => new SequenceLifeTime(initializerInfo),
+--- a/ValveResourceFormat/Particles/ParticleSystemState.cs
++++ b/ValveResourceFormat/Particles/ParticleSystemState.cs
+@@ -220,9 +220,11 @@
+         private ParticleSystemState RootState => ParentSystem?.RootState ?? this;
+ 
+         private bool HasExpressionControlWrites;
++        private bool HasQualifiedRootPositionWrites;
+         /// <summary>The policy used to distinguish supplied and position-authored control points.</summary>
+         public string? ControlPointInputPolicy => RootState.DeclaredInputSet == null
+-            ? null : RootState.HasExpressionControlWrites ? "agr_authored_expression_controls_v3" : "agr_authored_child_controls_v2";
++            ? null : RootState.HasQualifiedRootPositionWrites ? "agr_authored_root_position_v4"
++            : RootState.HasExpressionControlWrites ? "agr_authored_expression_controls_v3" : "agr_authored_child_controls_v2";
+ 
+         /// <summary>External control points explicitly supplied before simulation began.</summary>
+         public int[] DeclaredControlPointInputs => RootState.DeclaredInputSet?.Order().ToArray() ?? [];
+@@ -261,6 +263,38 @@
+                 && (localOverride || !root.DeclaredInputSet.Contains(cp)))
+             {
+                 root.UnprovidedPointReads.Add(cp);
++            }
++        }
++
++        // Native root setter writes positions through the existing tree while
++        // retaining every point's basis, object identity and prior snapshot.
++        internal void WriteAuthoredRootPosition(int cp, Vector3 position)
++        {
++            if (ParentSystem != null || cp is < 0 or > 63 || !float.IsFinite(position.X)
++                || !float.IsFinite(position.Y) || !float.IsFinite(position.Z))
++            {
++                throw new InvalidOperationException("Authored root position requires a finite root and exact CP");
++            }
++
++            HasQualifiedRootPositionWrites = true;
++            AuthoredRootPointSummary.Add(cp);
++            WriteAuthoredPositionTree(cp, position);
++        }
++
++        private void WriteAuthoredPositionTree(int cp, Vector3 position)
++        {
++            // Mark before reading so this valid first write is not recorded as
++            // missing input. Earlier genuinely missing reads remain recorded.
++            AuthoredPoints.Add(cp);
++            RootState.AuthoredPointSummary.Add(cp);
++            GetControlPoint(cp).Position = position;
++            HighestControlPoint = Math.Max(HighestControlPoint, cp);
++            if (Data != null)
++            {
++                foreach (var child in Data.Children)
++                {
++                    child.RenderState.WriteAuthoredPositionTree(cp, position);
++                }
+             }
+         }
+ 
+--- a/ValveResourceFormat/Particles/PreEmissionOperators/SetSingleControlPointPosition.cs
++++ b/ValveResourceFormat/Particles/PreEmissionOperators/SetSingleControlPointPosition.cs
+@@ -1,3 +1,5 @@
++using ValveResourceFormat.Serialization.KeyValues;
++
+ namespace ValveResourceFormat.Particles.PreEmissionOperators
+ {
+     /// <summary>
+@@ -13,6 +15,7 @@
+         private readonly bool setOnce;
+         private readonly ITransformProvider transformInput = new ControlPointTransformProvider();
+ 
++        private readonly bool explicitIdentityTransform;
+         private bool hasRunBefore;
+ 
+         public SetSingleControlPointPosition(ParticleDefinitionParser parse) : base(parse)
+@@ -21,6 +24,11 @@
+             cp1Pos = parse.VectorProvider("m_vecCP1Pos", cp1Pos);
+             setOnce = parse.Boolean("m_bSetOnce", setOnce);
+             transformInput = parse.TransformInput("m_transformInput", transformInput);
++            if (parse.Data.ContainsKey("m_transformInput"))
++            {
++                var input = parse.Data.GetSubCollection("m_transformInput");
++                explicitIdentityTransform = input.IsCollection && input.GetStringProperty("m_nType", "") == "PT_TYPE_INVALID";
++            }
+         }
+ 
+         public override void Reset()
+@@ -36,12 +44,18 @@
+ 
+                 position = Vector3.Transform(position, transformInput.NextTransform(ref Particle.Default, particleSystemState));
+ 
+-                if (particleSystemState.ParentSystem != null && cp1 is >= 0 and <= 63
+-                    && cp1Pos is LiteralVectorProvider && transformInput is ControlPointTransformProvider)
++                if (cp1 is >= 0 and <= 63 && cp1Pos is LiteralVectorProvider
++                    && (transformInput is ControlPointTransformProvider
++                        || (explicitIdentityTransform && transformInput is IdentityTransformProvider)))
+                 {
+-                    // Reuse the existing audited child-local writer/propagation.
+-                    // A root, expression or other transform remains unqualified.
+-                    particleSystemState.WriteAuthoredChildPosition(cp1, position);
++                    if (particleSystemState.ParentSystem == null)
++                    {
++                        particleSystemState.WriteAuthoredRootPosition(cp1, position);
++                    }
++                    else
++                    {
++                        particleSystemState.WriteAuthoredChildPosition(cp1, position);
++                    }
+                 }
+                 else
+                 {
+--- /dev/null
++++ b/ValveResourceFormat/Particles/RootControlPointPosition.cfg
+@@ -0,0 +1,2 @@
++SPECIFICATION Spec
++INVARIANT Reference
+--- /dev/null
++++ b/ValveResourceFormat/Particles/RootControlPointPosition.mutants.json
+@@ -0,0 +1,52 @@
++[
++  {
++    "name": "child-allowed",
++    "replace": [
++      [
++        "allowed == caller=0",
++        "allowed == TRUE"
++      ]
++    ],
++    "expect": "Reference"
++  },
++  {
++    "name": "wrong-cp",
++    "replace": [
++      [
++        "targets == {k \\in Keys : k[2]=cp}",
++        "targets == {k \\in Keys : k[2]=0}"
++      ]
++    ],
++    "expect": "Reference"
++  },
++  {
++    "name": "orientation-cleared",
++    "replace": [
++      [
++        "/\\ basis' = basis",
++        "/\\ basis' = [k \\in Keys |-> IF allowed /\\ k \\in targets THEN 0 ELSE basis[k]]"
++      ]
++    ],
++    "expect": "Reference"
++  },
++  {
++    "name": "child-not-propagated",
++    "replace": [
++      [
++        "targets == {k \\in Keys : k[2]=cp}",
++        "targets == {<<0,cp>>}"
++      ]
++    ],
++    "expect": "Reference"
++  },
++  {
++    "name": "omit v4 marker",
++    "replace": [
++      [
++        "qualified' = (qualified \\/ allowed)",
++        "qualified' = qualified"
++      ]
++    ],
++    "expect": "Reference"
++  }
++]
+--- /dev/null
++++ b/ValveResourceFormat/Particles/RootControlPointPosition.tla
+@@ -0,0 +1,52 @@
++------------------- MODULE RootControlPointPosition -------------------
++EXTENDS Integers, Naturals, TLC
++\* Whole root-position-write component: new WriteAuthoredRootPosition and
++\* recursive WriteAuthoredPositionTree, called only by qualified literal
++\* SetSingleControlPointPosition on a root. External updates and frame history
++\* are the interface of existing Program/ParticleSystemState clock handling.
++\* Models inherited versus existing child-local points, identity, orientation,
++\* previous snapshots and repeated root/child writes. No new reset is inferred.
++\* Three fixed nodes (root/two children), two CPs and two finite pose values.
++\* Native recursive setter math and actual C# simulation checked separately.
++\* Does not model full particle simulation, native masks or provider acquisition.
++Nodes == 0..2
++CPs == 0..1
++Keys == Nodes \X CPs
++VARIABLES pos, basis, previous, authored, overrides,
++          refPos, refBasis, refPrevious, refAuthored, qualified, refQualified
++vars == <<pos,basis,previous,authored,overrides,refPos,refBasis,refPrevious,refAuthored,qualified,refQualified>>
++Init == /\ pos = [k \in Keys |-> 0]
++        /\ basis = [k \in Keys |-> 0]
++        /\ previous = pos
++        /\ authored = {}
++        /\ overrides = {<<1,1>>}
++        /\ refPos = pos /\ refBasis = basis
++        /\ refPrevious = previous /\ refAuthored = authored
++        /\ qualified = FALSE /\ refQualified = FALSE
++External(cp,value,rotation) ==
++  /\ pos' = [k \in Keys |-> IF k[2]=cp /\ k \notin overrides THEN value ELSE pos[k]]
++  /\ basis' = [k \in Keys |-> IF k[2]=cp /\ k \notin overrides THEN rotation ELSE basis[k]]
++  /\ refPos' = [k \in Keys |-> IF k[2]=cp /\ k \notin overrides THEN value ELSE refPos[k]]
++  /\ refBasis' = [k \in Keys |-> IF k[2]=cp /\ k \notin overrides THEN rotation ELSE refBasis[k]]
++  /\ UNCHANGED <<previous,authored,overrides,refPrevious,refAuthored,qualified,refQualified>>
++WriteAuthoredRootPosition(caller,cp,value) ==
++  LET allowed == caller=0
++      targets == {k \in Keys : k[2]=cp}
++  IN /\ qualified' = (qualified \/ allowed)
++     /\ refQualified' = (refQualified \/ (caller=0))
++     /\ pos' = [k \in Keys |-> IF allowed /\ k \in targets THEN value ELSE pos[k]]
++     /\ basis' = basis
++     /\ authored' = IF allowed THEN authored \cup targets ELSE authored
++     /\ refPos' = [k \in Keys |-> IF caller=0 /\ k[2]=cp THEN value ELSE refPos[k]]
++     /\ refBasis' = refBasis
++     /\ refAuthored' = IF caller=0 THEN refAuthored \cup {k \in Keys : k[2]=cp} ELSE refAuthored
++     /\ UNCHANGED <<previous,overrides,refPrevious>>
++Snapshot == /\ previous'=pos /\ refPrevious'=refPos
++            /\ UNCHANGED <<pos,basis,authored,overrides,refPos,refAuthored,refBasis,qualified,refQualified>>
++Next == (\E cp \in CPs,value \in 0..1,rotation \in 0..1: External(cp,value,rotation))
++        \/ (\E caller \in 0..2,cp \in CPs,value \in 0..1: WriteAuthoredRootPosition(caller,cp,value))
++        \/ Snapshot
++Spec == Init /\ [][Next]_vars
++Reference == /\ pos=refPos /\ basis=refBasis
++             /\ previous=refPrevious /\ authored=refAuthored /\ qualified=refQualified
++=====================================================================
+--- /dev/null
++++ b/ValveResourceFormat/Particles/RootControlPointPosition_COVERAGE.md
+@@ -0,0 +1,13 @@
++The root writer reuses existing CP objects/tree/root summary and adds one
++qualified-writer bit for v4 provenance. The bit is separate from the old generic
++root summary: old child/expression writer behavior must keep its existing policy.
++RootControlPointPosition models external frame updates, local overrides, root
++position propagation, orientation/previous preservation and that new bit. Caller:
++literal SetSingleControlPointPosition on a root with CP transform or explicit
++PT_TYPE_INVALID identity. Unknown fallback-to-identity remains unqualified.
++Child writers retain external-input collision rejection and local propagation.
++No point cloning, separate pending transaction, cache, retry or new clock is added.
++Stateless finite/type/numerical predicates need compiled code checks. Scalar warp
++is immutable parameters/math using existing providers and introduces no lifecycle.
++Native collection timing, emission batching, rig acquisition and full effects are
++not established by these models/operators. Material parser remains unmodified.
+--- /dev/null
++++ b/ValveResourceFormat/Particles/PreEmissionOperators/RootPositionSetter.tla
+@@ -0,0 +1,28 @@
++------------------------- MODULE RootPositionSetter -------------------------
++EXTENDS Integers, Naturals, TLC
++\* Complete mutable SetSingleControlPointPosition.Operate/Reset protocol,
++\* now also calling the separately modeled root position writer. Two setter
++\* instances share a target; each owns its own hasRunBefore flag. Root/child/
++\* identity predicate and numerical validation are immutable and checked by
++\* compiled oracles. Frame/writer math composes RootControlPointPosition.
++\* Synchronous calls only; fatal operator exceptions end the helper request.
++CONSTANT SetOnce
++Ops == 0..1
++VARIABLES ran, pos, refRan, refPos
++vars == <<ran,pos,refRan,refPos>>
++Init == /\ ran = [i \in Ops |-> FALSE] /\ refRan = ran
++        /\ pos = 0 /\ refPos = 0
++Operate(i,value) ==
++  LET run == ~(SetOnce /\ ran[i])
++      refRun == ~(SetOnce /\ refRan[i])
++  IN /\ ran' = IF run THEN [ran EXCEPT ![i] = TRUE] ELSE ran
++     /\ pos' = IF run THEN value ELSE pos
++     /\ refRan' = IF refRun THEN [refRan EXCEPT ![i] = TRUE] ELSE refRan
++     /\ refPos' = IF refRun THEN value ELSE refPos
++Reset(i) == /\ ran' = [ran EXCEPT ![i] = FALSE]
++            /\ refRan' = [refRan EXCEPT ![i] = FALSE]
++            /\ UNCHANGED <<pos,refPos>>
++Next == (\E i \in Ops,value \in 0..1: Operate(i,value)) \/ (\E i \in Ops: Reset(i))
++Spec == Init /\ [][Next]_vars
++Reference == ran = refRan /\ pos = refPos
++=============================================================================
+--- /dev/null
++++ b/ValveResourceFormat/Particles/PreEmissionOperators/RootPositionSetter.cfg
+@@ -0,0 +1,3 @@
++CONSTANT SetOnce = FALSE
++SPECIFICATION Spec
++INVARIANT Reference
+--- /dev/null
++++ b/ValveResourceFormat/Particles/PreEmissionOperators/RootPositionSetter-once.cfg
+@@ -0,0 +1,3 @@
++CONSTANT SetOnce = TRUE
++SPECIFICATION Spec
++INVARIANT Reference
+--- /dev/null
++++ b/ValveResourceFormat/Particles/PreEmissionOperators/RootPositionSetter.mutants.json
+@@ -0,0 +1,35 @@
++[
++  {
++    "name": "ignore set once",
++    "config": "RootPositionSetter-once.cfg",
++    "replace": [
++      [
++        "run == ~(SetOnce /\\ ran[i])",
++        "run == TRUE"
++      ]
++    ],
++    "expect": "Reference"
++  },
++  {
++    "name": "drop reset",
++    "config": "RootPositionSetter-once.cfg",
++    "replace": [
++      [
++        "ran' = [ran EXCEPT ![i] = FALSE]",
++        "ran' = ran"
++      ]
++    ],
++    "expect": "Reference"
++  },
++  {
++    "name": "share setter flags",
++    "config": "RootPositionSetter-once.cfg",
++    "replace": [
++      [
++        "run == ~(SetOnce /\\ ran[i])",
++        "run == ~(SetOnce /\\ ran[0])"
++      ]
++    ],
++    "expect": "Reference"
++  }
++]

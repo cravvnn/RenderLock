@@ -91,3 +91,17 @@ helper compiles the bounded request reader. Material/geometry dependencies and
 their parser identity pins stay separate. This is a component integration:
 Silence birth, complete control writers, pose acquisition, normal export and
 saved/Cycles acceptance remain required before a whole-effect support claim.
+
+`vrf-silence-root-position-warp.patch` follows the hitbox patch only in the
+simulation dependency. Literal root position writes propagate through existing
+points without changing basis/previous snapshots; an independent qualified-writer
+bit selects v4 provenance while the existing root summary is reused. The existing
+child path retains its input-collision guards. Explicit PT_TYPE_INVALID identity
+is distinct from an unknown provider falling back to identity. Set-once/reset
+and position-tree models accompany the dependency classes. The registered scalar
+warp uses existing numeric providers and has no mutable initializer state.
+
+The retained Silence helper request then has four systems/no warnings/CP3-4
+authored, but all4710swirl samples still have zero radius. The normalized emission
+batch fix and required material-field snapshots remain separate requirements.
+Do not call this a complete Silence or normal-export/render qualification.

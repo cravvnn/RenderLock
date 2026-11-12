@@ -25,7 +25,8 @@ GEOMETRY_PATCHES = ("vrf-skeletonless-morph-animation.patch", "vrf-kv3-v5-unsign
 SIMULATION_PATCHES = PATCHES + ("vrf-vector-expression-initializer.patch", "vrf-shader-extra-fields.patch",
                                   "vrf-explicit-snapshot-skinning.patch",
                                   "vrf-single-child-position-provenance.patch",
-                                  "vrf-explicit-hitbox-runtime.patch")
+                                  "vrf-explicit-hitbox-runtime.patch",
+                                  "vrf-silence-root-position-warp.patch")
 
 
 def run(*args, cwd=ROOT):

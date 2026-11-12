@@ -87,3 +87,18 @@ Silence birth/root-CP writers, fresh pose acquisition and ordinary-export wiring
 remain separate requirements. This component does not establish full Silence,
 current native capture, saved-scene or Cycles support. See the adjacent hitbox
 coverage documents for the state models, limits and code-oracle scope.
+
+## Root positions and scalar warp
+
+The following simulation-only patch adds qualified literal root position writes
+and the registered PositionWarpScalar initializer. Existing point identity,
+orientation and previous values are retained while positions propagate through
+the existing tree, including local overrides. Known root writes get v4 provenance;
+unknown transform fallbacks stay unqualified. Set-once and reset keep their
+existing per-operator flags. Scalar interpolation uses explicit current/previous
+positions and existing numeric providers; it introduces no emission/clock state.
+
+This removes the retained Silence request's root/scalar warnings, but the request
+still reproduces the zero-radius normalized-emission bug in every swirl sample.
+All four systems must remain enabled, and positive samples must be qualified
+after the batch fix before full normal/save/render support is claimed.
