@@ -916,6 +916,12 @@ def parser():
     sub.add_parser("gui", help="Open the converter window")
     inspect = sub.add_parser("inspect", help="Read replay metadata")
     inspect.add_argument("--demo", type=Path, required=True)
+    observations = sub.add_parser('prepare-particle-observations',
+        help='Normalize a captured report to observation JSON on stdout; does not launch the game')
+    observations.add_argument('--capture-report', type=Path, required=True)
+    observations.add_argument('--segment', type=Path, required=True)
+    observations.add_argument('--instance', action='append', required=True,
+                              help='Recorded particle index:generation; repeat for multiple instances')
     doctor = sub.add_parser("doctor", help="Show available dependencies")
     doctor.add_argument("--blender")
     compat = sub.add_parser("compat", help="Check installed game resources against qualified identities")
@@ -1007,6 +1013,11 @@ def main(argv=None):
         elif args.command == "inspect":
             from .replay import inspect_replay
             print(json.dumps(inspect_replay(args.demo), indent=2))
+        elif args.command == 'prepare-particle-observations':
+            from .particle_observation_report import read_report, normalize_report
+            report, digest = read_report(args.capture_report)
+            document = normalize_report(report, read_scene(args.segment), args.instance, digest)
+            print(json.dumps(document, indent=2, allow_nan=False))
         elif args.command == "doctor":
             import importlib.util
             from .replay import find_native_extractor

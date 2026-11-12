@@ -303,3 +303,26 @@ records are authentic, or establish complete particle coverage. Only the current
 qualified Windows Crossbow profile is supported by this importer; positive render
 children, other heroes/builds and Linux need their own qualification. Missing
 observations remain unsupported and strict/explicit-partial rules are unchanged.
+
+
+### Preparing observations from an existing capture report
+
+`python -m agr prepare-particle-observations --capture-report report.json
+--segment scene.agrscene --instance 5682:1` emits observation JSON on stdout
+only after every requested instance passes. Save stdout as UTF-8 for use with
+`convert --particle-observations`. Repeat `--instance` for multiple records.
+A saved `.agrscene` can supply the recorded event/model identities; geometry
+assets are not needed merely to normalize the report. The final export still
+prepares and independently validates its fresh rig and original event history.
+
+Only the already qualified current Crossbow report shape is accepted. The
+normalizer checks the report's declared successful closure/restoration fields,
+replay identity, exact birth sample, full owner serial, unique property group,
+actual CP0 raw-record slot and existing module/model/graph profile. Simultaneous
+indistinguishable births refuse. No observation/default pose is synthesized.
+The report digest binds its original bytes. These checks do not authenticate
+edited reports or replace the producer's native-reader and cleanup audits.
+
+This command is an offline producer adapter. It does not launch, attach to,
+control or read a game, create a live observation, or add other particle families.
+The qualified collector remains a separate integration requirement.

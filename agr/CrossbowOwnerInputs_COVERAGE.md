@@ -40,6 +40,17 @@ enabled file when simulation or model constraints are disabled. The bounded
 transport rejects duplicate keys/identities, unknown schema fields, non-finite,
 deep/oversized payloads and reserved-output aliases before Blender starts.
 Content digests identify the imported bytes; they do not authenticate edited data.
+
+`particle_observation_report.py` adds a stateless producer adapter for the same
+profile. It normalizes an already captured closed report against explicit
+recorded instance IDs, exact birth observations and unique matching owner/property
+groups. Simultaneous indistinguishable births refuse; raw CP0 is taken from its
+actual record slot. It calls the existing owner validator and returns data only.
+The CLI writes JSON to stdout after all selected rows pass. No new file writer,
+cache, live reader, process lifecycle or persistent state needs a separate model;
+the existing owner protocol still governs subsequent admission. The closed-report
+flags are necessary input checks, not an independent cleanup audit or authenticity
+proof. Live acquisition remains the qualified producer's responsibility.
 The supplied-input path now has fresh normal exports at24/30/60FPS, independent
 saved/rollback checks and a four-frame CPU Cycles sequence. A separate fresh
 ordinary CLI observation-file export at60FPS now reproduces the same full
