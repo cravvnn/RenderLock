@@ -1,3 +1,11 @@
+# 0.3.0b29 - Qualified bat impacts and particle transparency
+
+- Retain explicitly unowned custom-origin effects independently of hero selection. Add the verified literal-at-birth bat-explosion profile for Windows game builds 6860 and 6861, preserving exact replay/resource/range provenance and legacy prepared-package identities.
+- Render the supported impact layers in character-only exports. Imported, hidden, instanced, unknown or pending map geometry keeps projected rendering unsupported; no world/map decal or exact Source lighting support is implied.
+- Honor the bat core's supported RGB-derived alpha selector while preserving ordinary RGBA transparency and rejecting other unqualified selectors.
+- Require the world-origin helper capability when packaging. Retain strict whole-instance failure/rollback, native client/renderer pairing and explicit coverage reports.
+- Verified the dense 69-impact normal particle stage with fresh simulations and the full retained scene enabled, followed by saved-scene reopen and CPU Cycles sequence checks. Broader model/ambient/attached providers, full fresh CLI hero reconstruction, Source clock parity and map projection remain separate work. No new Linux world-origin qualification.
+
 # 0.3.0b28 - Particle depth interpolation and update-check recovery
 
 - Correct supported depth-biased sprite/trail cards at fractional frames using live geometry and UV interpolation. Requires Blender 5.2+, constant bias and a qualified perspective/orthographic camera; clipping-floor and unsupported particle/provider limits remain.

@@ -94,3 +94,14 @@ def test_packager_cli_bootstraps_outside_project_directory(tmp_path):
                             env=environment, capture_output=True, text=True, timeout=15)
     assert result.returncode == 0, result.stderr
     assert "--particles-dir" in result.stdout
+
+
+def test_helper_without_world_origin_command_cannot_stage_release(packager, helper, tmp_path, monkeypatch):
+    commands=sorted(packager.PARTICLE_COMMANDS-{'simulate-world-origin-v1'})
+    monkeypatch.setattr(packager.subprocess,'run',lambda *a,**k:
+        subprocess.CompletedProcess(a,0,json.dumps(dict(schema_version=1,commands=commands)),''))
+    native=tmp_path/'native.exe';native.write_bytes(b'fixture')
+    output=tmp_path/'candidate'
+    with pytest.raises(ValueError,match='capability check failed'):
+        packager.package(tmp_path,output,native,particles_dir=helper[0],dotnet_runtime=helper[1])
+    assert not output.exists()

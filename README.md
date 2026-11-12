@@ -159,3 +159,13 @@ Game assets and third-party shader libraries are not included in the application
 - [Downloads and published notes](https://github.com/cravvnn/RenderLock/releases)
 - [Complete changelog](CHANGELOG.md)
 - [Map download](https://maps.allevilmc.com/download)
+
+### Bat-impact support in b29
+
+Character-only exports can include the verified unowned Mina bat-impact profile on
+Windows game builds 6860 and 6861. These effects use recorded world positions and
+birth ticks. Other lifecycles and unqualified game binaries remain unsupported.
+Exports containing an imported map withhold this effect until projected map
+surfaces/materials are supported; the coverage report explains the omission.
+This does not add every particle or exact game lighting. New world-origin capture
+is not qualified on Linux; existing saved scenes retain their existing behavior.

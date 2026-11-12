@@ -45,6 +45,7 @@ PORTABLE_ROOT_DOCUMENTS = {
 PARTICLE_COMMANDS = {
     "physics-json-v1", "material-bundle-v1", "decompile-cloth",
     "inventory-cloth-physics", "inventory-animation-clip-events", "inventory-model-hitboxes",
+    "simulate-world-origin-v1",
 }
 
 
