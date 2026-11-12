@@ -1,4 +1,4 @@
-"""Shared captured-slide sprite material; no ambient dispatcher."""
+"""Shared material for separately validated captured sprite components."""
 from pathlib import Path
 from types import SimpleNamespace
 from .observed_slide_profile import require

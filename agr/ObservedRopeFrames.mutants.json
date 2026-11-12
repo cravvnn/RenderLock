@@ -1,0 +1,6 @@
+[
+ {"name":"ignore native reference identity","replace":[["IF identity /\\ Complete THEN","IF Complete THEN"]],"expect":"NoUnqualifiedGeometry"},
+ {"name":"treat missing arrays as empty","replace":[["IF identity /\\ Complete THEN","IF identity THEN"]],"expect":"NoUnqualifiedGeometry"},
+ {"name":"reuse previous frame collection slots","replace":[["![cursor]=native[cursor]","![cursor]=native[0]"]],"expect":"ExactFrameArrays"},
+ {"name":"publish prefix only","replace":[["phase=\"project\" /\\ cursor=2","phase=\"project\" /\\ cursor=1"]],"expect":"CompletePublication"}
+]

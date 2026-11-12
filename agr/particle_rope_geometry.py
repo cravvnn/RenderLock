@@ -165,7 +165,7 @@ def build_rope_geometry(particles,renderer,age=0.,camera_position=None,*,camera_
     camera=_vector((0,0,0) if camera_position is None else camera_position,3)
     use_scalar=renderer.get('m_bUseScalarForTextureCoordinate',False)
     scalar_field=renderer.get('m_nScalarFieldForTextureCoordinate',8)
-    fields={1:'life',3:'radius',7:'alpha',8:'creation_time',10:'trail',16:'alpha_alternate',18:'scratch_float0'}
+    fields={1:'life',3:'radius',7:'alpha',8:'creation_time',10:'trail',16:'alpha_alternate',18:'scratch_float0',26:'scratch_float1'}
     if use_scalar and scalar_field not in fields:raise UnsupportedEffect('Rope UV scalar field is not captured')
     radius_scale=_number(scalar(renderer.get('m_flRadiusScale'),default=1))
     alpha_scale=_number(scalar(renderer.get('m_flAlphaScale'),default=1))
@@ -179,7 +179,8 @@ def build_rope_geometry(particles,renderer,age=0.,camera_position=None,*,camera_
         if use_scalar and fields[scalar_field] not in p:raise UnsupportedEffect('Missing rope UV scalar state')
         alpha=_number(p['alpha'])*_number(p['alpha_alternate'])*alpha_scale
         nodes.append({'position':_vector(p['position'],3),'radius':_number(p['radius'])*radius_scale,
-                      'normal':_vector(p['normal'],3),'color':np.r_[_vector(p['color'],3),alpha].astype(np.float32),
+                      'normal':_vector(p['normal'],3) if orientation=='PARTICLE_ORIENTATION_ALIGN_TO_PARTICLE_NORMAL' else None,
+                      'color':np.r_[_vector(p['color'],3),alpha].astype(np.float32),
                       'uv_scalar':_number(p[fields[scalar_field]])*scalar_scale if use_scalar else _F(0)})
         if shader_extra_policy is not None:
             from .particle_texture_layers import particle_texture_value

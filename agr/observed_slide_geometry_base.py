@@ -1,6 +1,6 @@
 """Stateless camera-facing quads and native spritecard UV inputs.
 
-Only separately hash-pinned captured-slide profiles are admitted by the package
+Only separately hash-pinned captured slide/ambient profiles are admitted by the package
 validators. This module has no particle identities, clocks, caches or handlers.
 Native shader geometry/UV equations are used; actual GPU filtering, constant
 buffer upload, clipping floor and Source lighting remain separate qualification.

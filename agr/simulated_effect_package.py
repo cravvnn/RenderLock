@@ -56,6 +56,14 @@ def scene_identity(scene, entity_ids):
 
 
 def validate_package(package, scene):
+    if package.get('backend') == 'observed_rope_frames_v1':
+        from .observed_rope_states import validate_package as validate_ambient_ropes
+        validate_ambient_ropes(package, scene)
+        return
+    if package.get('backend') == 'observed_sprite_frames_v1':
+        from .observed_sprite_states import validate_package as validate_ambient_sprites
+        validate_ambient_sprites(package, scene)
+        return
     if package.get('backend') == 'observed_slide_model_frames_v1':
         from .observed_slide_model_states import validate_package as validate_slide_models
         validate_slide_models(package, scene)
@@ -220,7 +228,13 @@ def build_package_effects(package, data, manifest_file, scene, camera):
     groups = ('objects', 'collections', 'meshes', 'shape_keys', 'materials', 'lights', 'images', 'actions', 'node_groups', 'texts')
     before = {key: set(getattr(bpy.data, key)) for key in groups}
     try:
-        if package['backend'] == 'observed_slide_model_frames_v1':
+        if package['backend'] == 'observed_rope_frames_v1':
+            from .blender_observed_ropes import build_observed_ropes
+            report = build_observed_ropes(package, data, assets, scene, camera)
+        elif package['backend'] == 'observed_sprite_frames_v1':
+            from .blender_observed_sprites import build_observed_sprites
+            report = build_observed_sprites(package, data, assets, scene, camera)
+        elif package['backend'] == 'observed_slide_model_frames_v1':
             from .blender_observed_slide_models import build_observed_slide_models
             report = build_observed_slide_models(package, data, assets, scene, camera)
         elif package['backend'] == 'observed_slide_light_frames_v1':
@@ -246,7 +260,8 @@ def build_package_effects(package, data, manifest_file, scene, camera):
         raise
     report.update(status='partial', stage='rendering', simulation_backend=report['backend'],
                   backend=package['backend'] if package.get('backend') in (
-                      'modifier_attached_models_v1', 'observed_slide_model_frames_v1',
+                      'modifier_attached_models_v1', 'observed_rope_frames_v1',
+                      'observed_sprite_frames_v1', 'observed_slide_model_frames_v1',
                       'observed_slide_light_frames_v1', 'observed_slide_trail_frames_v1',
                       'observed_slide_sprite_frames_v1') else 'simulated_states_v1',
                   scene_identity=package['scene_identity'], entity_ids=package['entity_ids'],
