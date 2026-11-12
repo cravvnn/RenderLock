@@ -1,0 +1,7 @@
+[
+ {"name":"borrow unmarked hidden rig","replace":[["LET valid == ancestorsOK /\\ bound /\\ (~originalHidden \\/ previewMarked)","LET valid == ancestorsOK /\\ bound"]],"expect":"QualifiedBorrow"},
+ {"name":"ignore hidden ancestors","replace":[["LET valid == ancestorsOK /\\ bound", "LET valid == bound"]],"expect":"QualifiedBorrow"},
+ {"name":"ignore root binding","replace":[["LET valid == ancestorsOK /\\ bound", "LET valid == ancestorsOK"]],"expect":"QualifiedBorrow"},
+ {"name":"leave rig enabled","replace":[["hidden'=originalHidden", "hidden'=FALSE"]],"expect":"VisibilityRestored"},
+ {"name":"leave borrowed frame","replace":[["phase'=\"visibility\" /\\ frame'=originalFrame", "phase'=\"visibility\" /\\ frame'=frame"]],"expect":"FrameRestored"}
+]

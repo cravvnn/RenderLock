@@ -4,6 +4,7 @@ This is a checked Blender input bridge, not an implementation of the engine's
 snapshot operators. It emits source-unit, column-vector 3x4 affine matrices.
 """
 import math
+from contextlib import contextmanager
 
 
 def snapshot_rig_fingerprint(rig):
@@ -104,7 +105,47 @@ def source_rigid_snapshot_matrix(rig, bone_name, source_inverse_rest, unit_scale
     return result.tolist()
 
 
+@contextmanager
+def evaluated_snapshot_rig(rig, root, scene):
+    """Borrow only RenderLock's preview-hidden rig, restoring frame/visibility.
+
+    Hidden ancestors or an independently disabled armature are not substitutes
+    for missing evaluation. The exporter marks its own cosmetic rig hiding.
+    """
+    if rig is None or root is None or rig == root or rig.type != 'ARMATURE':
+        raise ValueError('Snapshot requires the owning animated rig and replay root')
+    cursor = rig
+    seen = set()
+    bound = False
+    while cursor is not None:
+        if cursor in seen or len(seen) >= 64:
+            raise ValueError('Cyclic or unbounded snapshot rig ancestry')
+        seen.add(cursor)
+        if cursor.hide_viewport and (cursor != rig or cursor.get('agr_preview_hidden') is not True):
+            raise ValueError('Snapshot requires evaluated rig ancestry; only exporter preview hiding can be borrowed')
+        bound |= cursor == root
+        cursor = cursor.parent
+    if not bound:
+        raise ValueError('Snapshot rig is not parented to its owning replay root')
+    hidden = rig.hide_viewport
+    frame, subframe = scene.frame_current, scene.frame_subframe
+    try:
+        if hidden:
+            rig.hide_viewport = False
+        yield
+    finally:
+        try:
+            scene.frame_set(frame, subframe=subframe)
+        finally:
+            rig.hide_viewport = hidden
+
+
 def capture_source_snapshot_provider(data,entity,objects,scene,instance,manifest_dir,inventory):
+    with evaluated_snapshot_rig(objects.get('rig'), objects.get('root'), scene):
+        return _capture_source_snapshot_provider(data,entity,objects,scene,instance,manifest_dir,inventory)
+
+
+def _capture_source_snapshot_provider(data,entity,objects,scene,instance,manifest_dir,inventory):
     """Capture exact model-order Source rest -> evaluated world for Crossbow.
 
     Selection/creation admission is deliberately not inferred from these poses.

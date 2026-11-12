@@ -7,9 +7,60 @@ import math
 import numpy as np
 
 from .installed_effects import scalar, UnsupportedEffect
-from .blender_simulated_effects import build_texture_uv_nodes
+from .blender_simulated_effects import build_texture_uv_nodes, texture_uv_parameters
 from .particle_texture_channels import texture_channel_mode
 from .particle_texture_layers import enabled_texture_layers,build_layer_stack,gradient_pixels
+
+
+def _resolved_rope_controls(controls, age, context):
+    from .particle_render_controls import render_scalar
+    return {key:(render_scalar(value,age=age,default=1 if 'Scale' in key else 0,context=context)
+                 if key.startswith('m_flFinalTexture') else value) for key,value in controls.items()}
+
+
+def place_rope_texture_vertices(vertices, controls, age=0., context=None):
+    """Place each actual rope vertex, then clamp before raster interpolation."""
+    scale, origin, angle = texture_uv_parameters(_resolved_rope_controls(controls,age,context), age)
+    sin, cos = math.sin(angle), math.cos(angle)
+    result = []
+    for uv in vertices:
+        if len(uv) != 2 or any(not math.isfinite(v) for v in uv):
+            raise UnsupportedEffect('Invalid rope texture vertex')
+        x, y = uv[0]-.5, uv[1]-.5
+        placed = ((x*cos-y*sin)/scale[0]+origin[0], (x*sin+y*cos)/scale[1]+origin[1])
+        if not all(math.isfinite(v) for v in placed):
+            raise UnsupportedEffect('Non-finite placed rope texture vertex')
+        result.append(tuple(max(0.,min(1.,v)) for v in placed))
+    return result
+
+
+def prepare_rope_texture_uvs(mesh, renderer, age=0., context=None):
+    """Keep placed/clamped per-layer loop UVs in the existing depth-weight basis."""
+    base = mesh.uv_layers.get('UVMap')
+    if base is None:
+        raise UnsupportedEffect('Rope source UV layer is missing')
+    ratios = mesh.attributes.get('AGR Rope Depth Ratio')
+    if ratios is not None and (ratios.domain != 'POINT' or ratios.data_type != 'FLOAT'
+                              or len(ratios.data) != len(mesh.vertices)):
+        raise UnsupportedEffect('Invalid rope texture depth interpolation attribute')
+    factors = [1. if ratios is None else ratios.data[loop.vertex_index].value for loop in mesh.loops]
+    if len(base.data) != len(factors) or any(not math.isfinite(v) or v <= 0 for v in factors):
+        raise UnsupportedEffect('Invalid rope texture depth interpolation weight')
+    source = [tuple(v/factor for v in uv.uv) for uv,factor in zip(base.data,factors)]
+    layers = {}
+    for index,layer in enabled_texture_layers(renderer.get('m_vecTexturesInput',[])):
+        controls = layer.get('m_TextureControls',{})
+        if not controls.get('m_bClampUVs'):
+            continue
+        placed = place_rope_texture_vertices(source,controls,age,context)
+        name = f'AGR Rope Layer UV {index}'
+        target = mesh.uv_layers.get(name) or mesh.uv_layers.new(name=name)
+        for uv,values,factor in zip(target.data,placed,factors):
+            uv.uv = [v*factor for v in values]
+        layers[index] = target.name
+    if layers:
+        mesh['agr_rope_layer_uv_policy'] = 'placed_clamped_vertices_before_interpolation_v1'
+    return layers
 
 
 def rope_color_scale(renderer):
@@ -103,8 +154,11 @@ def build_rope_material(renderer, images, *, scene_light, age=0., name='AGR text
     layers = renderer.get('m_vecTexturesInput', [])
     if not layers:
         raise UnsupportedEffect('Rope material requires explicit texture layers')
+    segment_inputs = (qualified and mesh is not None
+                      and mesh.get('agr_rope_segment_shader_input_policy') == 'agr_rope_segment_shader_inputs_v1')
     for _,layer in enabled_texture_layers(layers):
-        texture_channel_mode(layer)
+        if not qualified:
+            texture_channel_mode(layer)
         if not qualified and scalar(layer.get('m_flTextureBlend'), default=1) != 1:
             raise UnsupportedEffect('Rope partial texture blending is not qualified')
         if not qualified and (layer.get('m_nTextureType', 'SPRITECARD_TEXTURE_COLOR') != 'SPRITECARD_TEXTURE_COLOR' or layer.get('m_nTextureBlendMode', 'SPRITECARD_TEXTURE_BLEND_MULTIPLY') != 'SPRITECARD_TEXTURE_BLEND_MULTIPLY'):
@@ -112,13 +166,19 @@ def build_rope_material(renderer, images, *, scene_light, age=0., name='AGR text
         if layer.get('m_TextureControls', {}).get('m_bRandomizeOffsets')and not qualified:
             raise UnsupportedEffect('Rope random texture offsets require qualified segment inputs')
         controls=layer.get('m_TextureControls',{})
-        if any(controls.get(k,'SPRITECARD_TEXTURE_PP_SCALE_NONE')!='SPRITECARD_TEXTURE_PP_SCALE_NONE'
-            for k in ('m_nPerParticleDistortion','m_nPerParticleScale')):
-            raise UnsupportedEffect('Per-particle rope texture controls require separately captured shader extras')
-        if layer.get('m_TextureControls', {}).get('m_bClampUVs'):
+        distortion = controls.get('m_nPerParticleDistortion','SPRITECARD_TEXTURE_PP_SCALE_NONE')
+        if distortion != 'SPRITECARD_TEXTURE_PP_SCALE_NONE' and (not segment_inputs or distortion not in (
+                'SPRITECARD_TEXTURE_PP_SCALE_SHADER_EXTRA_DATA1','SPRITECARD_TEXTURE_PP_SCALE_SHADER_EXTRA_DATA2')):
+            raise UnsupportedEffect('Per-particle rope UV distortion requires qualified captured shader extras')
+        if controls.get('m_nPerParticleScale','SPRITECARD_TEXTURE_PP_SCALE_NONE') != 'SPRITECARD_TEXTURE_PP_SCALE_NONE':
+            raise UnsupportedEffect('Per-particle rope texture scaling is not captured')
+        if controls.get('m_bClampUVs') and (not qualified or mesh is None):
             raise UnsupportedEffect('Rope clamped UVs require per-vertex texture placement')
         if not layer.get('m_bReplaceTextureWithGradient') and layer.get('m_hTexture') not in images:
             raise UnsupportedEffect('Missing rope texture image: '+str(layer.get('m_hTexture')))
+    prepared_uvs = prepare_rope_texture_uvs(mesh,renderer,age,render_context) if qualified and mesh is not None else {}
+    if prepared_uvs and (mesh.attributes.get('AGR Rope Depth Ratio') is not None) != depth_compensated:
+        raise UnsupportedEffect('Rope placed UVs require matching depth interpolation compensation')
     values = {key: scalar(renderer.get(key), default=default) for key, default in (
         ('m_flSelfIllumAmount', 0), ('m_flDiffuseAmount', 1), ('m_flOverbrightFactor', 1),
         ('m_flAddSelfAmount', 0), ('m_flSourceAlphaValueToMapToZero', 0),
@@ -188,15 +248,31 @@ def build_rope_material(renderer, images, *, scene_light, age=0., name='AGR text
             tex.image=tex.image.copy();tex.image.colorspace_settings.name='Non-Color';tex.image.pack()
         controls=layer.get('m_TextureControls',{})
         if qualified:
-            from .particle_render_controls import render_scalar
-            controls={key:(render_scalar(value,age=age,default=1 if 'Scale'in key else 0,context=render_context)
-                if key.startswith('m_flFinalTexture')else value)for key,value in controls.items()}
-        mapping = build_texture_uv_nodes(nodes, links, coordinate, controls, [(1, age, (0., 0.))])
-        links.new(mapping.outputs['Vector'], tex.inputs['Vector'])
-        return tex,mapping.outputs['Vector']
+            controls = _resolved_rope_controls(controls,age,render_context)
+        if index in prepared_uvs:
+            mapping = nodes.new('ShaderNodeUVMap');mapping.uv_map = prepared_uvs[index]
+            placed = mapping.outputs['UV']
+            if depth_compensated:
+                placed = vector_node('DIVIDE',placed,denominator.outputs[0])
+        else:
+            mapping = build_texture_uv_nodes(nodes, links, coordinate, controls, [(1, age, (0., 0.))])
+            placed = mapping.outputs['Vector']
+        links.new(placed, tex.inputs['Vector'])
+        return tex,placed
     from .particle_render_controls import render_scalar
+    def particle_input(mode):
+        name = {'SPRITECARD_TEXTURE_PP_SCALE_SHADER_EXTRA_DATA1':'AGR Rope Shader Extra 1',
+                'SPRITECARD_TEXTURE_PP_SCALE_SHADER_EXTRA_DATA2':'AGR Rope Shader Extra 2'}.get(mode)
+        attribute = mesh.attributes.get(name) if name and segment_inputs else None
+        if (attribute is None or attribute.domain != 'POINT' or attribute.data_type != 'FLOAT'
+                or len(attribute.data) != len(mesh.vertices)
+                or any(not math.isfinite(row.value) for row in attribute.data)):
+            raise UnsupportedEffect('Missing qualified rope texture distortion attribute')
+        node = nodes.new('ShaderNodeAttribute');node.attribute_name = name
+        value = node.outputs['Fac']
+        return math_node('DIVIDE',value,weight.outputs['Fac']) if depth_compensated else value
     layer_color,alpha=build_layer_stack(nodes,links,layers,sample_layer,
-        lambda value,default:render_scalar(value,age=age,default=default,context=render_context))
+        lambda value,default:render_scalar(value,age=age,default=default,context=render_context),particle_input=particle_input)
     color=vector_node('MULTIPLY',color,layer_color)
     low, high = (values['m_flSourceAlphaValueToMapTo'+word] for word in ('Zero', 'One'))
     if low < high:

@@ -30,5 +30,9 @@ insufficient. The enclosing protocol model checks 172 states and eight mutants.
 The normal preparation path is connected only with a caller-supplied current
 capture. Regular exports without it refuse this instance. No automatic live
 capture/UI option is added and source presence is not shipped Crossbow support.
-Fresh normal/save/Cycles acceptance remains required. r10 stays the accepted
-normal-export milestone until those checks pass.
+The supplied-input path now has fresh normal exports at24/30/60FPS, independent
+saved/rollback checks and a four-frame CPU Cycles sequence. Ordinary CLI/UI
+availability remains incomplete; r10 stays the default-input milestone. These
+checks do not establish continuous live child topology or native bone-cache
+parity throughout the clip; snapshot frames are reconstructed from the recorded
+rig and authored rest under the narrowly bound birth/provider profile.

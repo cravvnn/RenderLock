@@ -537,6 +537,7 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
             if camera is None or camera.type!='CAMERA':
                 raise UnsupportedEffect('Rope geometry requires a sampled scene camera')
             from .blender_particle_rope import bake_rope_geometry
+            from .particle_texture_layers import enabled_texture_layers
             from .blender_rope_material import prepare_rope_shader_colors, build_rope_material
             camera_samples=[]
             for tick,particles in samples:
@@ -575,7 +576,10 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
                     omissions.extend(resource+': '+note for note in notes)
                 baked=bake_rope_geometry(renderer_samples,renderer,scene,collection,
                     start_tick=simulation['start_tick'],tick_rate=simulation['tick_rate'],
-                    unit_scale=unit_scale,definition=definition,triangle_pairs=True)
+                    unit_scale=unit_scale,definition=definition,triangle_pairs=True,
+                    shader_extra_policy=simulation.get('shader_extra_data_policy') if any(
+                        layer.get('m_TextureControls',{}).get('m_nPerParticleDistortion','SPRITECARD_TEXTURE_PP_SCALE_NONE')
+                        != 'SPRITECARD_TEXTURE_PP_SCALE_NONE' for _,layer in enabled_texture_layers(renderer.get('m_vecTexturesInput',[]))) else None)
                 by_tick={sample['tick']:sample for sample in renderer_samples}
                 for obj in baked:
                     tick=obj['agr_rope_geometry_tick'];sample=by_tick[tick]

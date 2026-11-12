@@ -50,3 +50,24 @@ package independently saves/reopens all66 ring samples and verifies57 visibility
 holds at24/30/60FPS. Four CPU Cycles frames show expanding rings and other layers.
 This is a source candidate with declared limits, not a rebuilt application or
 complete Source particle, map-decal or lighting reconstruction.
+
+The current native segment gather/copy also proves that attrs39/40 come from
+the segment's first control point, with seed0, rather than spline interpolation.
+The optional geometry channel now carries those finite fields only under the
+explicit simulator field policy; older geometry output is unchanged. The bake
+stores depth-weighted POINT attributes, and the qualified material divides by
+the same interpolated W ratio before using per-particle distortion. Missing,
+unknown or nonfinite fields remain refusals; per-particle texture scale is not
+admitted. These immutable derived arrays remain owned by the existing package
+transaction, with no new clock, cache, RNG or persistent per-particle owner.
+
+Clamped rope textures place each actual arbitrary rope vertex before saturation
+and interpolation, retaining original layer indices and depth compensation.
+A card-corner or fragment clamp differs and is not substituted. Qualified ropes
+use the shared bounded layer interpreter for its known channel selectors; the
+unqualified legacy path retains the narrow channel gate. Unknown enums still
+fail inside the whole-instance rollback boundary. Actual CPU shader pixels cover
+the18 prior weighted UV/color/blend cases plus6 clamp/extra1/extra2/A-mask cases,
+both before and after reopen. Fresh normal Crossbow scenes independently verify
+22968 loop UVs and30624 extra-attribute values. The saved late-failure check proves
+that existing objects/actions survive after new meshes/UVs/materials allocate.

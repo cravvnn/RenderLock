@@ -18,9 +18,9 @@ background=np.array([.05,.1,.15]);vertex_color=np.array([.2,.4,.6])
 if not reopen:
     out.mkdir(parents=True,exist_ok=False);bpy.ops.wm.read_factory_settings(use_empty=True);scene=bpy.context.scene
     scene.render.engine='CYCLES';scene.cycles.device='CPU';scene.cycles.samples=1;scene.cycles.use_denoising=False
-    scene.render.threads_mode='FIXED';scene.render.threads=2;scene.render.resolution_x=1152;scene.render.resolution_y=64;scene.render.resolution_percentage=100
+    scene.render.threads_mode='FIXED';scene.render.threads=2;scene.render.resolution_x=1536;scene.render.resolution_y=64;scene.render.resolution_percentage=100
     camera=bpy.data.objects.new('Camera',bpy.data.cameras.new('Camera'));scene.collection.objects.link(camera);scene.camera=camera
-    camera.location=(9,.5,5);camera.data.type='ORTHO';camera.data.ortho_scale=18
+    camera.location=(12,.5,5);camera.data.type='ORTHO';camera.data.ortho_scale=24
     world=bpy.data.worlds.new('analytic background');world.use_nodes=True;scene.world=world
     world.node_tree.nodes['Background'].inputs['Color'].default_value=(*background,1);world.node_tree.nodes['Background'].inputs['Strength'].default_value=1
     images={}
@@ -58,6 +58,35 @@ if not reopen:
                 emitted=warped*vertex_color;a=(.8*.8*(3-2*.8))*alpha
                 rgb=(emitted if mode=='BLEND_ADD'else emitted*a)+(background if mode=='ADD'else background*(1-a))
                 expected.append(dict(cell=cell,age=age,mode=mode,alpha=alpha,rgb=rgb.tolist()))
+    # Additional weighted segment attributes + vertex-clamped UVs + an A-only
+    # replacement mask. Independent scalar equations, not production helpers.
+    for field in (1,2):
+        for factor_value in (0.,.5,1.5):
+            cell=len(expected);mesh=bpy.data.meshes.new('segment input '+str(cell))
+            mesh.from_pydata([(cell,0,0),(cell+1,0,0),(cell+1,1,0),(cell,1,0)],[],[(0,1,2),(0,2,3)])
+            uv=mesh.uv_layers.new(name='UVMap');color=mesh.color_attributes.new(name='AGR Rope Color',type='FLOAT_COLOR',domain='CORNER')
+            ratio=mesh.attributes.new(name='AGR Rope Depth Ratio',type='FLOAT',domain='POINT')
+            extra=mesh.attributes.new(name=f'AGR Rope Shader Extra {field}',type='FLOAT',domain='POINT')
+            for index,weight_value in enumerate((1.,2.,3.,4.)):
+                ratio.data[index].value=weight_value;extra.data[index].value=factor_value*weight_value
+            mesh['agr_rope_segment_shader_input_policy']='agr_rope_segment_shader_inputs_v1'
+            for loop in mesh.loops:
+                weight_value=ratio.data[loop.vertex_index].value
+                uv.data[loop.index].uv=(.3*weight_value,.6*weight_value);color.data[loop.index].color=(*vertex_color,1)
+            renderer=dict(m_flDepthBias=5,m_bGammaCorrectVertexColors=False,m_flSelfIllumAmount=1,m_flDiffuseAmount=0,
+                m_bSaturateColorPreAlphaBlend=False,m_vecTexturesInput=[
+                dict(m_hTexture='base',m_TextureControls=dict(m_bClampUVs=True,m_flFinalTextureScaleV=.5)),
+                dict(m_hTexture='noise',m_nTextureType='SPRITECARD_TEXTURE_UVDISTORTION',
+                     m_nTextureBlendMode='SPRITECARD_TEXTURE_BLEND_REPLACE',m_TextureControls=dict(m_bRandomizeOffsets=True,
+                     m_flDistortion=.8,m_nPerParticleDistortion=f'SPRITECARD_TEXTURE_PP_SCALE_SHADER_EXTRA_DATA{field}')),
+                dict(m_hTexture='noise',m_nTextureChannels='SPRITECARD_TEXTURE_CHANNEL_MIX_A',m_nTextureBlendMode='SPRITECARD_TEXTURE_BLEND_REPLACE')])
+            prepare_rope_shader_colors(mesh,renderer)
+            mat,_=build_rope_material(renderer,images,scene_light=(1,1,1),mesh=mesh,depth_compensated=True,native_inputs=proof)
+            mesh.materials.append(mat);obj=bpy.data.objects.new(mesh.name,mesh);scene.collection.objects.link(obj)
+            warped=np.array([.3-(.22-.5)*.8*factor_value*.125*.5*2,
+                             .7-(.38-.5)*.8*factor_value*.125*.5*2,.25])
+            rgb=warped*vertex_color*.5+background*.5
+            expected.append(dict(cell=cell,field=field,factor=factor_value,rgb=rgb.tolist()))
     scene['rope_expected']=json.dumps(expected)
     bpy.ops.wm.save_as_mainfile(filepath=str(out/'rope-shader.blend'))
 else:
@@ -65,11 +94,11 @@ else:
 assert not bpy.data.libraries and all(im.packed_file for im in bpy.data.images)
 scene.render.image_settings.file_format='OPEN_EXR';scene.render.image_settings.color_depth='32';scene.render.image_settings.color_mode='RGBA'
 phase='reopen'if reopen else'build';scene.render.filepath=str(out/(phase+'.exr'));bpy.ops.render.render(write_still=True)
-image=bpy.data.images.load(scene.render.filepath,check_existing=False);pixels=np.asarray(image.pixels[:]).reshape(64,1152,4)
+image=bpy.data.images.load(scene.render.filepath,check_existing=False);pixels=np.asarray(image.pixels[:]).reshape(64,1536,4)
 errors=[]
 for row in json.loads(scene['rope_expected']):
     actual=pixels[32,32+row['cell']*64,:3];error=float(np.max(abs(actual-row['rgb'])))
     assert error<3e-5,(row,actual,error);errors.append(error)
-assert len(errors)==18
-result=dict(status='PASS',phase=phase,pixels=18,maximum_error=max(errors),scope=__doc__)
+assert len(errors)==24
+result=dict(status='PASS',phase=phase,pixels=24,maximum_error=max(errors),scope=__doc__)
 (out/(phase+'-result.json')).write_text(json.dumps(result,indent=2));print(json.dumps(result))

@@ -142,7 +142,7 @@ def rope_subdivisions(particles, renderer, camera_position=None, camera_projecti
     return 1 << (count-1).bit_length()
 
 
-def build_rope_geometry(particles,renderer,age=0.,camera_position=None,*,camera_projection=None,definition=None):
+def build_rope_geometry(particles,renderer,age=0.,camera_position=None,*,camera_projection=None,definition=None,shader_extra_policy=None):
     """Build fixed or sampled adaptive ribbons, preserving live array order.
 
     CP-driven texture coordinates, non-normal vector fields and camera fading
@@ -170,6 +170,8 @@ def build_rope_geometry(particles,renderer,age=0.,camera_position=None,*,camera_
     radius_scale=_number(scalar(renderer.get('m_flRadiusScale'),default=1))
     alpha_scale=_number(scalar(renderer.get('m_flAlphaScale'),default=1))
     scalar_scale=_number(renderer.get('m_flScalarAttributeTextureCoordScale',1))
+    if shader_extra_policy not in (None,'agr_shader_extra_fields_v1'):
+        raise UnsupportedEffect('Unqualified rope shader extra fields')
     nodes=[];identities=set()
     for p in particles:
         if p['id'] in identities:raise UnsupportedEffect('Duplicate rope particle identity')
@@ -179,8 +181,14 @@ def build_rope_geometry(particles,renderer,age=0.,camera_position=None,*,camera_
         nodes.append({'position':_vector(p['position'],3),'radius':_number(p['radius'])*radius_scale,
                       'normal':_vector(p['normal'],3),'color':np.r_[_vector(p['color'],3),alpha].astype(np.float32),
                       'uv_scalar':_number(p[fields[scalar_field]])*scalar_scale if use_scalar else _F(0)})
+        if shader_extra_policy is not None:
+            from .particle_texture_layers import particle_texture_value
+            nodes[-1]['shader_extras']=[float(_number(particle_texture_value(
+                'SPRITECARD_TEXTURE_PP_SCALE_SHADER_EXTRA_DATA'+str(i),p,shader_extra_policy))) for i in (1,2)]
     if renderer.get('m_bReverseOrder'):nodes.reverse()
     result={'vertices':[],'faces':[],'uv':[],'colors':[],'subdivisions':subdivisions}
+    if shader_extra_policy is not None:
+        result.update(shader_extras=[],shader_input_policy='agr_rope_segment_shader_inputs_v1')
     count=len(nodes)
     if count<2:return result
     closed=renderer.get('m_bClosedLoop',False);segments=count if closed else count-1
@@ -213,5 +221,9 @@ def build_rope_geometry(particles,renderer,age=0.,camera_position=None,*,camera_
             result['faces'].append([start+i for i in range(4)])
             result['uv'].extend(((0,low),(0,high),(1,high),(1,low)))
             result['colors'].extend(c.tolist() for c in (a['color'],b['color'],b['color'],a['color']))
+            if shader_extra_policy is not None:
+                # Current native gather copies attrs39/40 from segment n1;
+                # they are not Catmull/interpolated particle values.
+                result['shader_extras'].extend([list(n1['shader_extras']) for _ in range(4)])
             previous=current
     return result

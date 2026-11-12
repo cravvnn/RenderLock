@@ -8,7 +8,7 @@ from .particle_rope_geometry import build_rope_geometry
 from .installed_effects import scalar
 
 
-def bake_rope_geometry(samples,renderer,scene,collection,*,start_tick,tick_rate,unit_scale=.0254,definition=None,triangle_pairs=False):
+def bake_rope_geometry(samples,renderer,scene,collection,*,start_tick,tick_rate,unit_scale=.0254,definition=None,triangle_pairs=False,shader_extra_policy=None):
     import bpy
     from .blender_effects import _linear
     previous=None;prepared=[];vertices=0
@@ -18,7 +18,7 @@ def bake_rope_geometry(samples,renderer,scene,collection,*,start_tick,tick_rate,
             raise ValueError('Rope sample ticks must be unique and increasing')
         previous=tick
         mesh=build_rope_geometry(sample['particles'],sample.get('renderer',renderer),sample['age'],sample.get('camera_position'),
-                                 camera_projection=sample.get('camera_projection'),definition=definition)
+                                 camera_projection=sample.get('camera_projection'),definition=definition,shader_extra_policy=shader_extra_policy)
         input_vertex_count=len(mesh['vertices'])
         bias=scalar(sample.get('renderer',renderer).get('m_flDepthBias'),default=0)
         if bias and len(mesh['vertices']):
@@ -44,6 +44,14 @@ def bake_rope_geometry(samples,renderer,scene,collection,*,start_tick,tick_rate,
         uv=mesh.uv_layers.new(name='UVMap')
         colors=mesh.color_attributes.new(name='AGR Rope Color',type='FLOAT_COLOR',domain='CORNER')
         ratios=geometry.get('depth_ratio')
+        if geometry.get('shader_input_policy')=='agr_rope_segment_shader_inputs_v1':
+            if len(geometry['shader_extras']) != len(mesh.vertices):
+                raise ValueError('Rope shader extra vertex layout differs from geometry')
+            mesh['agr_rope_segment_shader_input_policy']=geometry['shader_input_policy']
+            for index in (1,2):
+                extra=mesh.attributes.new(name=f'AGR Rope Shader Extra {index}',type='FLOAT',domain='POINT')
+                for i,row in enumerate(geometry['shader_extras']):
+                    extra.data[i].value=row[index-1]*(1 if ratios is None else float(ratios[i]))
         if ratios is not None:
             ratio=mesh.attributes.new(name='AGR Rope Depth Ratio',type='FLOAT',domain='POINT')
             source=mesh.attributes.new(name='AGR Rope Source Position',type='FLOAT_VECTOR',domain='POINT')

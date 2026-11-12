@@ -15,6 +15,20 @@ def settings(**changes):
                 m_nOrientationType='PARTICLE_ORIENTATION_ALIGN_TO_PARTICLE_NORMAL',**changes)
 
 
+def test_segment_shader_extras_copy_n1_without_interpolation_and_keep_legacy_geometry():
+    p=nodes()
+    for i,row in enumerate(p):row.update(shader_extra_data1=10+i,shader_extra_data2=-10-i)
+    old=build_rope_geometry(p,settings())
+    new=build_rope_geometry(p,settings(),shader_extra_policy='agr_shader_extra_fields_v1')
+    assert {key:new[key]for key in old}==old
+    assert new['shader_extras']==[[10,-10]]*8+[[11,-11]]*8
+    reverse=build_rope_geometry(p,settings(m_bReverseOrder=True),shader_extra_policy='agr_shader_extra_fields_v1')
+    assert reverse['shader_extras']==[[12,-12]]*8+[[11,-11]]*8
+    p[0].pop('shader_extra_data1')
+    with pytest.raises(UnsupportedEffect):build_rope_geometry(p,settings(),shader_extra_policy='agr_shader_extra_fields_v1')
+    with pytest.raises(UnsupportedEffect):build_rope_geometry(p,settings(),shader_extra_policy='unknown')
+
+
 def test_ribbon_is_connected_interpolated_and_uses_chord_texture_length():
     mesh=build_rope_geometry(nodes(),settings())
     assert len(mesh['faces'])==4 and len(mesh['vertices'])==16

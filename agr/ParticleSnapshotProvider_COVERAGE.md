@@ -1,8 +1,11 @@
-# Pending Source-rest snapshot provider foundation
+# Source-rest snapshot provider and supplied-capture normal integration
 
-This component is not accepted normal-export Crossbow support. The current
-candidate leaves normal creation/native profile admission unchanged. Existing
-rendered r10 support remains the accepted source milestone.
+The current-build Crossbow path is connected to normal scene preparation with
+an explicitly supplied owner/birth capture. The stock CLI/UI does not acquire or
+import that capture. Missing inputs still refuse; this is not default user-facing
+Crossbow support or a rebuilt release. Existing r10 support remains unchanged.
+Fresh normal demo exports with supplied current observations, independent saved
+checks and a short Cycles sequence qualify this conditional source profile.
 
 `particle_model_rest_assets.collect_model_rest` calls the separate geometry
 helper's `--inventory-model-rest` command. The command reads typed compiled
@@ -82,9 +85,31 @@ compaction and slot reuse; pure matrix arithmetic remains a numerical obligation
 The enclosing normal package transaction is not yet connected to this provider,
 so these component models do not establish whole-export acceptance.
 
-Remaining integration gates are current CP0 owner/model and original
-mode3-to-mode1 creation qualification,
-complete normal request/package validation, remaining Crossbow rope inputs,
-and fresh normal-export/saved-scene/Cycles acceptance. No old native capture or
-hash-only widening can replace these gates. Silence, other hitbox providers,
-Source lighting and map reconstruction remain separate.
+The separate current owner/birth gate now binds the qualified client/particle
+pair, stable model, original CREATE3 and birth CP0 mode1, coherent unit-scale body,
+unit runtime axes and no eligible render children. No legacy client-hash set was
+widened. The normal path generates its own authored rest and selected bone frames
+from the fresh rig, keeps original replay events, verifies queried helper acks,
+retains its exact canonical executed request and revalidates the saved rig before
+geometry allocation. Other capture kinds, positive children and missing data
+remain unavailable.
+
+Normal scene assembly cosmetically disables armature viewport evaluation. The
+new evaluated_snapshot_rig context borrows ONLY a rig marked agr_preview_hidden,
+after validating complete visible ancestry and exact root binding. It restores
+the original frame and visibility on return or failure; a frame-restore failure
+still restores visibility and propagates. SnapshotRigEvaluation checks62 states
+and5 guard mutants, including restore failure. Actual Blender build/reopen at
+24/30/60FPS checks identical matrices, marked/unmarked hiding, hidden ancestors,
+edited motion, missing history and failed capture cleanup. No hidden ancestor is
+enabled and the original all-bone scale/shear checks remain strict.
+
+Fresh normal 24/30/60FPS exports produce235 Crossbow objects from33 replay ticks;
+the complete simulation states and selected Source-rest matrices are identical.
+Independent reopen verifies5973 bones/33roots, saved per-layer UVs and shader
+attributes, edited-motion rejection and actual late material rollback. Four
+consecutive CPU Cycles preview frames and a no-FX control show an attached weapon
+glow. This is a supplied-capture profile with approximate shading/lighting/seeds;
+automatic acquisition and ordinary CLI/UI wiring remain integration work.
+Silence, other hitbox/slide providers, Source lighting and map reconstruction
+remain separate. No old capture or hash-only widening replaces these gates.

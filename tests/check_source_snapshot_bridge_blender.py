@@ -8,7 +8,7 @@ import sys,json,copy,math
 import bpy,numpy as np
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from agr.blender_effects import _linear
-from agr.blender_particle_skinning import capture_source_snapshot_provider,validate_source_snapshot_rig,rigid_snapshot_matrix
+from agr.blender_particle_skinning import capture_source_snapshot_provider,validate_source_snapshot_rig,rigid_snapshot_matrix,evaluated_snapshot_rig
 from agr.blender_particle_model import capture_model_bones
 from agr.particle_snapshot_provider import RESOURCE
 args=sys.argv[sys.argv.index('--')+1:];out=Path(args[0]);reopen='--reopen'in args;unit=.0254
@@ -38,6 +38,7 @@ else:
  saved=json.loads((out/'inputs.json').read_text());data,inventory=saved['data'],saved['inventory'];entity=data['entities'][0];instance=data['particle_instances'][0];model=entity['model_constraints']
 rows=[]
 for fps in(24,30,60):
+ rig.hide_viewport=False
  scene.render.fps=fps;scene.render.fps_base=1;root.animation_data_clear();rig.animation_data_clear()
  rig.pose.bones['cloth'].scale=(1,1,1)
  for d in(0,1,2):
@@ -61,7 +62,29 @@ for fps in(24,30,60):
   assert np.allclose(actual,expected,atol=3e-5),actual
  scene.frame_set(1);legacy=np.array(rigid_snapshot_matrix(rig,'crossbow'));assert abs(legacy[0,3]-100)<3e-5
  assert abs(provider['frames'][0]['snapshot_model_bones'][0]['matrix'][3]-legacy[0,3])>4.9
- scene.frame_set(*original[:1],subframe=original[1]);validate_source_snapshot_rig(provider,data,scene,out)
+ scene.frame_set(*original[:1],subframe=original[1])
+ rig.hide_viewport=True
+ rig['agr_preview_hidden']=False
+ try:capture_source_snapshot_provider(data,entity,dict(rig=rig,root=root),scene,instance,out,inventory)
+ except ValueError as error:assert 'preview'in str(error)
+ else:raise AssertionError('Unmarked hidden rig admitted')
+ assert rig.hide_viewport and(scene.frame_current,scene.frame_subframe)==original
+ rig['agr_preview_hidden']=True;root.hide_viewport=True
+ try:capture_source_snapshot_provider(data,entity,dict(rig=rig,root=root),scene,instance,out,inventory)
+ except ValueError as error:assert 'ancestry'in str(error)
+ else:raise AssertionError('Hidden ancestor admitted')
+ finally:root.hide_viewport=False
+ assert rig.hide_viewport
+ hidden=capture_source_snapshot_provider(data,entity,dict(rig=rig,root=root),scene,instance,out,inventory)
+ assert hidden==provider and rig.hide_viewport and(scene.frame_current,scene.frame_subframe)==original
+ try:
+  with evaluated_snapshot_rig(rig,root,scene):
+   assert not rig.hide_viewport
+   scene.frame_set(0,subframe=.5)
+   raise RuntimeError('owned capture failure')
+ except RuntimeError:pass
+ assert rig.hide_viewport and(scene.frame_current,scene.frame_subframe)==original
+ validate_source_snapshot_rig(provider,data,scene,out)
  delta=rig.delta_location.copy();rig.delta_location.x+=unit
  try:
   try:validate_source_snapshot_rig(provider,data,scene,out)
@@ -74,7 +97,9 @@ for fps in(24,30,60):
  except ValueError as error:assert 'history'in str(error)
  else:raise AssertionError('Missing owner pose history accepted')
  assert(scene.frame_current,scene.frame_subframe)==original
- rows.append(dict(fps=fps,source_matrices=3,changed_motion_refused=True,missing_history_refused=True,frame_restoration=True,legacy_full_capture_strict=True))
+ assert rig.hide_viewport
+ rows.append(dict(fps=fps,source_matrices=3,changed_motion_refused=True,missing_history_refused=True,frame_restoration=True,
+  legacy_full_capture_strict=True,preview_hidden_capture_exact=True,visibility_restoration=True,unmarked_hidden_refused=True,hidden_ancestor_refused=True))
 if not reopen:
  (out/'inputs.json').write_text(json.dumps(dict(data=data,inventory=inventory),indent=2));bpy.ops.wm.save_as_mainfile(filepath=str(out/'bridge.blend'))
 result=dict(status='PASS_SOURCE_REST_BRIDGE_COMPONENT',phase='reopen'if reopen else'build',rows=rows,scope=__doc__)

@@ -19,6 +19,12 @@ from .particle_runtime import particle_command, particle_environment
 
 
 def capture_points(data, instance, entity, objects, scene, manifest_dir, attachments, inventory):
+    from .blender_particle_skinning import evaluated_snapshot_rig
+    with evaluated_snapshot_rig(objects.get('rig'), objects.get('root'), scene):
+        return _capture_points(data, instance, entity, objects, scene, manifest_dir, attachments, inventory)
+
+
+def _capture_points(data, instance, entity, objects, scene, manifest_dir, attachments, inventory):
     """Borrow the scene frame, capture selected Source-rest bone and CP0/1/2/5."""
     import numpy as np
     from mathutils import Matrix, Quaternion, Vector
