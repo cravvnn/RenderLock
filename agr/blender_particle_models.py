@@ -109,10 +109,8 @@ def build_morph_curves(shape_keys, keys, schedule, start_tick, frame_step):
     Sort and recalculate handles explicitly, preserving distinct float32 times.
     """
     import bpy
-    frames=np.array([1+(tick-start_tick)*frame_step for tick,_ in schedule],dtype=np.float32)
-    if not np.isfinite(frames).all() or np.any(np.diff(frames)<=0):
-        raise UnsupportedEffect('Model morph times exceed Blender frame precision')
-    values=np.asarray([weights for _,weights in schedule],dtype=np.float32)
+    from .particle_model_geometry import encode_morph_curves
+    frames,values,encoding=encode_morph_curves(schedule,start_tick,frame_step)
     action=bpy.data.actions.new(shape_keys.name+' | authored morph breakpoints')
     shape_keys.animation_data_create()
     if hasattr(action,'slots'):
@@ -130,6 +128,8 @@ def build_morph_curves(shape_keys, keys, schedule, start_tick, frame_step):
         curve.keyframe_points.sort();curve.keyframe_points.handles_recalc()
         if len(curve.keyframe_points)!=len(frames):
             raise UnsupportedEffect('Blender discarded an authored model morph breakpoint')
+    for key,value in encoding.items():shape_keys['agr_morph_'+key]=value
+    return encoding
 
 
 def build_model_particle(name,renderer,assets,samples,simulation,collection,texture,unit_scale):

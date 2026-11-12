@@ -56,6 +56,10 @@ def scene_identity(scene, entity_ids):
 
 
 def validate_package(package, scene):
+    if package.get('backend') == 'simulated_projectile_flight_v2':
+        from .projectile_particles import validate_package as validate_projectile_package
+        validate_projectile_package(package,scene)
+        return
     if package.get('backend') == 'simulated_world_origin_v1':
         from .particle_world_origin import validate_package as validate_world_package
         validate_world_package(package, scene)
@@ -134,6 +138,9 @@ def build_package_effects(package, data, manifest_file, scene, camera):
     before = {key: set(getattr(bpy.data, key)) for key in groups}
     try:
         report = build_simulated_effects(package['simulation'], assets, scene, camera)
+        if (package.get('backend')=='simulated_projectile_flight_v2'
+                and report.get('objects',0)<=0 and report.get('point_lights',0)<=0):
+            raise ValueError('Projectile package produced no rendered geometry or lights')
     except Exception:
         created = [item for key in groups for item in set(getattr(bpy.data, key)) - before[key]]
         bpy.data.batch_remove(created)

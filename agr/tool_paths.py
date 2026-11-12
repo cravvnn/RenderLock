@@ -9,7 +9,9 @@ import re
 PROGRAM_ROOT_SETTING = "tool_program_root"
 _BUNDLED_TOOLS = {
     "source2viewer": ("tools/source2viewer/Source2Viewer-CLI.exe",),
-    "particle_probe": ("tools/particles/ParticleProbe.exe", "tools/particles/ParticleProbe.dll"),
+    "particle_probe": ("tools/particle_simulation/ParticleSimulationProbe.exe",
+                       "tools/particle_simulation/ParticleSimulationProbe.dll",
+                       "tools/particles/ParticleProbe.exe", "tools/particles/ParticleProbe.dll"),
     "particle_dotnet": ("tools/dotnet/dotnet.exe",),
     "lighting_dotnet": ("tools/dotnet/dotnet.exe",),
     "world_region_probe": ("tools/lighting/world/WorldRegionProbe.dll",),
@@ -26,6 +28,11 @@ _TOOL_LABELS = {
     "probe_atlas_decoder": ("probe atlas decoder", "Lighting lab"),
     "cubemap_decoder": ("cubemap decoder", "Lighting lab"),
 }
+
+
+def bundled_particle_probes(program_root):
+    """Prefer the isolated simulator while retaining legacy installations."""
+    return tuple(Path(program_root)/relative for relative in _BUNDLED_TOOLS['particle_probe'])
 
 
 def _portable_root(path: Path) -> bool:
@@ -72,13 +79,22 @@ def reconcile_saved_tools(saved: dict, program_root: Path) -> tuple[dict, list[s
             old_root = selected.parents[len(parts) - 1] if len(selected.parts) > len(parts) else None
             if old_root is None or selected != old_root / relative:
                 continue
-            if old_root == current_root:
+            legacy_particle = key=='particle_probe'and relative.startswith('tools/particles/')
+            if old_root == current_root and not legacy_particle:
                 break
-            if old_root != previous_root and not _portable_root(old_root):
+            if old_root == current_root and legacy_particle and not any(
+                    (current_root/p).is_file()for p in relatives if p.startswith('tools/particle_simulation/')):
+                break
+            if old_root != current_root and old_root != previous_root and not _portable_root(old_root):
                 continue
-            replacement = next((current_root / candidate for candidate in relatives
+            candidates=relatives
+            if key=='particle_probe'and not legacy_particle:
+                # A missing new simulator must stay visible, not silently
+                # downgrade to the separately retained legacy material helper.
+                candidates=tuple(p for p in relatives if p.startswith('tools/particle_simulation/'))
+            replacement = next((current_root / candidate for candidate in candidates
                                 if (current_root / candidate).is_file()), None)
-            if replacement is not None:
+            if replacement is not None and replacement!=selected:
                 values[key] = str(replacement)
                 label, _ = _TOOL_LABELS[key]
                 notices.append(f"Updated saved {label} path to this RenderLock folder.")

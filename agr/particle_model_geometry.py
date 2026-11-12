@@ -201,6 +201,44 @@ def morph_keyframes(geometry, samples, rate, source_fps, *, manual=False):
     return result
 
 
+def encode_morph_curves(schedule,start_tick,frame_step):
+    """Encode a linear curve in Blender's float32 frame/weight representation.
+
+    Coincident encoded times can be consolidated only when the resulting
+    piecewise-linear curve stays within 1e-5 absolute weight error everywhere.
+    Checking the union of original and encoded knots bounds every intervening
+    linear segment, including near-coincident authored pose/capture knots.
+    Discontinuous or materially different collisions still refuse the instance.
+    """
+    if (not schedule or len(schedule)>100000 or type(start_tick)is not int
+            or type(frame_step)not in (int,float)or not math.isfinite(frame_step)or frame_step<=0):
+        raise UnsupportedEffect('Invalid model morph curve encoding inputs')
+    original=np.array([1+(tick-start_tick)*frame_step for tick,_ in schedule],dtype=np.float64)
+    values=np.asarray([weights for _,weights in schedule],dtype=np.float64)
+    if (not np.isfinite(original).all()or np.any(np.diff(original)<=0)
+            or values.ndim!=2 or not 1<=values.shape[1]<=64 or not np.isfinite(values).all()
+            or np.any(np.abs(values)>10)):
+        raise UnsupportedEffect('Unqualified model morph curve shape, order or weights')
+    with np.errstate(over='ignore',invalid='ignore'):
+        encoded=original.astype(np.float32)
+    if not np.isfinite(encoded).all():
+        raise UnsupportedEffect('Model morph times exceed Blender frame precision')
+    # Retain the final knot in each equal-time group. This is only a candidate;
+    # the complete curve error check below decides whether it is representable.
+    keep=np.r_[np.diff(encoded)>0,True]
+    frames=encoded[keep];weights=values[keep].astype(np.float32)
+    probes=np.unique(np.concatenate((original,frames.astype(np.float64))))
+    worst=0.
+    for column in range(values.shape[1]):
+        expected=np.interp(probes,original,values[:,column])
+        actual=np.interp(probes,frames,weights[:,column])
+        worst=max(worst,float(np.max(np.abs(actual-expected))))
+    if worst>1e-5:
+        raise UnsupportedEffect('Model morph curve exceeds bounded Blender frame precision')
+    return frames,weights,dict(policy='agr_float32_linear_morph_curves_v1',
+        collapsed_knots=int(len(original)-len(frames)),max_weight_error=worst,weight_error_limit=1e-5)
+
+
 def transform_static_model_frame(geometry, matrix, unit_scale):
     """Bake one complete captured affine transform without losing its shear.
 

@@ -300,6 +300,7 @@ def preflight_recorded_bindings(data, *, output_start=None):
         return {'status': 'indeterminate', 'reason': 'Particle history bounds were not established.'}
     reasons = Counter()
     possible = 0
+    checked = len(instances)
     for instance in instances:
         try:
             _, _, provider = recorded_binding_profile(instance)
@@ -312,10 +313,24 @@ def preflight_recorded_bindings(data, *, output_start=None):
             reasons[(scope, resource, str(exc))] += 1
         except Exception:
             return {'status': 'indeterminate', 'reason': 'A particle input could not be checked safely.'}
+    if 'network_projectiles' in data:
+        from .projectile_particles import selected_tracks,controls,RESOURCE as PROJECTILE_RESOURCE
+        try:
+            tracks=selected_tracks(data['network_projectiles'],data)
+            checked+=len(tracks)
+            for track in tracks:
+                try:
+                    controls(track,data)
+                    possible+=1
+                except (ValueError,KeyError)as exc:
+                    scope='before_output'if track['first_seen_tick']<output_start else 'output_range'
+                    reasons[(scope,PROJECTILE_RESOURCE,str(exc))]+=1
+        except (ValueError,KeyError,TypeError):
+            return {'status':'indeterminate','reason':'Network projectile capture could not establish binding candidates.'}
     grouped = [{'scope': scope, 'resource': resource, 'reason': reason, 'occurrences': count}
                for (scope, resource, reason), count in sorted(reasons.items(),
                     key=lambda row: (row[0][0] != 'output_range', -row[1], row[0][1], row[0][2]))]
-    return {'status': 'possible' if possible else 'unavailable', 'checked_instances': len(instances),
+    return {'status': 'possible' if possible else 'unavailable', 'checked_instances': checked,
             'possible_instances': possible, 'motion_start_tick': start, 'output_start_tick': output_start,
             'end_tick': end, 'rejection_groups': grouped[:50], 'omitted_rejection_groups': max(0, len(grouped)-50),
             'scope': 'Binding check only; a possible instance still requires simulation and rendering.'}
@@ -579,8 +594,12 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
         except (ValueError,KeyError,OSError,RuntimeError,subprocess.SubprocessError) as exc:
             reject(instance,str(exc))
     report['unsupported']=list(grouped.values())
-    report['unsupported_occurrences']=sum(r['occurrences'] for r in report['unsupported'])
     report['unsupported_by_birth_scope'] = dict(rejected_scopes)
+    if 'network_projectiles' in data:
+        from .recorded_projectile_effects import build_projectile_effects,merge_projectile_report
+        projectiles=build_projectile_effects(data,scene,camera,runtime,provider,decoder,adapter)
+        merge_projectile_report(report,projectiles)
+    report['unsupported_occurrences']=sum(r['occurrences'] for r in report['unsupported'])
     if not report['objects']:report.update(status='unavailable',reason='No recorded instance completed simulation and rendering')
     (out/'coverage.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
     scene['agr_simulated_effects_report']=json.dumps(report)

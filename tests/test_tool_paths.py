@@ -99,3 +99,41 @@ def test_invalid_disabled_tool_paths_remain_visible_without_crashing_settings(tm
     result, notices = reconcile_saved_tools(saved, tmp_path)
     assert result == saved
     assert len(notices) == 2
+
+
+def test_new_simulator_replaces_recognized_legacy_bundle_choice(tmp_path):
+    current=tmp_path/'RenderLock';saved=bundle(current)
+    probe=current/'tools/particle_simulation/ParticleSimulationProbe.dll';probe.parent.mkdir();probe.touch()
+    result,notices=reconcile_saved_tools(saved,current)
+    assert result['particle_probe']==str(probe)
+    assert len(notices)==1 and 'particle simulator'in notices[0]
+
+
+def test_missing_new_simulator_does_not_silently_downgrade(tmp_path):
+    old=tmp_path/'previous';current=tmp_path/'current';bundle(current)
+    missing=old/'tools/particle_simulation/ParticleSimulationProbe.dll'
+    result,notices=reconcile_saved_tools(dict(particle_probe=str(missing),tool_program_root=str(old)),current)
+    assert result['particle_probe']==str(missing)
+    assert len(notices)==1 and 'not found'in notices[0]
+
+
+def test_external_legacy_named_helper_stays_an_explicit_override(tmp_path):
+    current=tmp_path/'current';bundle(current)
+    new=current/'tools/particle_simulation/ParticleSimulationProbe.dll';new.parent.mkdir();new.touch()
+    external=tmp_path/'custom/ParticleProbe.dll';external.parent.mkdir();external.touch()
+    result,notices=reconcile_saved_tools(dict(particle_probe=str(external)),current)
+    assert result['particle_probe']==str(external)and not notices
+
+
+def test_discovery_prefers_separate_simulator_to_legacy_material_helper(tmp_path,monkeypatch):
+    bundle(tmp_path)
+    probe=tmp_path/'tools/particle_simulation/ParticleSimulationProbe.dll';probe.parent.mkdir();probe.touch()
+    monkeypatch.setattr(gui,'PROGRAM_ROOT',tmp_path)
+    monkeypatch.setattr(gui,'_discover_dotnet',lambda:'dotnet-host')
+    assert gui.discover_particle_runtime()==(str(probe.resolve()),'dotnet-host')
+
+
+def test_current_legacy_choice_is_unchanged_without_the_new_simulator(tmp_path):
+    saved=bundle(tmp_path);(tmp_path/'tools/particles/ParticleProbe.exe').touch()
+    result,notices=reconcile_saved_tools(saved,tmp_path)
+    assert result==saved and not notices

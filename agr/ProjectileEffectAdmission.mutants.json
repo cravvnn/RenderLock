@@ -1,0 +1,10 @@
+[
+ {"name":"accept changed capture or owner","replace":[["SkipInputs == FALSE","SkipInputs == TRUE"]],"expect":"QualifiedOnly"},
+ {"name":"reuse old artifact directory","replace":[["ReuseDirectory == FALSE","ReuseDirectory == TRUE"]],"expect":"QualifiedOnly"},
+ {"name":"accept failed helper","replace":[["IgnoreChildFailure == FALSE","IgnoreChildFailure == TRUE"]],"expect":"QualifiedOnly"},
+ {"name":"accept stale response","replace":[["SkipResponse == FALSE","SkipResponse == TRUE"]],"expect":"QualifiedOnly"},
+ {"name":"ignore changing client module","replace":[["SkipSource == FALSE","SkipSource == TRUE"]],"expect":"QualifiedOnly"},
+ {"name":"guess missing renderer assets","replace":[["SkipAssets == FALSE","SkipAssets == TRUE"]],"expect":"QualifiedOnly"},
+ {"name":"leak IDs on empty projectile","replace":[["KeepEmptyAllocation == FALSE","KeepEmptyAllocation == TRUE"]],"expect":"WholeInstanceRollback"},
+ {"name":"count empty projectile as rendered","replace":[["AcceptEmpty == FALSE","AcceptEmpty == TRUE"]],"expect":"QualifiedOnly"}
+]

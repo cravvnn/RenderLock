@@ -22,9 +22,18 @@ reopen='--reopen' in args
 schedule=[(18044.,np.array([0.])),(18044.997314,np.array([.997314])),
           (18045.,np.array([1.])),(18046.,np.array([0.]))]
 start=17920
+collision=[(18127.,np.array([.5])),(18128.,np.array([1.-1.4901162115332767e-7])),
+           (18128.00000038147,np.array([1.])),(18129.,np.array([.5]))]
 if not reopen:
     output.mkdir(parents=True,exist_ok=False)
     for fps in (24,30,60):
+        mesh=bpy.data.meshes.new('Float32 collision regression')
+        mesh.from_pydata([(0,0,0),(1,0,0),(0,1,0)],[],[(0,1,2)])
+        obj=bpy.data.objects.new(f'Float32 collision {fps}',mesh);bpy.context.scene.collection.objects.link(obj)
+        obj['fps']=fps;obj['float32_collision']=True
+        obj.shape_key_add(name='Basis');key=obj.shape_key_add(name='Wing');key.data[1].co.z=1
+        proof=build_morph_curves(mesh.shape_keys,[key],collision,start,fps/64)
+        assert proof['collapsed_knots']==1
         for ordinary in (False,True):
             mesh=bpy.data.meshes.new('Morph regression')
             mesh.from_pydata([(0,0,0),(1,0,0),(0,1,0)],[],[(0,1,2)])
@@ -52,6 +61,15 @@ for obj in [o for o in bpy.context.scene.objects if 'ordinary_insertion' in o]:
     if ordinary:assert worst>1e-4,(fps,worst)
     else:assert worst<1e-5,(fps,worst)
     results.append(dict(fps=fps,ordinary_insertion=bool(ordinary),max_weight_error=worst))
+for obj in [o for o in bpy.context.scene.objects if 'float32_collision'in o]:
+    fps=obj['fps'];worst=0.
+    for tick in np.r_[np.linspace(18127.,18129.,321),[t for t,w in collision]]:
+        frame=1+(float(tick)-start)*fps/64
+        bpy.context.scene.frame_set(math.floor(frame),subframe=frame-math.floor(frame))
+        expected=float(np.interp(tick,[t for t,w in collision],[w[0]for t,w in collision]))
+        worst=max(worst,abs(obj.data.shape_keys.key_blocks['Wing'].value-expected))
+    assert worst<1e-5,(fps,worst)
+    results.append(dict(fps=fps,float32_collision=True,max_weight_error=worst))
 if not reopen:
     bpy.ops.wm.save_as_mainfile(filepath=str(output/'morph-key-regression.blend'))
 (output/('reopen.json' if reopen else 'result.json')).write_text(json.dumps(

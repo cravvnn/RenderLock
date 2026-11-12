@@ -65,12 +65,13 @@ def discover_assets() -> str:
 
 def discover_particle_runtime() -> tuple[str, str]:
     """Find bundled or development tools without running or downloading them."""
-    portable = PROGRAM_ROOT / 'tools/particles/ParticleProbe.exe'
-    if sys.platform == 'win32' and portable.is_file():
-        return str(portable.resolve()), ''
-    probes = [PROGRAM_ROOT / 'tools/particles/ParticleProbe.dll',
-              PROGRAM_ROOT / 'research/ParticleProbe/bin/Release/net10.0/ParticleProbe.dll']
-    probe = next((str(p.resolve()) for p in probes if p.is_file()), '')
+    from .tool_paths import bundled_particle_probes
+    probes = (*bundled_particle_probes(PROGRAM_ROOT),
+              PROGRAM_ROOT / 'research/ParticleSimulationProbe/bin/Release/net10.0/ParticleSimulationProbe.dll',
+              PROGRAM_ROOT / 'research/ParticleProbe/bin/Release/net10.0/ParticleProbe.dll')
+    selected=next((p for p in probes if p.is_file()and(p.suffix!='.exe'or sys.platform=='win32')),None)
+    if selected is not None and selected.suffix=='.exe':return str(selected.resolve()),''
+    probe=str(selected.resolve())if selected is not None else ''
     return probe, _discover_dotnet()
 
 

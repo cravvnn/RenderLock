@@ -191,3 +191,26 @@ def test_morph_schedule_rejects_noncontinuous_loop_and_unbounded_phase():
     samples[-1][2]['age'] = 1e8
     with pytest.raises(UnsupportedEffect, match='keyframe bound'):
         morph_keyframes(geometry, samples, 30, 30)
+
+
+@pytest.mark.parametrize('fps',[24,30,60])
+def test_float32_time_collision_is_bounded_over_the_complete_linear_curve(fps):
+    from agr.particle_model_geometry import encode_morph_curves
+    schedule=[(18127.,np.array([.5])),(18128.,np.array([1.-1.4901162115332767e-7])),
+              (18128.00000038147,np.array([1.])),(18129.,np.array([.5]))]
+    frames,weights,proof=encode_morph_curves(schedule,17920,fps/64)
+    assert proof['collapsed_knots']==1
+    assert np.all(np.diff(frames)>0)
+    assert proof['max_weight_error']<1e-5
+    ticks=np.r_[np.linspace(18127.,18129.,1001),[t for t,w in schedule]]
+    wanted=np.interp(ticks,[t for t,w in schedule],[w[0]for t,w in schedule])
+    actual=np.interp(1+(ticks-17920)*fps/64,frames,weights[:,0])
+    assert np.max(np.abs(actual-wanted))<=proof['max_weight_error']+1e-12
+
+
+@pytest.mark.parametrize('fps',[24,30,60])
+def test_materially_different_collision_still_refuses(fps):
+    from agr.particle_model_geometry import encode_morph_curves
+    schedule=[(18127.,[0.]),(18128.,[0.]),(18128.00000038147,[1.]),(18129.,[0.])]
+    with pytest.raises(UnsupportedEffect,match='bounded Blender frame precision'):
+        encode_morph_curves(schedule,17920,fps/64)
