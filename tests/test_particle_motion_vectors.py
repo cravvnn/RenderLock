@@ -86,3 +86,11 @@ def test_renderer_preflight_admits_the_pair_but_rejects_missing_metadata_and_tra
     textures['flow']['source_sheet'].pop('motion_vectors')
     with pytest.raises(UnsupportedEffect,match='motion-vector metadata'):
         validate_renderer_classes(tracks,assets)
+
+
+def test_missing_texture_inventory_never_makes_a_flow_pair_static():
+    from agr.blender_simulated_effects import validate_renderer_classes
+    layers,_=fixture()
+    assets=dict(definitions={'body':dict(m_Renderers=[dict(_class='C_OP_RenderSprites',m_vecTexturesInput=layers)])})
+    with pytest.raises(UnsupportedEffect,match='original particle texture sheet'):
+        validate_renderer_classes({('i','root','body',0):[]},assets)

@@ -133,6 +133,12 @@ def build_morph_curves(shape_keys, keys, schedule, start_tick, frame_step):
 
 
 def build_model_particle(name,renderer,assets,samples,simulation,collection,texture,unit_scale):
+    from .particle_silence_model import is_silence_renderer,validate_samples as validate_silence_samples
+    if is_silence_renderer(renderer):
+        descriptor=validate_model(renderer,assets)
+        geometry,_=validate_silence_samples(renderer,descriptor,samples,simulation,unit_scale)
+        from .blender_particle_silence import build_silence_particle
+        return build_silence_particle(name,renderer,descriptor,geometry,samples,simulation,collection,texture,unit_scale)
     from .particle_flashbang_sphere import is_renderer
     if is_renderer(renderer):
         from .blender_flashbang_sphere import build_particle

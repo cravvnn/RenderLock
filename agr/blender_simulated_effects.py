@@ -299,7 +299,7 @@ def validate_renderer_classes(tracks, assets, simulation=None, *, scene=None):
                         for _,layer in layers)):
                     raise UnsupportedEffect('Missing explicit spritecard texture; native fallback is not qualified')
                 from .particle_motion_vectors import motion_vector_pair
-                motion_pair = motion_vector_pair(renderer.get('m_vecTexturesInput', []), assets['textures'], renderer)
+                motion_pair = motion_vector_pair(renderer.get('m_vecTexturesInput', []), assets.get('textures', {}), renderer)
                 if motion_pair is not None and kind != 'C_OP_RenderSprites':
                     raise UnsupportedEffect('Paired motion-vector sheets are qualified only for sprite renderers')
             if kind=='C_OP_RenderModels':
@@ -307,9 +307,11 @@ def validate_renderer_classes(tracks, assets, simulation=None, *, scene=None):
                 from .blender_particle_models import validate_model_samples
                 descriptor=validate_model(renderer,assets)
                 from .particle_flashbang_sphere import is_renderer,validate_samples as validate_sphere_samples
+                from .particle_silence_model import is_silence_renderer,validate_samples as validate_silence_samples
                 for key,samples in tracks.items():
                     if key[2]==resource:
-                        (validate_sphere_samples if is_renderer(renderer) else validate_model_samples)(renderer,descriptor,samples)
+                        if is_silence_renderer(renderer):validate_silence_samples(renderer,descriptor,samples,simulation or {})
+                        else:(validate_sphere_samples if is_renderer(renderer) else validate_model_samples)(renderer,descriptor,samples)
             elif kind=='C_OP_RenderProjected':
                 from .particle_projected_scene import validate_profile,no_world_receivers
                 validate_profile(resource,renderer)

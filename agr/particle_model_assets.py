@@ -32,6 +32,8 @@ def animation_rate(renderer):
 
 
 def model_resource(renderer):
+    from .particle_silence_model import is_silence_renderer,MODEL
+    if is_silence_renderer(renderer):return MODEL
     from .particle_flashbang_sphere import is_renderer,MODEL
     if is_renderer(renderer):return MODEL
     allowed = {'_class', 'm_ModelList', 'm_nBodyGroupField', 'm_nSubModelField',
@@ -92,6 +94,9 @@ def geometry_runtime(runtime):
 def prepare_model(adapter, renderer, provider, runtime):
     from .particle_flashbang_sphere import is_renderer,POLICY as STATIC_POLICY
     static_sphere=is_renderer(renderer)
+    from .particle_silence_model import is_silence_renderer
+    static_silence=is_silence_renderer(renderer)
+    static_model=static_sphere or static_silence
     resource = model_resource(renderer)
     material_name = renderer['m_hOverrideMaterial']
     probe, dotnet = geometry_runtime(runtime)
@@ -115,14 +120,20 @@ def prepare_model(adapter, renderer, provider, runtime):
         require(source.sha256==MODEL_SHA and inputs[compiled(material_name)]==MATERIAL_SHA,
             'installed static model/material source changed')
         material_profile(material)
-    identity = dict(policy=STATIC_POLICY if static_sphere else POLICY, adapter_sha256=sha(Path(__file__)),
+    if static_silence:
+        from .particle_silence_model import silence_material_profile
+        silence_material_profile(dict(resource=resource,source_sha256=source.sha256,material=material,
+            material_resource=material_name,material_sha256=inputs[compiled(material_name)]),renderer)
+    identity = dict(policy=STATIC_POLICY if static_model else POLICY, adapter_sha256=sha(Path(__file__)),
         reader_sha256=sha(Path(__file__).with_name('particle_model_geometry.py')),
         helper_sha256=sha(probe), parser_sha256=sha(probe.parent / 'ValveResourceFormat.dll'))
     if static_sphere:
         identity['static_profile_sha256']=sha(Path(__file__).with_name('particle_flashbang_sphere.py'))
+    elif static_silence:
+        identity['static_profile_sha256']=sha(Path(__file__).with_name('particle_silence_model.py'))
     def build(temp):
         output = temp / 'model'
-        result = subprocess.run(particle_command(probe, dotnet) + ['--particle-static-model-v1' if static_sphere else '--particle-model-v1',
+        result = subprocess.run(particle_command(probe, dotnet) + ['--particle-static-model-v1' if static_model else '--particle-model-v1',
             str(Path(provider.install_path) / 'game/citadel/gameinfo.gi'), resource, str(output)],
             env=particle_environment(probe, dotnet), capture_output=True, text=True, timeout=180)
         (temp / 'model.log').write_text(result.stdout + result.stderr, encoding='utf-8')
@@ -134,6 +145,10 @@ def prepare_model(adapter, renderer, provider, runtime):
         read_model_geometry(output / 'model.glb')
         if static_sphere:
             from .particle_flashbang_sphere import validate_descriptor
+            validate_descriptor(renderer,dict(descriptor,directory=str(output),geometry_sha256=sha(output/'model.glb'),
+                material=material,material_resource=material_name,material_sha256=inputs[compiled(material_name)]))
+        elif static_silence:
+            from .particle_silence_model import validate_descriptor
             validate_descriptor(renderer,dict(descriptor,directory=str(output),geometry_sha256=sha(output/'model.glb'),
                 material=material,material_resource=material_name,material_sha256=inputs[compiled(material_name)]))
     destination = decoder._entry('particle_model_geometry', inputs, identity, build) / 'model'
@@ -156,6 +171,8 @@ def validate_model(renderer, assets):
     descriptor = assets.get('models', {}).get(resource)
     from .particle_flashbang_sphere import is_renderer,validate_descriptor
     if is_renderer(renderer):return validate_descriptor(renderer,descriptor)
+    from .particle_silence_model import is_silence_renderer,validate_descriptor as validate_silence
+    if is_silence_renderer(renderer):return validate_silence(renderer,descriptor)
     if (not isinstance(descriptor, dict) or descriptor.get('schema_version') != 1
             or descriptor.get('policy') != POLICY or descriptor.get('resource') != resource
             or type(descriptor.get('bones')) is not int or descriptor['bones'] != 0

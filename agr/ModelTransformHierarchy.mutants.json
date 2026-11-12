@@ -1,0 +1,6 @@
+[
+  {"name":"redirect another parent","replace":[["IF parentsOK /\\ axesOK THEN","IF axesOK THEN"]],"expect":"OwnedParents"},
+  {"name":"change component axes","replace":[["IF parentsOK /\\ axesOK THEN","IF parentsOK THEN"]],"expect":"FixedAxes"},
+  {"name":"omit root sample","replace":[["rootFrame' = frame","rootFrame' = rootFrame"]],"expect":"CompleteRoot"},
+  {"name":"omit leaf sample","replace":[["leafFrame' = frame","leafFrame' = leafFrame"]],"expect":"CompleteLeaf"}
+]
