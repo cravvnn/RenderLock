@@ -8,6 +8,7 @@ use serde_json::{Value, json};
 const ANIM: &str = "CBodyComponent.m_animationController.";
 const SKEL: &str = "CBodyComponent.m_skeletonInstance.";
 const HERO: &str = "m_CCitadelHeroComponent.m_spawnedHero.m_nHeroID";
+mod projectile_particles;
 
 fn encoded_field(name: &str, value: &boon::FieldValue) -> serde_json::Result<Value> {
     match value {
@@ -69,8 +70,8 @@ fn main() -> anyhow::Result<()> {
     ensure!(heroes.iter().all(|h| *h > 0), "Hero IDs must be positive");
     let output = Path::new(&args[2]);
     fs::create_dir_all(output)?;
-    for name in ["raw_animation_state.json", "network_ticks.json", "native_coverage.json"] {
-        ensure!(!output.join(name).exists(), "Refusing to overwrite {}", output.join(name).display());
+    for name in ["raw_animation_state.json", "network_ticks.json", "native_coverage.json", projectile_particles::FILE] {
+        projectile_particles::require_fresh(&output.join(name))?;
     }
     let parser = boon::Parser::from_file(Path::new(&args[1]))?;
     parser.verify()?;
@@ -109,7 +110,8 @@ fn main() -> anyhow::Result<()> {
     let clock_rows: Vec<_> = clocks.iter().map(|(d,s)| json!({"demo_tick":d,"server_tick":s})).collect();
     serde_json::to_writer(BufWriter::new(File::create(output.join("network_ticks.json"))?), &clock_rows)?;
 
-    let filter = HashSet::from(["CCitadelPlayerPawn", "CCitadelGameRulesProxy"]);
+    let filter = HashSet::from(["CCitadelPlayerPawn", "CCitadelGameRulesProxy", projectile_particles::CLASS]);
+    let mut projectile_capture = projectile_particles::Capture::default();
     let mut writer = BufWriter::new(File::create(output.join("raw_animation_state.json"))?);
     writer.write_all(b"[\n")?;
     let mut count = 0usize;
@@ -122,8 +124,32 @@ fn main() -> anyhow::Result<()> {
     let mut callback_error: Option<anyhow::Error> = None;
     eprintln!("AGR: reconstructing entity state from signon through tick {end}");
     parser.decode_segment(None, end + 1, &filter, |ctx| {
-        if ctx.tick() < start || ctx.tick() > end || callback_error.is_some() { return; }
+        if ctx.tick() > end || callback_error.is_some() { return; }
         let result = (|| -> anyhow::Result<()> {
+            projectile_capture.begin_tick(ctx.tick(), end)?;
+            let mut owner_handles = HashSet::<u32>::new();
+            for (_, entity) in ctx.entities().iter() {
+                if entity.class_name.as_ref() != "CCitadelPlayerPawn" { continue; }
+                let Some(serializer) = ctx.serializers().get(&entity.class_name) else { continue; };
+                let hero = entity.get_by_name(HERO, serializer).and_then(|v| serde_json::to_value(v).ok())
+                    .and_then(|v| v.as_i64()).unwrap_or(0);
+                if hero > 0 && (heroes.is_empty() || heroes.contains(&hero)) {
+                    ensure!(entity.index >= 0 && entity.index < 0x4000 && entity.serial < 0x40000,
+                        "Pawn handle outside recorded format");
+                    owner_handles.insert((entity.serial << 14) | entity.index as u32);
+                }
+            }
+            for (_, entity) in ctx.entities().iter() {
+                if entity.class_name.as_ref() != projectile_particles::CLASS { continue; }
+                let serializer = ctx.serializers().get(&entity.class_name)
+                    .context("Projectile serializer unavailable")?;
+                let owner = entity.get_by_name("m_hOwnerEntity", serializer)
+                    .and_then(|v| serde_json::to_value(v).ok()).and_then(|v| v.as_u64());
+                projectile_capture.observe(entity, serializer, ctx.tick(),
+                    owner.is_some_and(|h| h <= u32::MAX as u64 && owner_handles.contains(&(h as u32))))?;
+            }
+            projectile_capture.finish_tick(ctx.tick())?;
+            if ctx.tick() < start { return Ok(()); }
             for (index, entity) in ctx.entities().iter() {
                 if entity.class_name.as_ref() != "CCitadelPlayerPawn" { continue; }
                 let Some(serializer) = ctx.serializers().get(&entity.class_name) else { continue };
@@ -190,6 +216,7 @@ fn main() -> anyhow::Result<()> {
     writer.write_all(b"\n]\n")?;
     writer.flush()?;
     ensure!(count > 0, "No matching hero pawn samples in requested tick range");
+    projectile_capture.write_new(&output.join(projectile_particles::FILE), start, end)?;
     let coverage = json!({"adapter":"agr-extract 0.2.0","boon_version":"0.15.0",
         "state_reconstruction":"from_signon", "tick_range_inclusive":true,
         "source_world_half":32768,
@@ -197,7 +224,8 @@ fn main() -> anyhow::Result<()> {
         "raw_ag2_empty_samples":empty_recipes,"raw_ag2_missing_array_indices":gaps,
         "animation_warmup_samples":warmup_count,"unresolved_animation_warmup":unresolved_warmup,
         "dormant_samples":dormant_samples,"network_tick_samples":clock_rows.len(),
-        "particles":"not_extracted", "map":"not_extracted", "ragdoll":"not_simulated"});
+        "particles":"not_extracted", "projectile_particles":projectile_capture.summary(end),
+        "map":"not_extracted", "ragdoll":"not_simulated"});
     serde_json::to_writer_pretty(BufWriter::new(File::create(output.join("native_coverage.json"))?), &coverage)?;
     eprintln!("AGR: saved {count} pawn snapshots and {} network clocks", clock_rows.len());
     Ok(())

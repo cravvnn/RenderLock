@@ -1,0 +1,8 @@
+[
+ {"name":"drop cumulative budget","replace":[["(~keep \\/ rows<2)","TRUE"]],"expect":"Bounded"},
+ {"name":"crop pre-shot history","replace":[["keep == expected","keep == expected /\\ position>0"]],"expect":"HistoryPreserved"},
+ {"name":"drop changed owner rows","replace":[["keep == expected","keep == present /\\ selected"]],"expect":"RetainOwnerChanges"},
+ {"name":"accept truncated scan","replace":[["available'=(position=3 /\\ ~faultSeen)","available'=(~faultSeen)"]],"expect":"Covered"},
+ {"name":"overwrite competing output","replace":[["fresh == ~exists","fresh == TRUE"]],"expect":"PreservePrior"},
+ {"name":"accept failed flush","replace":[["IF exit=\"success\" /\\ content=\"complete\" /\\ available THEN TRUE ELSE accepted","IF content=\"complete\" /\\ available THEN TRUE ELSE accepted"]],"expect":"AcceptedSuccess"}
+]

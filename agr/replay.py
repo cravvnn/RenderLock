@@ -329,6 +329,9 @@ def extract_replay(demo: Path, output: Path, start_tick: int, end_tick: int,
             "Boon's public Python tables cannot provide those fields. Place agr-extract(.exe) in bin/, "
             "set AGR_NATIVE_EXTRACTOR, or build native/Cargo.toml with cargo build --release."
         )
+    from .replay_capture import file_sha256
+    demo_identity=file_sha256(demo)
+    helper_identity=file_sha256(helper)
     boon, pl = _dependencies()
     try:
         parsed = boon.Demo(str(demo))
@@ -341,9 +344,9 @@ def extract_replay(demo: Path, output: Path, start_tick: int, end_tick: int,
         raise ReplayError("Replay metadata does not provide a valid tick rate.")
     if end_tick > metadata["total_ticks"]:
         raise ReplayError(f"End tick {end_tick} exceeds replay total_ticks {metadata['total_ticks']}.")
-    reserved = ["segment.json", "raw_animation_state.json", "network_ticks.json", "native_coverage.json",
+    reserved = ["segment.json", "raw_animation_state.json", "network_ticks.json", "native_coverage.json", "network_projectiles.json",
                 "animation_provenance.json", "kills.json", "abilities.json", "extraction.log"]
-    existing = [name for name in reserved if (output / name).exists()]
+    existing = [name for name in reserved if os.path.lexists(output / name)]
     if existing:
         raise ReplayError(f"Output already contains extraction files: {', '.join(existing)}. Choose a new output folder.")
     output.mkdir(parents=True, exist_ok=True)
@@ -355,10 +358,18 @@ def extract_replay(demo: Path, output: Path, start_tick: int, end_tick: int,
     if process.returncode:
         detail = (output / "extraction.log").read_text(encoding="utf-8", errors="replace")[-4000:]
         raise ReplayError(f"Native replay extraction failed (exit {process.returncode}). {detail}")
+    if file_sha256(demo)!=demo_identity or file_sha256(helper)!=helper_identity:
+        raise ReplayError('Replay or native helper changed during extraction; capture provenance is unavailable.')
     rows = json.loads((output / "raw_animation_state.json").read_text(encoding="utf-8"))
     native_coverage = json.loads((output / "native_coverage.json").read_text(encoding="utf-8"))
     if native_coverage.get('source_world_half') != 32768 or native_coverage.get('boon_version') != '0.15.0':
         raise ReplayError('Native replay helper does not match the current parser/coordinate format. Replace bin/agr-extract with the 0.2.1 release helper.')
+    from .network_projectile_capture import retain_capture
+    try:
+        projectile_capture=retain_capture(output,native_coverage.get('projectile_particles'),
+            start_tick,end_tick,demo_identity,helper_identity)
+    except ValueError as exc:
+        raise ReplayError(str(exc))from exc
     entities, transforms = _entities_from_raw(rows, start_tick, end_tick, set(hero_ids) if hero_ids else None)
     warnings = []
     if native_coverage.get("raw_ag2_empty_samples") or native_coverage.get("raw_ag2_missing_array_indices"):
@@ -385,8 +396,9 @@ def extract_replay(demo: Path, output: Path, start_tick: int, end_tick: int,
     except Exception as exc:
         warnings.append(f"Optional kill/ability marker extraction failed: {type(exc).__name__}: {exc}")
         event_coverage["status"] = "incomplete"
-    with demo.open("rb") as stream:
-        metadata["demo_sha256"] = hashlib.file_digest(stream, "sha256").hexdigest()
+    if file_sha256(demo)!=demo_identity or file_sha256(helper)!=helper_identity:
+        raise ReplayError('Replay or native helper changed while retaining extraction provenance.')
+    metadata["demo_sha256"] = demo_identity
     provenance = {"demo_sha256": metadata["demo_sha256"]}
     for key, name in (("raw_sha256", "raw_animation_state.json"),
                       ("network_ticks_sha256", "network_ticks.json")):
@@ -425,6 +437,7 @@ def extract_replay(demo: Path, output: Path, start_tick: int, end_tick: int,
         "entities": entities,
         "markers": sorted(markers, key=lambda item: (item["tick"], item["kind"])),
         "coverage": coverage,
+        "network_projectiles": projectile_capture,
     }
     destination = output / "segment.json"
     _write_json(destination, manifest)
