@@ -1,0 +1,4 @@
+[
+  {"name":"leave factory engine active while constructing effects","replace":[["SkipEarlyEngine == FALSE","SkipEarlyEngine == TRUE"]],"expect":"CorrectEngineAtConstruction"},
+  {"name":"construct effects before camera","replace":[["SkipCamera == FALSE","SkipCamera == TRUE"]],"expect":"CameraBeforeEffects"}
+]

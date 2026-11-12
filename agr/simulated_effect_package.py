@@ -61,6 +61,9 @@ def validate_package(package, scene):
         validate_mask_package(package, scene)
         return
     provenance=package.get('assets',{}).get('provenance',{})
+    if 'native_standard_light' in provenance:
+        from .particle_standard_light import validate_native_inputs
+        validate_native_inputs(provenance['native_standard_light'])
     if 'spritecard_sheet_uv' in provenance:
         from .particle_sheet_uv import validate_shader_inputs
         validate_shader_inputs(provenance['spritecard_sheet_uv'])

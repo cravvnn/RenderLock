@@ -53,6 +53,10 @@ def prepare_render_assets(names, decoder, adapter, provider, runtime, *, definit
             input_sha256={n: provider.resolve(compiled(n)).sha256 for n in names | texture_names}))
     if models:
         result['models'] = models
+    if any(renderer.get('_class')=='C_OP_RenderStandardLight'
+           for definition in result['definitions'].values() for renderer in definition.get('m_Renderers',[])):
+        from .particle_standard_light import collect_native_inputs,PROFILE_KEY
+        result['provenance'][PROFILE_KEY]=collect_native_inputs(provider)
     from .particle_texture_control_defaults import prepare_defaults
     defaults=prepare_defaults(result['definitions'],provider)
     if defaults is not None:

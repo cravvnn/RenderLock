@@ -269,6 +269,10 @@ def validate_renderer_classes(tracks, assets, simulation=None, *, scene=None):
     validate_defaults({name:assets['definitions'][name] for name in {key[2] for key in tracks}},assets.get('provenance',{}))
     supported={'C_OP_RenderSprites','C_OP_RenderTrails','C_OP_RenderStandardLight','C_OP_RenderRopes'}
     projected={}
+    native_light='native_standard_light' in assets.get('provenance',{})
+    if native_light:
+        from .particle_standard_light import validate_native_inputs
+        validate_native_inputs(assets['provenance']['native_standard_light'])
     for resource in sorted({key[2] for key in tracks}):
         for renderer in assets['definitions'][resource].get('m_Renderers',[]):
             kind=renderer.get('_class')
@@ -290,6 +294,9 @@ def validate_renderer_classes(tracks, assets, simulation=None, *, scene=None):
                 from .particle_projected_scene import validate_profile,no_world_receivers
                 validate_profile(resource,renderer)
                 projected[resource]=no_world_receivers(scene)
+            elif kind=='C_OP_RenderStandardLight' and native_light:
+                from .particle_standard_light import profile
+                profile(renderer)
             elif kind not in supported:
                 raise UnsupportedEffect('Simulated renderer '+str(kind)+' in '+resource)
     return projected
@@ -309,6 +316,7 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
     validate_render_samples(tracks)
     from .particle_render_controls import render_contexts
     contexts=render_contexts(simulation)
+    native_lights='native_standard_light' in assets.get('provenance',{})
     projected=validate_renderer_classes(tracks,assets,simulation,scene=scene)
     collection=bpy.data.collections.new('AGR Simulated Effects')
     scene.collection.children.link(collection)
@@ -547,8 +555,17 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
             if kind not in ('C_OP_RenderSprites','C_OP_RenderTrails','C_OP_RenderStandardLight'):
                 raise UnsupportedEffect('Simulated renderer '+kind)
             name=f'AGR FX | {instance} | {Path(resource).stem} | {system_path} | {particle_id}.{index}'
+            range_socket=None
             if light:
                 data=bpy.data.lights.new(name,'POINT');data.shadow_soft_size=.05
+                if native_lights:
+                    from .particle_standard_light import profile,parameters,POLICY as LIGHT_POLICY
+                    light_profile=profile(renderer)
+                    data.shadow_soft_size=0.;data.use_shadow=light_profile['casts_shadows']
+                    data['agr_particle_light_policy']=LIGHT_POLICY
+                    if scene.render.engine=='CYCLES':
+                        from .blender_particle_light_range import configure_standard_light
+                        range_socket=configure_standard_light(data,unit_scale,light_profile['attenuation'])
             else:
                 data=bpy.data.meshes.new(name)
                 vertices=[(0,0,-1),(1,0,-1),(1,0,1),(0,0,1)] if trail else [(-1,-1,0),(1,-1,0),(1,1,0),(-1,1,0)]
@@ -589,12 +606,22 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
                 alpha=p['alpha']*p['alpha_alternate']*render_scalar(renderer.get('m_flAlphaScale'),context=context,default=1)
                 obj.color=(*p['color'],max(0,alpha))
                 if light:
-                    scale=renderer.get('m_vecColorScale',{})
-                    tint=[v/255 for v in scale.get('m_LiteralColor',[255,255,255])[:3]] if scale.get('m_nType')=='PVEC_TYPE_LITERAL_COLOR' else scale.get('m_vLiteralValue',[1,1,1])
-                    data.color=[a*b for a,b in zip(p['color'],tint)]
-                    radius=p['radius']*scalar(renderer.get('m_flRadiusMultiplier'),default=8)*unit_scale
-                    data.energy=max(0,alpha)*scalar(renderer.get('m_flIntensity'),default=1)*20*4*math.pi*radius*radius
-                    data.use_custom_distance=True;data.cutoff_distance=max(.01,radius)
+                    if native_lights:
+                        light_parameters=parameters(renderer,p,unit_scale,context=context)
+                        data.color=light_parameters['color'];data.energy=light_parameters['energy']
+                        radius=light_parameters['range']
+                        data.use_custom_distance=range_socket is None
+                        if range_socket is not None:
+                            from .blender_particle_light_range import keyframe_radius
+                            keyframe_radius(range_socket,max(1e-12,radius),frame)
+                    else:
+                        scale=renderer.get('m_vecColorScale',{})
+                        tint=[v/255 for v in scale.get('m_LiteralColor',[255,255,255])[:3]] if scale.get('m_nType')=='PVEC_TYPE_LITERAL_COLOR' else scale.get('m_vLiteralValue',[1,1,1])
+                        data.color=[a*b for a,b in zip(p['color'],tint)]
+                        radius=p['radius']*scalar(renderer.get('m_flRadiusMultiplier'),default=8)*unit_scale
+                        data.energy=max(0,alpha)*scalar(renderer.get('m_flIntensity'),default=1)*20*4*math.pi*radius*radius
+                        data.use_custom_distance=True
+                    data.cutoff_distance=max(.01,radius)
                     data.keyframe_insert('energy',frame=frame);data.keyframe_insert('color',frame=frame)
                     data.keyframe_insert('cutoff_distance',frame=frame)
                 elif trail:
@@ -623,6 +650,7 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
             if light:
                 for frame in boundaries:data.energy=0;data.keyframe_insert('energy',frame=frame)
                 _linear(data)
+                if range_socket is not None:_linear(data.node_tree)
             _linear(obj)
             if facing_helper is not None:_linear(facing_helper)
             if not light:
@@ -644,6 +672,12 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
     report={'status':'experimental','instances':len(simulation['instances']),'particle_tracks':len(tracks),'objects':len(objects),'point_lights':sum(o.type=='LIGHT' for o in objects),'textures':len(images),'backend':simulation['backend'],'omissions':sorted(set(omissions)),
             'limitations':['Blender shader approximation; no Source bloom/depth intersection pass','Light intensity calibrated to Blender units; not measured engine radiometry','Random engine seed is not available in the demo','Only the supplied recorded instances/control-point history are simulated']}
     report.update(camera_binding='live_constraints',camera_object=camera.name,billboard_helpers=len(billboard_helpers))
+    if native_lights and report['point_lights']:
+        from .particle_standard_light import POLICY as LIGHT_POLICY,SCOPE as LIGHT_SCOPE
+        report['standard_light_policy']=LIGHT_POLICY
+        report['limitations'].append(LIGHT_SCOPE)
+        if scene.render.engine!='CYCLES':
+            report['limitations'].append('EEVEE uses approximate inverse-square/custom-distance lighting; the linear FX falloff graph is qualified only for Cycles.')
     if rope_objects:
         live_constraints=bool(billboard_helpers or any(c.type=='LOCKED_TRACK' for o in objects for c in o.constraints))
         report['camera_binding']='sampled_rope_meshes_with_live_sprite_trail_constraints' if live_constraints else 'sampled_rope_meshes'

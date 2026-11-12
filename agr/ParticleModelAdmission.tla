@@ -1,11 +1,14 @@
 ------------------------ MODULE ParticleModelAdmission ------------------------
 EXTENDS TLC
 \* particle_model_assets.prepare_model/validate_model, texture constructor-default
-\* provenance and model sample preflight,
+\* provenance and model sample preflight. The same defaultsQualified interface
+\* also admits native_standard_light source/default provenance and light-shape
+\* preflight; immutable parameter math adds no owner or lifecycle.
 \* then simulated_effect_package.build_package_effects transaction. Source cache
 \* completion/hash verification is an abstract interface to AssetConverter._entry;
 \* this adapter adds no cache manager, retries, concurrency or crash recovery.
-\* Model renderer may allocate geometry, Key, material and image before a late
+\* Renderer may allocate geometry, Key, material, image, light and isolated
+\* embedded node Action before a late
 \* failure. Every newly owned ID must be removed; preexisting IDs are untouched.
 \* CLI invokes recorded_effect_simulation then this normal package transaction.
 \* Native capture/source arithmetic, filesystem races and Blender internals are

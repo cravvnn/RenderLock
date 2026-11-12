@@ -796,6 +796,9 @@ def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime
         raise ValueError("Invalid coordinate system")
     bpy.ops.wm.read_factory_settings(use_empty=True)
     scene = bpy.context.scene
+    # Engine-dependent lights/materials must be built for the engine that the
+    # saved scene will use, rather than factory startup's current engine.
+    scene.render.engine = 'BLENDER_EEVEE' if character_shader is not None else 'CYCLES'
     scene.name = "RenderLock | replay segment"
     if pending_world_receivers or external_map is not None:
         scene["agr_pending_world_receivers"] = True
@@ -1062,7 +1065,6 @@ def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime
                  + "Death animation can be replaced manually; automatic ragdoll is outside the current scope. Prepared cloth proxies are tied to the body animation, range and FPS; regenerate the export after editing them. Body angles do not reproduce the client backward-dash turn.\n"
                  + "Model basis yaw is explicit per asset; world coordinates and root tracks remain independently editable.\n\n"
                  + json.dumps(report, indent=2))
-    scene.render.engine = 'BLENDER_EEVEE' if character_shader is not None else 'CYCLES'
     report['renderer']=scene.render.engine
     scene.cycles.samples = 24
     scene.frame_set(1)

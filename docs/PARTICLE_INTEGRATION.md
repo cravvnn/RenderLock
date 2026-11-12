@@ -193,6 +193,35 @@ The upgraded geometry helper also freshly reproduces the previously qualified
 bat GLB and morph metadata exactly. Its static command does not become a fallback
 for a rejected morph export. The separately pinned material parser is unchanged.
 
+## Native-default particle lights
+
+Newly prepared standard-light packets now bind the qualified installed Windows
+particle module and convert its default POINT/FX color, intensity and finite
+falloff rules. Unknown module bytes, shapes, attenuation styles and unsupported
+settings refuse explicitly. Declared null values are not constructor defaults.
+Older prepared packets without this additive proof retain their prior behavior.
+
+The scene selects its renderer before building engine-dependent effects. Cycles
+uses a finite quadratic/linear-minus-boundary graph with radius keys in a
+separate node Action. Radius interpolates before squaring. EEVEE remains an
+approximate inverse-square/custom-distance adaptation; no EEVEE linear FX parity
+is claimed. No new light population, clock or playback handler is introduced.
+
+A fresh 60 FPS normal export of the qualified Venator range retains 72 effect
+objects, including six mask variants and one new-profile point light. Saved
+checks preserve 143 object bindings, 205 nonlight Actions and 65 effect mesh/UV
+fingerprints; 19 sampled and 54 fractional light comparisons pass. Legacy light
+values, late range-key rollback, existing Action preservation and null-proof
+refusal pass. The saved hero passes 3,150 bone/21 root checks, with 104 packed
+images and no linked libraries. Four CPU Cycles 640x360/16-sample frames complete
+and show animated weapon effects with the retained character and mask.
+
+Current-module qualification separately covers 150 prepared native arithmetic
+cases and 256 actual color lookup cases. The analytic lookup has a declared
+absolute error bound of 4e-7. The named constructor/defaults and FX branch are
+statically bound; no full current FX replay, renderer/caller execution, Source
+photometry, pixel equivalence or exact map-lighting interaction is claimed.
+
 ## Remaining limits
 
 This is not complete game-particle support. Other named attachments, derived
