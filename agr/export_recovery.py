@@ -36,6 +36,7 @@ _VALUE_OPTIONS = frozenset({
     '--cubemap-decoder', '--particle-probe', '--dotnet', '--output',
     '--start-tick', '--end-tick', '--particle-history-ticks', '--fps',
     '--shot-hero', '--heroes', '--blender', '--blender-python', '--external-map',
+    '--particle-observations', '--captured-slide-inputs',
 })
 _LIGHTING_SWITCHES = frozenset({
     '--source-lighting', '--source-hero-lighting', '--source-npr-lighting',
@@ -213,8 +214,13 @@ def _problem(failure, log_text):
 
 def recovery_summary(command: list[str], failure: dict, log_text: str = '') -> str:
     """Explain the failure without promising the next export will succeed."""
-    _arguments(command)
+    rows = _arguments(command)
     kind, _ = _problem(failure, log_text)
+    if kind == 'model_constraints' and any(name in ('--particle-observations', '--captured-slide-inputs')
+                                           for name, _ in rows):
+        return ('The supplied particle inputs require model bone rules. Review the model-rule failure '
+                'or clear the capture inputs before retrying without those rules. '
+                'Character and particle identity checks remain strict.')
     return {
         'map_proxy': 'The simplified viewport map could not be created. You can explicitly retry with the full downloaded map in the viewport and render.',
         'external_map': 'The downloaded map could not be used. Review its file or explicitly continue without the map; character animation and lighting settings remain requested.',
@@ -282,6 +288,8 @@ def recovery_choices(command: list[str], failure: dict, log_text: str = '') -> l
             _rewrite(rows, {'--secondary-motion', '--cloth', '--partial-cloth'}), (('cloth_enabled', '0'),)))
         return choices
     if kind == 'model_constraints' and '--model-constraints' in present:
+        if present & {'--particle-observations', '--captured-slide-inputs'}:
+            return []  # Omitting their required rules is not the stated compromise.
         return [RecoveryChoice(
             'without_model_constraints', 'Continue without model bone rules',
             'Retry without optional authored model bone adjustments. Recorded skeletal animation, '
@@ -290,13 +298,19 @@ def recovery_choices(command: list[str], failure: dict, log_text: str = '') -> l
             'Setting: Advanced > Character options > Model bone rules (experimental).',
             _rewrite(rows, {'--model-constraints'}), (('model_constraints', '0'),))]
     if kind == 'effects' and '--no-effects' not in present:
+        input_overrides = tuple((key, '') for option, key in (
+            ('--particle-observations', 'particle_observations'),
+            ('--captured-slide-inputs', 'captured_slide_inputs')) if option in present)
         return [RecoveryChoice(
             'without_effects', 'Continue without effects',
             'Retry without particle effects or particle simulation, including its earlier history. '
+            + ('Supplied capture selections will be cleared for this retry. ' if input_overrides else '') +
             'Character animation and the selected output tick range stay requested. '
             'Settings: Export > Output > Include supported particle effects; Advanced > Particle simulation.',
-            _rewrite(rows, {'--particle-probe', '--dotnet', '--particle-history-ticks'}, ('--no-effects',)),
-            (('effects_enabled', '0'), ('simulate_effects', '0'), ('particle_history_ticks', '0')))]
+            _rewrite(rows, {'--particle-probe', '--dotnet', '--particle-history-ticks',
+                            '--particle-observations', '--captured-slide-inputs'}, ('--no-effects',)),
+            (('effects_enabled', '0'), ('simulate_effects', '0'), ('particle_history_ticks', '0'))
+            + input_overrides)]
     if kind == 'lighting' and present & (_LIGHTING_SWITCHES - {'--partial-lighting'}):
         return [RecoveryChoice(
             'without_source_lighting', 'Continue without Source lighting',

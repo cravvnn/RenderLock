@@ -150,3 +150,13 @@ edited reports or replace the producer's native-reader and cleanup audits.
 This command is an offline producer adapter. It does not launch, attach to,
 control or read a game, create a live observation, or add other particle families.
 The qualified collector remains a separate integration requirement.
+
+## Supplied captured slide effects
+
+`convert --captured-slide-inputs slides.json --particle-probe <simulator>
+--model-constraints --partial --start-tick 17920 --end-tick 18240
+--particle-history-ticks 62` imports the qualified four-component slide capture.
+In Advanced > Particle simulation, choose **Captured slide effects** and set the
+same clip/history and explicit partial-export policy. Keep the capture's original
+referenced files available. The input is optional and does not acquire new game
+data. See [capture scope and format](PARTICLE_INTEGRATION.md#supplied-captured-slide-effects).

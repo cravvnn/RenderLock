@@ -28,5 +28,21 @@ counts, rendered instance counts and strict/partial policies are not replaced.
 This is source integration pending actual fresh normal-export, saved-scene,
 all-component rollback and Cycles acceptance. Headless command/publication tests
 stub extraction and Blender explicitly and do not qualify native widgets, saved
-data or rendering. No new GUI input control or automatic live acquisition is
-provided. Historical native/capture pins and original asset directories remain.
+data or rendering. Automatic live acquisition is not provided by this renderer.
+Historical native/capture pins and original asset directories remain.
+
+The Advanced page now exposes the same optional input through existing path-row
+widgets. `gui.build_convert_command` is stateless and calls the shared option
+admission function; the default is empty. Path normalization and preferences use
+the unchanged generic GUI settings owner, with no new cache, writer, retry or
+worker lifecycle. Headless Tcl checks cover settings round trips and explicit
+partial consent is not remembered or enabled by the capture selection. This
+additive field has no separate lifecycle machine; it delegates persistence to
+the same settings path used by other optional particle inputs. Native widget
+layout/appearance is not qualified by headless checks.
+
+`export_recovery` remains a pure opt-in argv transform: explicitly continuing
+without effects removes both supplied-input options and clears their GUI values.
+It does not run a retry or alter the existing consent/worker lifecycle. A model-
+rules omission is not offered while these inputs require those rules; the user
+can review/clear them. No new recovery state owner or machine is introduced.

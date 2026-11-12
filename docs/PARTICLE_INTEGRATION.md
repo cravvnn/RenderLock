@@ -326,3 +326,44 @@ edited reports or replace the producer's native-reader and cleanup audits.
 This command is an offline producer adapter. It does not launch, attach to,
 control or read a game, create a live observation, or add other particle families.
 The qualified collector remains a separate integration requirement.
+
+## Supplied captured slide effects
+
+The normal CLI and Advanced > Particle simulation expose the same optional
+`--captured-slide-inputs` / **Captured slide effects** input. It accepts the
+qualified retained Venator slide cohort: sprites, trails, lights and models.
+Use the matching replay, output ticks 17920..18240 inclusive, 62 earlier ticks,
+installed particle simulation, model bone rules and explicit partial export.
+Choosing a file keeps the other settings; partial consent is required per export.
+The remembered path is absolute so a different application working directory
+does not select another capture. Clear it when the capture is no longer wanted.
+Choosing **Continue without effects** clears supplied capture selections for
+that retry. Omitting required model bone rules is not offered while these
+capture inputs remain selected; review or clear them explicitly first.
+
+The UTF-8 descriptor has `format: "renderlock-captured-slide-inputs"`, integer
+`schema_version: 1`, one `source_scene: {path, sha256}`, and four ordered
+`packages: [{backend, file: {path, sha256}}, ...]` entries. The backends are
+`observed_slide_sprite_frames_v1`, `observed_slide_trail_frames_v1`,
+`observed_slide_light_frames_v1` and `observed_slide_model_frames_v1` in that order.
+Relative descriptor references resolve from the descriptor's directory. Original
+asset directories currently must remain absolute and available; this is not a
+portable asset archive or a tool for collecting arbitrary new replays.
+
+The reader bounds each file, aggregate bytes, nesting and values. It rejects
+duplicate keys, changed hashes, aliased/reserved outputs, missing components and
+mixed reports/reader/freeze/cleanup provenance. Existing native/frame/material
+validators still run. The original capture fingerprints stay unchanged; a
+separate exact owner/pose/asset binding qualifies the freshly prepared target.
+All four renderers share one allocation transaction. A late failure removes all
+new sibling allocations; publication requires an exact four-component receipt
+even in partial mode. Recorded birth and unsupported counters remain separate.
+
+The qualified ordinary 60 FPS export contains 842 captured objects, with an
+independent saved-scene/reopen, real fourth-component rollback, 24/30/60 FPS
+sampling of the saved visibility curves and four CPU Cycles previews. Sampling
+grids are not three fresh exports. This does not establish full game/hero/build
+coverage, lifetime joins/orphans/endcaps, a common Source render clock or exact
+lighting/pixel parity. Captured sprite/trail geometry is baked for the export
+camera; camera edits require a new export. Automatic acquisition, portable
+captured-asset relocation and other native profiles need separate integration.

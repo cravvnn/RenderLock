@@ -937,8 +937,13 @@ def _build_advanced(app, page):
     _path_row(app, body, "Particle observations", "particle_observations", app._browse_particle_observations)
     _note(body, "Optional captured observations for this replay. Requires simulation and model bone rules. "
                 "Leave empty unless you have a matching observation file.", pady=(0, ROW_GAP))
-    _note(body, "0 keeps the selected range. Effects follow the export camera; "
-                "use AGR_Retarget_Effects.py after changing cameras.", pady=(SECTION_GAP - ROW_GAP, 0))
+    _path_row(app, body, "Captured slide effects", "captured_slide_inputs", app._browse_captured_slide_inputs)
+    _note(body, "Optional matching slide capture. Current tested clip: 17920–18240 with 62 earlier ticks. "
+                "Requires simulation, model bone rules and partial export. Keep referenced files available. "
+                "Captured slide sprites and trails require a new export after camera edits.",
+          pady=(0, ROW_GAP))
+    _note(body, "0 keeps the selected range. AGR_Retarget_Effects.py can update supported replay effects "
+                "after changing cameras.", pady=(SECTION_GAP - ROW_GAP, 0))
     _note(body, "New cloth, material repairs and particle simulation use Installed game on Setup. "
                 "Prepared assets reuse any cloth definitions and effects already present in the input. "
                 "Effects inclusion and model bone rules remain available with either asset source.",

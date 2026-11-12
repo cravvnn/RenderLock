@@ -99,6 +99,26 @@ def test_effects_choice_removes_simulator_arguments_with_values(extra):
     assert 'Export > Output' in choice.description
 
 
+@pytest.mark.parametrize('extra', [
+    ['--particle-observations', 'observations.json', '--captured-slide-inputs', 'slides.json'],
+    ['--particle-observations=observations.json', '--captured-slide-inputs=slides.json'],
+    ['--particle-observations', '--source-lighting', '--captured-slide-inputs', '--model-constraints'],
+])
+def test_without_effects_drops_supplied_input_value_units(extra):
+    choice = single(BASE + extra, EFFECTS)
+    assert choice.command==tuple(BASE+['--no-effects'])
+    assert dict(choice.values_overrides)==dict(effects_enabled='0',simulate_effects='0',
+        particle_history_ticks='0',particle_observations='',captured_slide_inputs='')
+
+
+@pytest.mark.parametrize('option', ['--particle-observations','--captured-slide-inputs'])
+def test_model_rule_omission_cannot_keep_an_input_requiring_those_rules(option):
+    failure=dict(stage='prepare_installed_assets',error='Requested model bone rules could not be prepared: missing bone')
+    command=BASE+['--model-constraints',option,'capture.json']
+    assert recovery_choices(command,failure)==[]
+    assert 'supplied particle inputs require model bone rules' in recovery_summary(command,failure).lower()
+
+
 @pytest.mark.parametrize('error', [
     'Installed game compatibility check failed for hero lighting before asset preparation: probe atlas changed',
     'Installed game compatibility check failed for static map lighting before asset preparation: shader changed',
