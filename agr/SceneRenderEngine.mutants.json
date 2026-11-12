@@ -1,4 +1,7 @@
 [
   {"name":"leave factory engine active while constructing effects","replace":[["SkipEarlyEngine == FALSE","SkipEarlyEngine == TRUE"]],"expect":"CorrectEngineAtConstruction"},
-  {"name":"construct effects before camera","replace":[["SkipCamera == FALSE","SkipCamera == TRUE"]],"expect":"CameraBeforeEffects"}
+  {"name":"construct effects before camera","replace":[["SkipCamera == FALSE","SkipCamera == TRUE"]],"expect":"CameraBeforeEffects"},
+  {"name":"omit particle transparency budget","replace":[["SkipTransparency == FALSE","SkipTransparency == TRUE"]],"expect":"ParticleTransparencyBudget"},
+  {"name":"reduce existing higher budget","replace":[["ReduceHigherBudget == FALSE","ReduceHigherBudget == TRUE"]],"expect":"PreserveHigherBudget"},
+  {"name":"change Eevee and no-effect scenes","replace":[["ConfigureOtherScenes == FALSE","ConfigureOtherScenes == TRUE"]],"expect":"PreserveOtherScenes"}
 ]

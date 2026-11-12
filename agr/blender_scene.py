@@ -1018,6 +1018,8 @@ def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime
             report["effects"] = {"status": "failed", "stage": "rendering", "error": str(exc)}
             report["warnings"].append("Particle rendering was incomplete: " + str(exc))
     mark("effects")
+    from agr.particle_transparency import configure_particle_transparency
+    report['particle_transparency'] = configure_particle_transparency(scene, report.get('effects'))
     from agr.blender_external_map import group_renderlock_content, append_external_map
     group_renderlock_content(scene)
     # Pack only generated character/lighting/effect resources. The external map
