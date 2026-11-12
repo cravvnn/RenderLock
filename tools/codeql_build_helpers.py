@@ -21,7 +21,7 @@ PATCHES = ("vrf-ramp-scalar-spline.patch", "vrf-invalid-transform-identity.patch
            "vrf-create-on-model-bones.patch", "vrf-kv3-v5-unsigned-constants.patch",
            "vrf-bounded-model-extraction.patch", "vrf-set-child-control-points.patch",
            "vrf-per-child-control-point.patch")
-GEOMETRY_PATCHES = ("vrf-skeletonless-morph-animation.patch",)
+GEOMETRY_PATCHES = ("vrf-skeletonless-morph-animation.patch", "vrf-kv3-v5-unsigned-constants.patch")
 SIMULATION_PATCHES = PATCHES + ("vrf-vector-expression-initializer.patch",)
 
 

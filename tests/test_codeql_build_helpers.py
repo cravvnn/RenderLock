@@ -38,7 +38,7 @@ def test_geometry_preparation_cannot_patch_the_material_dependency(tmp_path, mon
     monkeypatch.setattr(codeql_build_helpers, 'run', lambda *args, **kwargs: None)
     codeql_build_helpers.prepare(tmp_path / 'work', 'fixture-dotnet')
     assert [name for target, name in patches if target == 'geometry'] == [
-        'vrf-skeletonless-morph-animation.patch']
+        'vrf-skeletonless-morph-animation.patch', 'vrf-kv3-v5-unsigned-constants.patch']
     assert ('particle', 'vrf-skeletonless-morph-animation.patch') not in patches
     assert ('particle', 'vrf-vector-expression-initializer.patch') not in patches
     assert ('geometry', 'vrf-vector-expression-initializer.patch') not in patches

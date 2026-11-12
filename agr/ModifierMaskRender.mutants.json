@@ -1,0 +1,52 @@
+[
+  {
+    "name": "allocate an unqualified transition",
+    "replace": [
+      [
+        "phase'=IF qualified THEN \"render\" ELSE \"refused\"",
+        "phase'=\"render\""
+      ]
+    ],
+    "expect": "NoUnqualifiedGeometry"
+  },
+  {
+    "name": "publish failed model rendering",
+    "replace": [
+      [
+        "published'=success",
+        "published'=TRUE"
+      ]
+    ],
+    "expect": "NoFailedCoverage"
+  },
+  {
+    "name": "forget failed geometry rollback",
+    "replace": [
+      [
+        "created'=FALSE /\\ cleaned'=TRUE",
+        "created'=TRUE /\\ cleaned'=TRUE"
+      ]
+    ],
+    "expect": "NoLeakedFailure"
+  },
+  {
+    "name": "skip exact component inputs",
+    "replace": [
+      [
+        "SkipInputs == FALSE",
+        "SkipInputs == TRUE"
+      ]
+    ],
+    "expect": "NoUnqualifiedGeometry"
+  },
+  {
+    "name": "draw through unqualified owner stop request",
+    "replace": [
+      [
+        "SkipSustained == FALSE",
+        "SkipSustained == TRUE"
+      ]
+    ],
+    "expect": "NoUnqualifiedGeometry"
+  }
+]

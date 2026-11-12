@@ -599,6 +599,10 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
         from .recorded_projectile_effects import build_projectile_effects,merge_projectile_report
         projectiles=build_projectile_effects(data,scene,camera,runtime,provider,decoder,adapter)
         merge_projectile_report(report,projectiles)
+    if 'client_modifier_writes' in data or 'client_effect_owner_states' in data:
+        from .modifier_mask_effects import build_modifier_mask_effects,merge_modifier_mask_report
+        derived=build_modifier_mask_effects(data,scene,camera,entity_objects,runtime,provider,decoder,adapter)
+        merge_modifier_mask_report(report,derived)
     report['unsupported_occurrences']=sum(r['occurrences'] for r in report['unsupported'])
     if not report['objects']:report.update(status='unavailable',reason='No recorded instance completed simulation and rendering')
     (out/'coverage.json').write_text(json.dumps(report,indent=2),encoding='utf-8')

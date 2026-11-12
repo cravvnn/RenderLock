@@ -2,8 +2,10 @@
 EXTENDS TLC
 \* Program.cs top-level command, called by CLI/build qualification. Every
 \* combination of request/path, destination, model, export and size outcomes.
-\* Failed requests never write an owned descriptor; no fallback/static success.
-\* Export exceptions/oversize may leave unaccepted geometry for diagnosis.
+\* descriptor denotes an admitted successful result, not mere file existence.
+\* Morph and static commands are explicit; no failed-morph fallback is allowed.
+\* Typed metadata uses the same prepare/bounded-write/success admission steps.
+\* Export/metadata I/O errors may leave unaccepted partial files for diagnosis.
 \* Native decoding/GLB arithmetic, filesystem races and crash durability are not
 \* modeled. No cache publication or retry exists in this helper. Future callers
 \* must hash+validate results inside their own conversion-cache transaction.

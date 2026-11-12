@@ -56,6 +56,10 @@ def scene_identity(scene, entity_ids):
 
 
 def validate_package(package, scene):
+    if package.get('backend') == 'modifier_attached_models_v1':
+        from .modifier_mask_model import validate_package as validate_mask_package
+        validate_mask_package(package, scene)
+        return
     provenance=package.get('assets',{}).get('provenance',{})
     if 'spritecard_sheet_uv' in provenance:
         from .particle_sheet_uv import validate_shader_inputs
@@ -141,7 +145,11 @@ def build_package_effects(package, data, manifest_file, scene, camera):
     groups = ('objects', 'collections', 'meshes', 'shape_keys', 'materials', 'lights', 'images', 'actions', 'node_groups', 'texts')
     before = {key: set(getattr(bpy.data, key)) for key in groups}
     try:
-        report = build_simulated_effects(package['simulation'], assets, scene, camera)
+        if package.get('backend') == 'modifier_attached_models_v1':
+            from .blender_modifier_masks import build_modifier_mask
+            report = build_modifier_mask(package, data, assets, scene, camera)
+        else:
+            report = build_simulated_effects(package['simulation'], assets, scene, camera)
         if (package.get('backend')=='simulated_projectile_flight_v2'
                 and report.get('objects',0)<=0 and report.get('point_lights',0)<=0):
             raise ValueError('Projectile package produced no rendered geometry or lights')
@@ -149,7 +157,8 @@ def build_package_effects(package, data, manifest_file, scene, camera):
         created = [item for key in groups for item in set(getattr(bpy.data, key)) - before[key]]
         bpy.data.batch_remove(created)
         raise
-    report.update(status='partial', stage='rendering', simulation_backend=report['backend'], backend='simulated_states_v1',
+    report.update(status='partial', stage='rendering', simulation_backend=report['backend'],
+                  backend=package['backend'] if package.get('backend') == 'modifier_attached_models_v1' else 'simulated_states_v1',
                   scene_identity=package['scene_identity'], entity_ids=package['entity_ids'],
                   coverage_scope=package['coverage_scope'])
     return report

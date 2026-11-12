@@ -4,6 +4,8 @@ This source candidate adds outward Mina bat projectiles to normal recorded-effec
 exports. It includes network history retention, strict owner/request/capture
 binding, animated model geometry and the sprite/rope layers used by the tracer. It also connects captured scalar
 controls and collection-age texture curves used by Venator crossbow muzzle flashes.
+It also renders the qualified sustained Halloween mask model on Venator from
+retained modifier and owner inputs, independently of recorded particle births.
 It is based on the b29 public source; it is not a new published application build.
 
 ## Runtime layout
@@ -15,8 +17,9 @@ Keep three independent helper directories:
   `agr/model_material_groups.py`.
 - `tools/particle_simulation/ParticleSimulationProbe.dll`: upgraded simulation
   helper with its isolated pinned simulation dependency.
-- `tools/particle_geometry/ParticleGeometryProbe.dll`: geometry-only helper with
-  its isolated morph-export dependency.
+- `tools/particle_geometry/ParticleGeometryProbe.dll`: geometry and typed model
+  metadata helper with its isolated morph/static export dependency. Its patch
+  set includes skeletonless morph export and KV3 v5 unsigned constants.
 
 Build the geometry and simulation projects under `research/` with their documented
 dependency properties. `tools/codeql_build_helpers.py` records the distinct pinned
@@ -149,8 +152,46 @@ independent wire-index inventory while preserving actor, clock, projectile and
 modifier bytes. A private bounded-failure control preserves those same outputs.
 A fresh normal export and saved subrange retain the complete input envelopes;
 reopen, actor checks and four CPU Cycles frames preserve existing rendering.
-The mask activation profile still requires current-build qualification before a
-modifier-derived rendering stage is connected.
+These raw-input checks remain distinct from the derived renderer below.
+
+## Sustained modifier mask model
+
+A fresh normal export now resolves one sustained Venator mask component from
+exact serial/parent identity and complete owner samples. The current Windows
+client predicate and bodygroup argument/setter paths were independently checked
+offline against the installed modules. The admitted selector supplies authored
+bodygroup zero explicitly; this does not qualify the generic renderer's disabled
+attribute defaults or other switch subtypes. Changed native inputs refuse.
+
+The component uses the model matching the recorded resource handle, its verified
+source bytes, the evaluated skeleton and the authored named `mask` attachment.
+Typed model particle settings supply scale. Optional Model bone rules need not
+be enabled; when enabled their existing constrained evaluated pose is retained.
+Six source variants and their seven authored materials are preserved, with one
+selected variant visible. No hero-name fallback, guessed attachment, scale,
+particle birth, age or seed is introduced.
+
+The saved normal scene has one mask component/six model objects. All 200 existing
+actions, 137 object bindings and 65 effect mesh/UV fingerprints remain exact.
+Saved hero checks cover 3,150 bone and 21 root samples; all 21 mask attachment
+samples pass. Assets are packed with no external libraries. Actual post-import
+failure rollback removes all new data and restores frame/rig visibility; changed
+owner, scale and gate inputs refuse before geometry. Four CPU Cycles frames
+verify the visible component. Separate Blender component fixtures check 24/30/60
+FPS against affine-retimed saved actor actions; only 60 FPS is a fresh full CLI
+export. Between-tick transforms remain interpolated approximations.
+
+This admission requires positive gate and owner availability at every selected
+tick, with a stable indefinite modifier. Stop/death/endcap transitions, changing
+modifier settings, missing owners and measured lifecycle references remain
+unsupported. A false request is never converted into instant hiding. Parent
+ambient/sugar-rush layers stay explicitly unsupported; component counts do not
+inflate recorded particle-instance or birth counts. Approximate lighting is
+still overexposed in the retained preview and is not Source shader/lighting parity.
+
+The upgraded geometry helper also freshly reproduces the previously qualified
+bat GLB and morph metadata exactly. Its static command does not become a fallback
+for a rejected morph export. The separately pinned material parser is unchanged.
 
 ## Remaining limits
 

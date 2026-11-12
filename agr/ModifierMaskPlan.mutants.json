@@ -1,0 +1,42 @@
+[
+  {
+    "name": "allow extraction mismatch",
+    "replace": [
+      [
+        "phase'=IF valid THEN \"history\" ELSE \"error\"",
+        "phase'=\"history\""
+      ]
+    ],
+    "expect": "NoUnqualifiedPlan"
+  },
+  {
+    "name": "allow unqualified start history",
+    "replace": [
+      [
+        "phase'=IF valid THEN \"sample\" ELSE \"error\"",
+        "phase'=\"sample\""
+      ]
+    ],
+    "expect": "NoUnqualifiedPlan"
+  },
+  {
+    "name": "publish incomplete owner sampling",
+    "replace": [
+      [
+        "phase'=IF known THEN \"publish\" ELSE \"error\"",
+        "phase'=\"publish\""
+      ]
+    ],
+    "expect": "NoUnqualifiedPlan"
+  },
+  {
+    "name": "invent positive visibility",
+    "replace": [
+      [
+        "requested'=IF known THEN gate ELSE FALSE",
+        "requested'=TRUE"
+      ]
+    ],
+    "expect": "NoInventedGate"
+  }
+]

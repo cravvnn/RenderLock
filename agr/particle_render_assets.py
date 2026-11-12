@@ -5,7 +5,7 @@ from .particle_model_assets import prepare_model, model_resource
 from .particle_texture_layers import enabled_texture_layers
 
 
-def prepare_render_assets(names, decoder, adapter, provider, runtime, *, definitions=None, textures=None):
+def prepare_render_assets(names, decoder, adapter, provider, runtime, *, definitions=None, textures=None, allow_authored_models=False):
     definitions = {} if definitions is None else definitions
     textures = {} if textures is None else textures
     for name in names:
@@ -24,8 +24,24 @@ def prepare_render_assets(names, decoder, adapter, provider, runtime, *, definit
         for renderer in definitions[name].get('m_Renderers', []):
             if renderer.get('_class') != 'C_OP_RenderModels':
                 continue
-            resource = model_resource(renderer)
-            model, model_textures = prepare_model(adapter, renderer, provider, runtime)
+            from .particle_authored_model import is_authored_renderer, prepare_authored_model, MODEL
+            if allow_authored_models and is_authored_renderer(renderer):
+                from .particle_model_assets import geometry_runtime
+                from .particle_runtime import particle_command, particle_environment
+                from pathlib import Path
+                probe, dotnet = geometry_runtime(runtime)
+                material_command = runtime.get('material_command')
+                material_environment = runtime.get('material_environment')
+                material_probe = Path(runtime['probe']).resolve().parent.parent / 'particles' / 'ParticleProbe.dll'
+                if material_command is None and material_probe.is_file():
+                    material_command = particle_command(material_probe, runtime.get('dotnet'))
+                    material_environment = particle_environment(material_probe, runtime.get('dotnet'))
+                resource = MODEL
+                model, model_textures = prepare_authored_model(adapter, renderer, provider, probe, dotnet,
+                    material_command=material_command, material_environment=material_environment)
+            else:
+                resource = model_resource(renderer)
+                model, model_textures = prepare_model(adapter, renderer, provider, runtime)
             if resource in models and models[resource] != model:
                 raise UnsupportedEffect('Conflicting model material/profile for the same model resource')
             models[resource] = model
