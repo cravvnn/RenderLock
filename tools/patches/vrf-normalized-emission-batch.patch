@@ -1,0 +1,386 @@
+--- /dev/null
++++ b/ValveResourceFormat/Particles/EmitterBatch.cfg
+@@ -0,0 +1,3 @@
++CONSTANTS Contexts = {a,b} Capacity = 3
++SPECIFICATION Spec
++INVARIANTS CapacityBound PendingOwned RequestsKept BatchKept CountReserved FinalCount CompleteCopies
+--- /dev/null
++++ b/ValveResourceFormat/Particles/EmitterBatch.mutants.json
+@@ -0,0 +1,10 @@
++[
++ {"name":"overfill pending batch","replace":[["pending[c] < Capacity-count[c]","pending[c] <= Capacity-count[c]"]],"expect":"CapacityBound"},
++ {"name":"reenter collecting scope","replace":[["phase[c] = \"idle\"\n            /\\ phase'","phase[c] \\in {\"idle\",\"collect\"}\n            /\\ phase'"]],"expect":"RequestsKept"},
++ {"name":"lose first queued age","replace":[["batch' = [batch EXCEPT ![c] = pending[c]]","batch' = [batch EXCEPT ![c] = 0]"]],"expect":"BatchKept"},
++ {"name":"leave callback active after detach","replace":[["callbackActive' = [callbackActive EXCEPT ![c] = FALSE]\n             /\\ baseCount'","callbackActive' = callbackActive\n             /\\ baseCount'"]],"expect":"PendingOwned"},
++ {"name":"initialize before count reservation","replace":[["count' = [count EXCEPT ![c] = @+batch[c]]","count' = count"]],"expect":"CountReserved"},
++ {"name":"read growing per-particle count","replace":[["observed' = [observed EXCEPT ![c] = count[c]]","observed' = [observed EXCEPT ![c] = baseCount[c]+initialized[c]+1]"]],"expect":"FinalCount"},
++ {"name":"omit initial snapshot copy","replace":[["copied' = [copied EXCEPT ![c] = @+1]","copied' = copied"]],"expect":"CompleteCopies"},
++ {"name":"leak callback on emission exception","replace":[["callbackActive' = [callbackActive EXCEPT ![c] = FALSE]\n                   /\\ pending'","callbackActive' = callbackActive\n                   /\\ pending'"]],"expect":"PendingOwned"}
++]
+--- /dev/null
++++ b/ValveResourceFormat/Particles/EmitterBatch.tla
+@@ -0,0 +1,81 @@
++-------------------------- MODULE EmitterBatch --------------------------
++EXTENDS Naturals, Integers, TLC
++CONSTANT Contexts, Capacity
++VARIABLES phase, count, pending, requested, batch, baseCount, initialized,
++          copied, callbackActive, observed, published
++vars == <<phase,count,pending,requested,batch,baseCount,initialized,copied,callbackActive,observed,published>>
++\* Entire new Emit/Collect/Detach/Reserve/Initialize/Copy/Publish protocol.
++\* Two independent synchronous simulations may interleave. Restart/prune occur
++\* only at caller frame boundaries; initializer exceptions are fatal to the
++\* owning helper instance, not a recoverable partial publish. Native numeric
++\* provider and saved-scene checks are separate from this finite state model.
++Init == /\ phase = [c \in Contexts |-> "idle"]
++        /\ count \in [Contexts -> 0..Capacity]
++        /\ pending = [c \in Contexts |-> 0]
++        /\ requested = [c \in Contexts |-> 0]
++        /\ batch = [c \in Contexts |-> 0]
++        /\ baseCount = count
++        /\ initialized = [c \in Contexts |-> 0]
++        /\ copied = [c \in Contexts |-> 0]
++        /\ callbackActive = [c \in Contexts |-> FALSE]
++        /\ observed = [c \in Contexts |-> -1]
++        /\ published = [c \in Contexts |-> FALSE]
++Begin(c) == /\ phase[c] = "idle"
++            /\ phase' = [phase EXCEPT ![c] = "collect"]
++            /\ pending' = [pending EXCEPT ![c] = 0]
++            /\ callbackActive' = [callbackActive EXCEPT ![c] = TRUE]
++            /\ published' = [published EXCEPT ![c] = FALSE]
++            /\ UNCHANGED <<count,requested,batch,baseCount,initialized,copied,observed>>
++Collect(c) == /\ phase[c] = "collect" /\ pending[c] < Capacity-count[c]
++              /\ pending' = [pending EXCEPT ![c] = @+1]
++              /\ requested' = [requested EXCEPT ![c] = @+1]
++              /\ UNCHANGED <<phase,count,batch,baseCount,initialized,copied,callbackActive,observed,published>>
++Detach(c) == /\ phase[c] = "collect"
++             /\ phase' = [phase EXCEPT ![c] = "reserve"]
++             /\ batch' = [batch EXCEPT ![c] = pending[c]]
++             /\ pending' = [pending EXCEPT ![c] = 0]
++             /\ callbackActive' = [callbackActive EXCEPT ![c] = FALSE]
++             /\ baseCount' = [baseCount EXCEPT ![c] = count[c]]
++             /\ initialized' = [initialized EXCEPT ![c] = 0]
++             /\ copied' = [copied EXCEPT ![c] = 0]
++             /\ observed' = [observed EXCEPT ![c] = -1]
++             /\ UNCHANGED <<count,requested,published>>
++Reserve(c) == /\ phase[c] = "reserve"
++              /\ count' = [count EXCEPT ![c] = @+batch[c]]
++              /\ phase' = [phase EXCEPT ![c] = "initialize"]
++              /\ UNCHANGED <<pending,requested,batch,baseCount,initialized,copied,callbackActive,observed,published>>
++Initialize(c) == /\ phase[c] = "initialize" /\ initialized[c] < batch[c]
++                 /\ initialized' = [initialized EXCEPT ![c] = @+1]
++                 /\ copied' = [copied EXCEPT ![c] = @+1]
++                 /\ observed' = [observed EXCEPT ![c] = count[c]]
++                 /\ UNCHANGED <<phase,count,pending,requested,batch,baseCount,callbackActive,published>>
++Publish(c) == /\ phase[c] = "initialize" /\ initialized[c] = batch[c]
++              /\ published' = [published EXCEPT ![c] = TRUE]
++              /\ phase' = [phase EXCEPT ![c] = "done"]
++              /\ UNCHANGED <<count,pending,requested,batch,baseCount,initialized,copied,callbackActive,observed>>
++FaultCollect(c) == /\ phase[c] = "collect"
++                   /\ phase' = [phase EXCEPT ![c] = "failed"]
++                   /\ callbackActive' = [callbackActive EXCEPT ![c] = FALSE]
++                   /\ pending' = [pending EXCEPT ![c] = 0]
++                   /\ UNCHANGED <<count,requested,batch,baseCount,initialized,copied,observed,published>>
++FaultInitialize(c) == /\ phase[c] = "initialize"
++                      /\ phase' = [phase EXCEPT ![c] = "failed"]
++                      /\ UNCHANGED <<count,pending,requested,batch,baseCount,initialized,copied,callbackActive,observed,published>>
++Prune(c) == /\ phase[c] = "idle" /\ count[c] > 0
++            /\ count' = [count EXCEPT ![c] = @-1]
++            /\ UNCHANGED <<phase,pending,requested,batch,baseCount,initialized,copied,callbackActive,observed,published>>
++Replay(c) == /\ phase[c] = "idle"
++             /\ count' = [count EXCEPT ![c] = 0]
++             /\ UNCHANGED <<phase,pending,requested,batch,baseCount,initialized,copied,callbackActive,observed,published>>
++Hold == /\ \A c \in Contexts: phase[c] \in {"done","failed"} /\ UNCHANGED vars
++Next == (\E c \in Contexts: Begin(c) \/ Collect(c) \/ Detach(c) \/ Reserve(c) \/ Initialize(c)
++           \/ Publish(c) \/ FaultCollect(c) \/ FaultInitialize(c) \/ Prune(c) \/ Replay(c)) \/ Hold
++Spec == Init /\ [][Next]_vars
++CapacityBound == \A c \in Contexts: count[c] <= Capacity /\ pending[c]+count[c] <= Capacity
++PendingOwned == \A c \in Contexts: phase[c] # "collect" => ~callbackActive[c]
++RequestsKept == \A c \in Contexts: phase[c] = "collect" => pending[c] = requested[c]
++BatchKept == \A c \in Contexts: phase[c] \in {"reserve","initialize","done"} => batch[c] = requested[c]
++CountReserved == \A c \in Contexts: phase[c] \in {"initialize","done"} => count[c] = baseCount[c]+batch[c]
++FinalCount == \A c \in Contexts: phase[c] \in {"initialize","done"} /\ initialized[c] > 0 => observed[c] = baseCount[c]+batch[c]
++CompleteCopies == \A c \in Contexts: published[c] => initialized[c] = batch[c] /\ copied[c] = batch[c]
++==========================================================================
+--- /dev/null
++++ b/ValveResourceFormat/Particles/EmitterBatch_COVERAGE.md
+@@ -0,0 +1,17 @@
++EmitterBatch models the synchronous per-emitter collect/detach/reserve/
++initialize/Initial-copy/publication protocol with two contexts and capacity3.
++StartSelf and BeginPrewarm enter the same detached reservation path directly;
++PrewarmEmission composes its completed-batch interface and scopes serial/count
++restoration across honest caller Begin/render/End. Renderer exceptions before End
++are existing failed paths, not a new recovery guarantee. New EmitParticle callers
++must own the synchronous callback scope; all current emitter callbacks, StartSelf
++and BeginPrewarm were audited. Invalid finite/bounds inputs refuse before reserve.
++
++Simplification: reuse one reservation/initializer routine for emitter, initial and
++prewarm spawns; a nullable local age list owns only one emitter callback scope.
++No fake denominator, provider-specific count, persistent queue or new clock.
++Native prepared arithmetic/actual API tests cover data; bounded models do not
++execute native scheduling/random order. Original camera-distance/child scheduling
++code is deliberately retained, unlike the historical broad dependency image.
++Initializer exceptions are fatal to the owning helper result, not recoverable
++partial scene publication. Full normal/save/render parity remains separate.
+--- a/ValveResourceFormat/Particles/ParticleSystemSimulation.Simulation.cs
++++ b/ValveResourceFormat/Particles/ParticleSystemSimulation.Simulation.cs
+@@ -12,6 +12,10 @@
+         /// </summary>
+         private const ulong SpawnWrittenFields = 1UL << (int)ParticleField.CreationTime;
+ 
++        // Owned only during one synchronous emitter.Emit call. Detach before
++        // initializing so providers see the final reserved collection count.
++        private List<float>? emissionBatch;
++
+         /// <summary>Starts the system and its children, running any pre-simulation the definition asks for.</summary>
+         public void Start()
+         {
+@@ -27,10 +31,8 @@
+ 
+         private void StartSelf()
+         {
+-            for (var i = 0; i < initialParticles; ++i)
+-            {
+-                EmitParticle(0f);
+-            }
++            var count = Math.Clamp(initialParticles, 0, particleCollection.Capacity - particleCollection.Count);
++            EmitBatch(new float[count]);
+ 
+             RearmSelf();
+         }
+@@ -120,25 +122,64 @@
+ 
+         private void EmitParticle(float ageAtSpawn)
+         {
+-            var index = particleCollection.Add();
+-            if (index < 0)
+-            {
+-                return;
+-            }
+-
+-            systemState.ParticleCount += 1;
+-
+-            // TODO: Make particle positions and control points local space
+-            particleCollection.Current[index] = particleCollection.Initial[index];
+-
+-            // Both ids must be set before initializing, since initializers read them
+-            particleCollection.Current[index].UniqueParticleId = particlesEmitted++;
+-            particleCollection.Current[index].ParticleId = particleCollection.Current[index].UniqueParticleId + systemState.Random.Seed;
+-            particleCollection.Current[index].Index = index;
+-            particleCollection.Current[index].Position = MainControlPoint.Position;
+-            particleCollection.Current[index].CreationTime = systemState.Age - ageAtSpawn;
+-            particleCollection.Current[index].Age = ageAtSpawn;
+-
++            var batch = emissionBatch ?? throw new InvalidOperationException("Particle emission outside its owning batch");
++            if (!float.IsFinite(ageAtSpawn))
++            {
++                throw new ArgumentException("Non-finite particle spawn age", nameof(ageAtSpawn));
++            }
++
++            // Preserve signed source snapshot ages, and the old pool-full drop.
++            if (batch.Count < particleCollection.Capacity - particleCollection.Count)
++            {
++                batch.Add(ageAtSpawn);
++            }
++        }
++
++        private void EmitBatch(IReadOnlyList<float> ages)
++        {
++            if (emissionBatch is not null || ages.Count > particleCollection.Capacity - particleCollection.Count)
++            {
++                throw new InvalidOperationException("Particle batch must be detached and fit the remaining pool");
++            }
++
++            foreach (var age in ages)
++            {
++                if (!float.IsFinite(age))
++                {
++                    throw new ArgumentException("Particle batch ages must be finite", nameof(ages));
++                }
++            }
++
++            var first = particleCollection.Count;
++            for (var i = 0; i < ages.Count; i++)
++            {
++                var index = particleCollection.Add();
++                if (index != first + i)
++                {
++                    throw new InvalidOperationException("Particle batch reservation changed unexpectedly");
++                }
++
++                // Seed all reserved slots before any initializer can read the
++                // collection. Do not substitute a guessed provider denominator.
++                ref var particle = ref particleCollection.Current[index];
++                particle = particleCollection.Initial[index];
++                particle.UniqueParticleId = particlesEmitted++;
++                particle.ParticleId = particle.UniqueParticleId + systemState.Random.Seed;
++                particle.Index = index;
++                particle.Position = MainControlPoint.Position;
++                particle.CreationTime = systemState.Age - ages[i];
++                particle.Age = ages[i];
++            }
++
++            systemState.ParticleCount = particleCollection.Count;
++            for (var index = first; index < particleCollection.Count; index++)
++            {
++                InitializeParticle(index);
++            }
++        }
++
++        private void InitializeParticle(int index)
++        {
+             // Below behavior version 6 the first writer of an attribute wins: a later initializer whose
+             // declared write set is already fully initialized is skipped, up to firstMultipleOverride.
+             var written = SpawnWrittenFields;
+@@ -519,7 +560,23 @@
+                     continue;
+                 }
+ 
+-                emitter.Emit(frameTime, systemState, strength);
++                if (emissionBatch is not null)
++                {
++                    throw new InvalidOperationException("Nested particle emission batch");
++                }
++
++                var batch = new List<float>();
++                emissionBatch = batch;
++                try
++                {
++                    emitter.Emit(frameTime, systemState, strength);
++                }
++                finally
++                {
++                    emissionBatch = null;
++                }
++
++                EmitBatch(batch);
+             }
+ 
+             systemState.Random.OperatorOffset = 0;
+--- a/ValveResourceFormat/Particles/ParticleSystemSimulation.cs
++++ b/ValveResourceFormat/Particles/ParticleSystemSimulation.cs
+@@ -329,14 +329,12 @@
+                 return null;
+             }
+ 
+-            // EmitParticle moves emission-order state that real spawns rely on for determinism, so
+-            // EndPrewarm puts it back and these leave no trace once the real simulation starts.
++            // Capture both counters before the shared reservation/initialization
++            // path; EndPrewarm restores them when the returned scope is ended.
+             var scope = new PrewarmScope(particlesEmitted, systemState.ParticleCount);
+ 
+-            for (var i = 0; i < count; i++)
+-            {
+-                EmitParticle(0f);
+-            }
++            var actual = Math.Clamp(count, 0, particleCollection.Capacity - particleCollection.Count);
++            EmitBatch(new float[actual]);
+ 
+             return scope;
+         }
+--- /dev/null
++++ b/ValveResourceFormat/Particles/PrewarmEmission.cfg
+@@ -0,0 +1,3 @@
++CONSTANT InitialCount = 0
++SPECIFICATION Spec
++INVARIANTS Restored EmptyOnly NoScope NoEarlyScope
+--- /dev/null
++++ b/ValveResourceFormat/Particles/PrewarmEmission.mutants.json
+@@ -0,0 +1,53 @@
++[
++  {
++    "name": "lose emission serial",
++    "replace": [
++      [
++        "serial'=savedSerial",
++        "serial'=serial"
++      ]
++    ],
++    "expect": "Restored"
++  },
++  {
++    "name": "lose reported count",
++    "replace": [
++      [
++        "reported'=savedReported",
++        "reported'=reported"
++      ]
++    ],
++    "expect": "Restored"
++  },
++  {
++    "name": "keep temporary particles",
++    "replace": [
++      [
++        "/\\ count'=0 /\\ serial'=savedSerial",
++        "/\\ count'=count /\\ serial'=savedSerial"
++      ]
++    ],
++    "expect": "Restored"
++  },
++  {
++    "name": "issue scope before initialization",
++    "replace": [
++      [
++        "UNCHANGED issued",
++        "issued'=IF count=0 THEN TRUE ELSE issued"
++      ]
++    ],
++    "expect": "NoEarlyScope"
++  },
++  {
++    "name": "prewarm occupied collection",
++    "config": "PrewarmEmission-nonempty.cfg",
++    "replace": [
++      [
++        "phase'=IF count>0 THEN",
++        "phase'=IF FALSE THEN"
++      ]
++    ],
++    "expect": "EmptyOnly"
++  }
++]
+--- /dev/null
++++ b/ValveResourceFormat/Particles/PrewarmEmission.tla
+@@ -0,0 +1,36 @@
++--------------------------- MODULE PrewarmEmission ---------------------------
++EXTENDS Naturals, Integers, TLC
++\* BeginPrewarm/EndPrewarm counter scope, now using the separately modeled
++\* EmitBatch. Honest caller is pinned Renderer/Particles/ParticleRenderer.Prewarm,
++\* which either gets null, renders then ends, or throws before EndPrewarm.
++\* The helper does not render; compiled oracle exercises this public API.
++\* Initializer/render exceptions are fatal/failed here, not claimed restored.
++\* RNG state, graphics resources and complete renderer lifecycle are out of scope.
++CONSTANT InitialCount
++VARIABLES phase, count, serial, reported, savedSerial, savedReported, issued
++vars == <<phase,count,serial,reported,savedSerial,savedReported,issued>>
++Init == /\ phase="idle" /\ count=InitialCount /\ serial \in 0..1 /\ reported \in 0..1
++        /\ savedSerial=serial /\ savedReported=reported /\ issued=FALSE
++BeginPrewarm(n) ==
++  /\ phase="idle"
++  /\ phase'=IF count>0 THEN "no-scope" ELSE "initializing"
++  /\ count'=IF count>0 THEN count ELSE n
++  /\ serial'=IF count>0 THEN serial ELSE serial+n
++  /\ reported'=IF count>0 THEN reported ELSE n
++  /\ savedSerial'=serial /\ savedReported'=reported
++  /\ UNCHANGED issued
++ReturnScope == /\ phase="initializing" /\ phase'="borrowed" /\ issued'=TRUE
++               /\ UNCHANGED <<count,serial,reported,savedSerial,savedReported>>
++EndPrewarm == /\ phase="borrowed" /\ phase'="ended"
++              /\ count'=0 /\ serial'=savedSerial /\ reported'=savedReported
++              /\ UNCHANGED <<savedSerial,savedReported,issued>>
++Fail == /\ phase \in {"initializing","borrowed"} /\ phase'="failed"
++        /\ UNCHANGED <<count,serial,reported,savedSerial,savedReported,issued>>
++Terminal == /\ phase \in {"no-scope","ended","failed"} /\ UNCHANGED vars
++Next == (\E n \in 0..2:BeginPrewarm(n)) \/ ReturnScope \/ EndPrewarm \/ Fail \/ Terminal
++Spec == Init /\ [][Next]_vars
++Restored == phase#"ended" \/ (count=0 /\ serial=savedSerial /\ reported=savedReported)
++EmptyOnly == phase \in {"idle","no-scope","failed"} \/ InitialCount=0
++NoScope == phase#"no-scope" \/ (~issued /\ count=1 /\ serial=savedSerial /\ reported=savedReported)
++NoEarlyScope == phase#"initializing" \/ ~issued
++=============================================================================
+--- /dev/null
++++ b/ValveResourceFormat/Particles/PrewarmEmission-nonempty.cfg
+@@ -0,0 +1,3 @@
++CONSTANT InitialCount = 1
++SPECIFICATION Spec
++INVARIANTS Restored EmptyOnly NoScope NoEarlyScope

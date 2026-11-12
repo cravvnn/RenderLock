@@ -98,7 +98,27 @@ unknown transform fallbacks stay unqualified. Set-once and reset keep their
 existing per-operator flags. Scalar interpolation uses explicit current/previous
 positions and existing numeric providers; it introduces no emission/clock state.
 
-This removes the retained Silence request's root/scalar warnings, but the request
-still reproduces the zero-radius normalized-emission bug in every swirl sample.
-All four systems must remain enabled, and positive samples must be qualified
-after the batch fix before full normal/save/render support is claimed.
+The later normalized-emission patch fixes the zero-radius swirls left by this
+root/scalar layer. All four systems remain enabled; helper-level positive samples
+are separately checked. Full normal/save/render support still has separate gates.
+
+## Normalized emission batches
+
+Only the simulation project defines `AGR_SIMULATION_BATCH` and applies the batch
+patch. The shared emitter callback owns a bounded transient age list; it detaches
+before reservation/initialization. Initial and prewarm particles share that path,
+with the existing public prewarm counters restored on successful EndPrewarm.
+No fake denominator, extra particle clock or per-effect radius fix is used.
+The material parser and unrelated child camera-distance scheduling stay unchanged.
+
+`--spawn-batch-oracle` checks native prepared normalized-number rows plus real
+capacity/replay/prune/age/callback/initializer-failure and prewarm boundaries.
+Ordinary output changes where it previously used the growing count: the retained
+flashbang ring alpha and flare rotation now follow the final batch count. Their
+numerical changes are audited; new normal/saved/visual qualification is required.
+The pinned upstream curve interpolation remains its existing linear approximation.
+
+One qualified Silence instance also gets explicit material/aux policy markers and
+direct scratch1/2/material-vector snapshots. Other requests keep their old field
+shape. Missing material values are not filled with zero. This completes prepared
+attribute transport, not fresh rig acquisition, geometry, Blender or Cycles proof.

@@ -8,6 +8,9 @@ using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Buffers.Binary;
+#if AGR_SIMULATION_BATCH
+if(args.Length==3 && args[0]=="--spawn-batch-oracle") { SpawnBatchOracle.Check(args[1],args[2]);return; }
+#endif
 #if AGR_SIMULATION_HITBOX
 if(args.Length==2 && args[0]=="--root-position-oracle") { RootPositionOracle.Check(args[1]);return; }
 if(args.Length==2 && args[0]=="--literal-identity-control-oracle") { LiteralIdentityControlOracle.Check(args[1]);return; }
@@ -57,6 +60,13 @@ TransformOracle.Check();
 var requestBytes=File.ReadAllBytes(args[0]);
 var requestSha256=Convert.ToHexStringLower(SHA256.HashData(requestBytes));
 using var document=JsonDocument.Parse(requestBytes);var config=document.RootElement;
+#if AGR_SIMULATION_HITBOX
+var inputRows=config.GetProperty("instances");
+var hasSilenceMaterialInputs=inputRows.EnumerateArray().Any(i=>i.TryGetProperty("silence_birth_provider",out _));
+if(hasSilenceMaterialInputs && inputRows.GetArrayLength()!=1)
+ throw new InvalidDataException("Silence material snapshots require one complete qualified instance");
+var silenceMaterialFields=hasSilenceMaterialInputs;
+#endif
 var log=new CaptureLog();
 uint? seed=config.TryGetProperty("seed",out var seedInput)?seedInput.GetUInt32():null;
 using var loader=new GameFileLoader(null,config.GetProperty("gameinfo").GetString(),log);
@@ -158,11 +168,43 @@ foreach(var instance in config.GetProperty("instances").EnumerateArray()) {
   var systems=new List<object>();
   void Capture(ParticleSystemSimulation s,string path) {
    var particles=new List<object>();
-   foreach(ref var x in s.Particles.Current)particles.Add(new{id=x.UniqueParticleId,position=V(x.Position),previous=V(x.PositionPrevious),velocity=V(x.Velocity),radius=x.Radius,alpha=x.Alpha,alpha_alternate=x.AlphaAlternate,color=V(x.Color),life=x.Lifetime,age=x.Age,creation_time=x.CreationTime,scratch_float0=x.ScratchFloat0,
+   foreach(ref var x in s.Particles.Current) {
+    var sample=new{id=x.UniqueParticleId,position=V(x.Position),previous=V(x.PositionPrevious),velocity=V(x.Velocity),radius=x.Radius,alpha=x.Alpha,alpha_alternate=x.AlphaAlternate,color=V(x.Color),life=x.Lifetime,age=x.Age,creation_time=x.CreationTime,scratch_float0=x.ScratchFloat0,
 #if AGR_SIMULATION_SHADER_EXTRAS
 shader_extra_data1=x.ShaderExtraData1,shader_extra_data2=x.ShaderExtraData2,
 #endif
-hitbox_index=x.HitboxIndex,hitbox_coordinates=V(x.HitboxOffsetPosition),trail=x.TrailLength,normal=V(x.Normal),rotation=V(x.Rotation),sequence=x.SequenceNumber,second_sequence=x.SecondSequenceNumber,manual_frame=x.ManualAnimationFrame});
+hitbox_index=x.HitboxIndex,hitbox_coordinates=V(x.HitboxOffsetPosition),trail=x.TrailLength,normal=V(x.Normal),rotation=V(x.Rotation),sequence=x.SequenceNumber,second_sequence=x.SecondSequenceNumber,manual_frame=x.ManualAnimationFrame};
+#if AGR_SIMULATION_HITBOX
+    if(silenceMaterialFields)particles.Add(new{
+     sample.id,
+     sample.position,
+     sample.previous,
+     sample.velocity,
+     sample.radius,
+     sample.alpha,
+     sample.alpha_alternate,
+     sample.color,
+     sample.life,
+     sample.age,
+     sample.creation_time,
+     sample.scratch_float0,
+#if AGR_SIMULATION_SHADER_EXTRAS
+     sample.shader_extra_data1,
+     sample.shader_extra_data2,
+#endif
+     sample.hitbox_index,
+     sample.hitbox_coordinates,
+     sample.trail,
+     sample.normal,
+     sample.rotation,
+     sample.sequence,
+     sample.second_sequence,
+     sample.manual_frame,
+     scratch_float1=x.ScratchFloat1,scratch_float2=x.ScratchFloat2,material_scratch_vector=V(x.ScratchVector)});
+    else
+#endif
+    particles.Add(sample);
+   }
    systems.Add(new{name=s.Name,system_path=path,step=s.Particles.CurrentFrameTime,system_age=s.RenderState.Age,control_points=RenderControlSnapshot.Capture(s.RenderState),particles});
    for(int childIndex=0;childIndex<s.Children.Count;childIndex++)Capture(s.Children[childIndex],path+"/"+childIndex);
   }
@@ -201,11 +243,21 @@ hitbox_index=x.HitboxIndex,hitbox_coordinates=V(x.HitboxOffsetPosition),trail=x.
  if(replayEvents.WorldOriginProvider is null)output.Add(qualifiedOutput);
  else { var row=JsonSerializer.SerializeToElement(qualifiedOutput).EnumerateObject().ToDictionary(p=>p.Name,p=>(object)p.Value.Clone());row.Add("world_origin_provider",replayEvents.WorldOriginProvider.Value);output.Add(row); }
 }
-File.WriteAllText(args[1],JsonSerializer.Serialize(new{schema_version=1,backend="ValveResourceFormat 42743fb93030c552f834fabb30708dad84d0cbf5 + AGR RampScalarSpline v1 + PT_TYPE_INVALID identity v1 + experimental CreateOnModel bones v1",control_point_snapshot_policy=RenderControlSnapshot.Policy,
+var response=new{schema_version=1,backend="ValveResourceFormat 42743fb93030c552f834fabb30708dad84d0cbf5 + AGR RampScalarSpline v1 + PT_TYPE_INVALID identity v1 + experimental CreateOnModel bones v1",control_point_snapshot_policy=RenderControlSnapshot.Policy,
 #if AGR_SIMULATION_SHADER_EXTRAS
 shader_extra_data_policy="agr_shader_extra_fields_v1",
 #endif
-request_sha256=requestSha256,seed,seed_policy=seed.HasValue?"agr_substitute_sha256_v1":"upstream_random",tick_rate=tickRate,start_tick=start,end_tick=end,warnings=log.Messages,instances=output},new JsonSerializerOptions{WriteIndented=true}));
+request_sha256=requestSha256,seed,seed_policy=seed.HasValue?"agr_substitute_sha256_v1":"upstream_random",tick_rate=tickRate,start_tick=start,end_tick=end,warnings=log.Messages,instances=output};
+object qualifiedResponse=response;
+#if AGR_SIMULATION_HITBOX
+if(silenceMaterialFields) {
+ var materialResponse=JsonSerializer.SerializeToElement(response).EnumerateObject().ToDictionary(p=>p.Name,p=>(object)p.Value.Clone());
+ materialResponse.Add("model_material_fields_policy","agr_model_material_fields_v1");
+ materialResponse.Add("model_aux_scalar_fields_policy","agr_model_aux_scalar_fields_v1");
+ qualifiedResponse=materialResponse;
+}
+#endif
+File.WriteAllText(args[1],JsonSerializer.Serialize(qualifiedResponse,new JsonSerializerOptions{WriteIndented=true}));
 Console.WriteLine($"Simulated {output.Count} recorded instances; {log.Messages.Count} warnings");
 if(log.Messages.Count>0)Environment.ExitCode=2;
 // Version-bound instrumentation of the pinned simulator, not the game process.

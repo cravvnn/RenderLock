@@ -4,7 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <DefineConstants>$(DefineConstants);AGR_SIMULATION_SHADER_EXTRAS;AGR_SIMULATION_SNAPSHOT;AGR_SIMULATION_HITBOX</DefineConstants>
+    <DefineConstants>$(DefineConstants);AGR_SIMULATION_SHADER_EXTRAS;AGR_SIMULATION_SNAPSHOT;AGR_SIMULATION_HITBOX;AGR_SIMULATION_BATCH</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../ParticleProbe/*.cs" Exclude="../ParticleProbe/HitboxFrameHistory.cs" />

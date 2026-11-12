@@ -101,7 +101,23 @@ is distinct from an unknown provider falling back to identity. Set-once/reset
 and position-tree models accompany the dependency classes. The registered scalar
 warp uses existing numeric providers and has no mutable initializer state.
 
-The retained Silence helper request then has four systems/no warnings/CP3-4
-authored, but all4710swirl samples still have zero radius. The normalized emission
-batch fix and required material-field snapshots remain separate requirements.
-Do not call this a complete Silence or normal-export/render qualification.
+At the root/scalar checkpoint the retained Silence helper request had four systems,
+no warnings and CP3/4 authored, but all4710swirl samples still had zero radius.
+
+The following simulation-only `vrf-normalized-emission-batch.patch` fixes that
+count dependency. Each emitter's synchronous callbacks collect signed finite ages;
+the scope detaches in finally, all actual slots are reserved before initializers
+read collection count, then existing per-particle initialization/Initial copies
+finish. StartSelf and BeginPrewarm reuse the reservation path. EndPrewarm retains
+its existing counter restoration; failed rendering is not claimed recoverable.
+Camera-distance/child scheduling changes from the old broad image are excluded.
+Two adjacent models cover batch ownership and prewarm scope/counters.
+
+Silence then has4396positive swirl samples and314authored-zero endpoints. The
+shared host explicitly snapshots scratch1/2/material vectors and existing policy
+markers only for one independently qualified Silence instance. Non-Silence field
+availability stays unchanged. These are simulated attributes, not native capture.
+The count correction also intentionally changes ring alpha/flare rotation in the
+old flashbang request; all changed values match count/remap calculations, while
+all other state is exact. That effect requires new normal/saved/pixel acceptance;
+do not claim bit-identical old simulation output or complete normal support.

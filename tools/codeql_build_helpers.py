@@ -26,7 +26,8 @@ SIMULATION_PATCHES = PATCHES + ("vrf-vector-expression-initializer.patch", "vrf-
                                   "vrf-explicit-snapshot-skinning.patch",
                                   "vrf-single-child-position-provenance.patch",
                                   "vrf-explicit-hitbox-runtime.patch",
-                                  "vrf-silence-root-position-warp.patch")
+                                  "vrf-silence-root-position-warp.patch",
+                                  "vrf-normalized-emission-batch.patch")
 
 
 def run(*args, cwd=ROOT):

@@ -52,6 +52,9 @@ def test_geometry_preparation_cannot_patch_the_material_dependency(tmp_path, mon
     assert ('simulation', 'vrf-silence-root-position-warp.patch') in patches
     assert ('particle', 'vrf-silence-root-position-warp.patch') not in patches
     assert ('geometry', 'vrf-silence-root-position-warp.patch') not in patches
+    assert ('simulation', 'vrf-normalized-emission-batch.patch') in patches
+    assert ('particle', 'vrf-normalized-emission-batch.patch') not in patches
+    assert ('geometry', 'vrf-normalized-emission-batch.patch') not in patches
     properties = codeql_build_helpers.properties(tmp_path / 'work')
     assert '-p:ParticleVrfProject=' + str(tmp_path / 'work/particle/ValveResourceFormat/ValveResourceFormat.csproj') in properties
     assert '-p:ParticleGeometryVrfProject=' + str(tmp_path / 'work/geometry/ValveResourceFormat/ValveResourceFormat.csproj') in properties
