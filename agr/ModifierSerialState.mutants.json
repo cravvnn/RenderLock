@@ -1,0 +1,8 @@
+[
+ {"name":"treat snapshot as a delta","replace":[["skip == kind=\"snapshot\"","skip == FALSE"]],"expect":"RawConsistency"},
+ {"name":"end previous serial on slot reuse","replace":[["base == ledger","base == IF slots[slot]#Unknown /\\ slots[slot]#serial THEN [ledger EXCEPT ![slots[slot]]=Empty] ELSE ledger"]],"expect":"RawConsistency"},
+ {"name":"use table slot contents as identity","replace":[["target == serial","target == IF slots[slot]=Unknown THEN serial ELSE slots[slot]"]],"expect":"RawConsistency"},
+ {"name":"default omitted field to zero","replace":[["merged == IF value=Unknown THEN IF base[target].live THEN base[target].value ELSE Unknown ELSE value","merged == IF value=Unknown THEN 0 ELSE value"]],"expect":"RawConsistency"},
+ {"name":"ignore explicit removal","replace":[["nextValue == IF kind=\"remove\" THEN Empty ELSE [live |-> TRUE,value |-> merged]","nextValue == [live |-> TRUE,value |-> merged]"]],"expect":"RawConsistency"},
+ {"name":"publish a prefix after unknown serial","replace":[["phase'=\"error\" /\\ badInput'=TRUE","phase'=\"done\" /\\ badInput'=TRUE /\\ accepted'=TRUE"],["UNCHANGED <<pos,ledger,oracle,slots,accepted>>","UNCHANGED <<pos,ledger,oracle,slots>>"]],"expect":"NoUnqualifiedResult"}
+]

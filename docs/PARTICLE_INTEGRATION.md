@@ -124,6 +124,34 @@ binds the original extraction range; a later subrange consumer must validate the
 containing capture without rewriting its hashed history or treating snapshots as
 creation events.
 
+## Owner arrays and raw serial state
+
+Normal extraction also retains complete selected-owner state-word arrays with
+exact index/serial identity, life state, nullable missing fields and bounded
+provenance. The fixed-array reader preserves every declared uint32 element;
+duplicate display names never collapse different indices. These raw inputs do
+not decide client visibility or effect activation. Unavailable capture and
+incomplete individual fields remain distinct.
+
+The serial-keyed reader folds ordered modifier deltas, merges only present fields
+and removes the exact serial on an explicit removal. Slot reuse does not remove
+an earlier serial, and snapshots are not creation events. Its projection agrees
+with pinned Boon's actual full-message merger at eight measured query ticks.
+It remains a raw-state reader for later providers, not a particle lifetime model.
+
+Both input envelopes support enclosed saved shots without rewriting their
+original range, history or digests. Default serial queries stop at the selected
+shot end; earlier signon state remains available and later writes cannot leak
+into that result. Expanded or tampered views refuse.
+
+Fresh full replay capture reproduces the qualified owner-array reference and an
+independent wire-index inventory while preserving actor, clock, projectile and
+modifier bytes. A private bounded-failure control preserves those same outputs.
+A fresh normal export and saved subrange retain the complete input envelopes;
+reopen, actor checks and four CPU Cycles frames preserve existing rendering.
+The mask activation profile still requires current-build qualification before a
+modifier-derived rendering stage is connected.
+
 ## Remaining limits
 
 This is not complete game-particle support. Other named attachments, derived

@@ -4,7 +4,7 @@ Native ClientModifierWrites.tla models capture/publication. This module performs
 bounded synchronous validation on immutable bytes, and keeps their provenance.
 It neither merges table fields nor decides particle births, phases or deaths.
 """
-from .replay_capture import file_sha256,canonical_sha256,retain_contract,validate_contract_envelope
+from .replay_capture import file_sha256,canonical_sha256,retain_contract,validate_contract_envelope,validate_contract_view
 
 FILE='client_modifier_writes.json'
 POLICY='agr_client_modifier_writes_v1'
@@ -124,4 +124,10 @@ def retain_capture(output,advertisement,start,end,demo_sha,helper_sha):
 def validate_envelope(value,*,demo_sha256,start_tick,end_tick):
     """Recheck portable embedded capture identity without trusting an old path."""
     return validate_contract_envelope(value,demo_sha256=demo_sha256,start_tick=start_tick,end_tick=end_tick,
+        filename=FILE,validator=validate_capture,check=require)
+
+
+def validate_view(value,*,demo_sha256,start_tick,end_tick):
+    """Keep signon history and original digests for an enclosed saved shot."""
+    return validate_contract_view(value,demo_sha256=demo_sha256,start_tick=start_tick,end_tick=end_tick,
         filename=FILE,validator=validate_capture,check=require)

@@ -345,7 +345,7 @@ def extract_replay(demo: Path, output: Path, start_tick: int, end_tick: int,
     if end_tick > metadata["total_ticks"]:
         raise ReplayError(f"End tick {end_tick} exceeds replay total_ticks {metadata['total_ticks']}.")
     reserved = ["segment.json", "raw_animation_state.json", "network_ticks.json", "native_coverage.json", "network_projectiles.json",
-                "client_modifier_writes.json", "animation_provenance.json", "kills.json", "abilities.json", "extraction.log"]
+                "client_modifier_writes.json", "client_effect_owner_states.json", "animation_provenance.json", "kills.json", "abilities.json", "extraction.log"]
     existing = [name for name in reserved if os.path.lexists(output / name)]
     if existing:
         raise ReplayError(f"Output already contains extraction files: {', '.join(existing)}. Choose a new output folder.")
@@ -370,6 +370,9 @@ def extract_replay(demo: Path, output: Path, start_tick: int, end_tick: int,
             start_tick,end_tick,demo_identity,helper_identity)
         from .client_modifier_writes import retain_capture as retain_modifier_capture
         modifier_capture=retain_modifier_capture(output,native_coverage.get('client_modifier_writes'),
+            start_tick,end_tick,demo_identity,helper_identity)
+        from .client_effect_owner_states import retain_capture as retain_owner_capture
+        owner_capture=retain_owner_capture(output,native_coverage.get('client_effect_owner_states'),
             start_tick,end_tick,demo_identity,helper_identity)
     except ValueError as exc:
         raise ReplayError(str(exc))from exc
@@ -442,6 +445,7 @@ def extract_replay(demo: Path, output: Path, start_tick: int, end_tick: int,
         "coverage": coverage,
         "network_projectiles": projectile_capture,
         "client_modifier_writes": modifier_capture,
+        "client_effect_owner_states": owner_capture,
     }
     destination = output / "segment.json"
     _write_json(destination, manifest)

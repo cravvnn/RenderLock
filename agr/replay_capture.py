@@ -68,3 +68,21 @@ def validate_contract_envelope(value,*,demo_sha256,start_tick,end_tick,filename,
     check(digest(p['sidecar_sha256'])and digest(p['capture_sha256'])
         and p['capture_sha256']==canonical_sha256(capture),'retained payload digest differs; regenerate extraction')
     return value
+
+
+def validate_contract_view(value,*,demo_sha256,start_tick,end_tick,filename,validator,check):
+    """Validate a contained shot against the complete original capture unchanged.
+
+    This pure check neither crops history nor rewrites provenance. The caller
+    must still select the rows needed for its shot and qualify their semantics.
+    """
+    _keys(value,('availability','reason','capture','provenance'),'retained envelope',check)
+    p=value['provenance']
+    check(isinstance(p,dict),'retained provenance fields differ')
+    validate_contract_envelope(value,demo_sha256=demo_sha256,
+        start_tick=p.get('start_tick'),end_tick=p.get('end_tick'),
+        filename=filename,validator=validator,check=check)
+    check(type(start_tick)is int and type(end_tick)is int
+        and p['start_tick']<=start_tick<=end_tick<=p['end_tick'],
+        'requested view is outside original capture range')
+    return value

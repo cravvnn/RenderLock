@@ -1,0 +1,132 @@
+[
+  {
+    "name": "drop row budget",
+    "replace": [
+      [
+        "rowBudget == rows<2",
+        "rowBudget == TRUE"
+      ]
+    ],
+    "expect": "RowBounded"
+  },
+  {
+    "name": "drop word budget",
+    "replace": [
+      [
+        "wordBudget == words+w<=3",
+        "wordBudget == TRUE"
+      ]
+    ],
+    "expect": "WordBounded"
+  },
+  {
+    "name": "drop serialized budget",
+    "replace": [
+      [
+        "jsonBudget == bytes+b<=3",
+        "jsonBudget == TRUE"
+      ]
+    ],
+    "expect": "JsonBounded"
+  },
+  {
+    "name": "ignore invalid identity",
+    "replace": [
+      [
+        "identityOK == kind#\"identity\"",
+        "identityOK == TRUE"
+      ]
+    ],
+    "expect": "Covered"
+  },
+  {
+    "name": "ignore duplicate owner tick",
+    "replace": [
+      [
+        "unique == kind#\"duplicate\"",
+        "unique == TRUE"
+      ]
+    ],
+    "expect": "Covered"
+  },
+  {
+    "name": "ignore tick order",
+    "replace": [
+      [
+        "ordered == kind#\"order\"",
+        "ordered == TRUE"
+      ]
+    ],
+    "expect": "Covered"
+  },
+  {
+    "name": "clear sticky failure",
+    "replace": [
+      [
+        "failed'=(failed \\/ (event /\\ ~legal))",
+        "failed'=(event /\\ ~legal)"
+      ]
+    ],
+    "expect": "Covered"
+  },
+  {
+    "name": "accept incomplete scan",
+    "replace": [
+      [
+        "available'=(pos=3 /\\ ~failed)",
+        "available'=(~failed)"
+      ]
+    ],
+    "expect": "Covered"
+  },
+  {
+    "name": "ignore capture failure",
+    "replace": [
+      [
+        "available'=(pos=3 /\\ ~failed)",
+        "available'=(pos=3)"
+      ]
+    ],
+    "expect": "Covered"
+  },
+  {
+    "name": "overwrite competing output",
+    "replace": [
+      [
+        "fresh == ~exists",
+        "fresh == TRUE"
+      ]
+    ],
+    "expect": "PreservePrior"
+  },
+  {
+    "name": "accept failed publication",
+    "replace": [
+      [
+        "IF exit=\"success\" /\\ content=\"complete\" /\\ available THEN TRUE ELSE accepted",
+        "IF content=\"complete\" /\\ available THEN TRUE ELSE accepted"
+      ]
+    ],
+    "expect": "AcceptedSuccess"
+  },
+  {
+    "name": "stop actor callbacks after owner capture failure",
+    "replace": [
+      [
+        "actorRows'=actorRows+1",
+        "actorRows'=actorRows+IF failed THEN 0 ELSE 1"
+      ]
+    ],
+    "expect": "CoreIndependent"
+  },
+  {
+    "name": "retain owner rows after sticky failure",
+    "replace": [
+      [
+        "keep == event /\\ ~failed /\\ legal",
+        "keep == event /\\ legal"
+      ]
+    ],
+    "expect": "FrozenFailure"
+  }
+]
