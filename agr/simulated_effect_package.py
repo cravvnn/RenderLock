@@ -99,6 +99,11 @@ def validate_package(package, scene):
                 or provider.get('bone_count') != len(model.get('names', []))):
             raise ValueError('Prepared model particles do not match authored constraints; regenerate them')
     sim = package['simulation']
+    from .particle_snapshot_provider import RESOURCE as CROSSBOW_RESOURCE
+    if ('snapshot_model_provider' in package or 'crossbow_owner_capture' in package
+            or any(row.get('resource') == CROSSBOW_RESOURCE or 'snapshot_model_input_policy' in row
+                   or 'crossbow_owner_provider' in row for row in sim.get('instances', []))):
+        _validate_crossbow_package(package, scene)
     from .particle_owned_literal import RESOURCE as LITERAL_RESOURCE,validate_package as validate_literal_package
     if 'owned_literal_provider'in package or any(row.get('resource')==LITERAL_RESOURCE for row in sim.get('instances',[])):
         validate_literal_package(package,scene)
@@ -138,10 +143,48 @@ def validate_package(package, scene):
         raise ValueError('Empty prepared particle package')
 
 
+def _validate_crossbow_package(package, scene):
+    from .particle_snapshot_provider import (RESOURCE, validate_provider, validate_definitions,
+        validate_response as validate_snapshot_response, request_inputs, digest)
+    from .particle_crossbow_owner import request_header, validate_response as validate_owner_response
+    sim = package['simulation']
+    rows = sim.get('instances')
+    if not isinstance(rows, list) or len(rows) != 1 or rows[0].get('resource') != RESOURCE:
+        raise ValueError('Snapshot package requires exactly the qualified Crossbow instance')
+    originals = [i for i in scene.get('particle_instances', []) if i.get('id') == rows[0].get('id')]
+    if len(originals) != 1 or package.get('entity_ids') != [originals[0].get('entity_id')]:
+        raise ValueError('Crossbow package original instance/owner differs')
+    instance = originals[0]
+    header = request_header(package.get('crossbow_owner_capture'), scene, instance)
+    snapshot = validate_provider(package.get('snapshot_model_provider'), scene, instance)
+    validate_owner_response(sim, instance['id'], header)
+    validate_snapshot_response(sim, instance['id'], snapshot['bindings'])
+    validate_definitions(package.get('assets', {}).get('definitions'))
+    if not isinstance(package.get('simulation_request_sha256'), str):
+        raise ValueError('Crossbow package is missing its simulation request identity')
+    request = package.get('simulation_request')
+    if (not isinstance(request, dict) or digest(request) != package['simulation_request_sha256']
+            or any(request.get(k) != scene[k] for k in ('start_tick', 'end_tick', 'tick_rate'))
+            or not isinstance(request.get('instances'), list) or len(request['instances']) != 1):
+        raise ValueError('Crossbow package request content/range differs from its executed request')
+    row = request['instances'][0]
+    if (not isinstance(row, dict) or not isinstance(row.get('control_points'), list)
+            or len(row['control_points']) != scene['end_tick'] - instance['created_tick'] + 1
+            or any(not isinstance(point, dict) for point in row['control_points'])):
+        raise ValueError('Crossbow request is missing its complete control frames')
+    points = [{k:v for k,v in point.items() if k != 'snapshot_model_bones'} for point in row['control_points']]
+    expected = dict(instance, **request_inputs(snapshot, scene, instance, points), crossbow_owner_provider=header)
+    if digest(row) != digest(expected):
+        raise ValueError('Crossbow request does not contain its exact snapshot frames and original replay events')
+
+
 def build_package_effects(package, data, manifest_file, scene, camera):
     import bpy
     from .blender_simulated_effects import build_simulated_effects
     validate_package(package, data)
+    if 'snapshot_model_provider' in package:
+        from .blender_particle_skinning import validate_source_snapshot_rig
+        validate_source_snapshot_rig(package['snapshot_model_provider'], data, scene, Path(manifest_file).parent)
     assets = copy.deepcopy(package['assets'])
     for texture in assets.get('textures', {}).values():
         directory = Path(texture['directory'])

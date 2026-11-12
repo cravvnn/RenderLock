@@ -10,6 +10,9 @@ sealed class ReplayEventTimeline
     private bool destroyImmediately;
     public const string Policy = "agr_recorded_control_lifecycle_v1";
     public JsonElement? WorldOriginProvider { get; private init; }
+#if AGR_SIMULATION_SNAPSHOT
+    public JsonElement? CrossbowOwnerProvider { get; private init; }
+#endif
 
     public object[] LiteralReport => literals.Select(row => (object)new
     {
@@ -36,7 +39,19 @@ sealed class ReplayEventTimeline
 
     public static ReplayEventTimeline Parse(JsonElement instance, int birth, int end, int? start = null, int? rate = null)
     {
-        var result = new ReplayEventTimeline { WorldOriginProvider = WorldOriginInputs.Qualify(instance, birth, end, start, rate) };
+        var result = new ReplayEventTimeline {
+            WorldOriginProvider = WorldOriginInputs.Qualify(instance, birth, end, start, rate),
+#if AGR_SIMULATION_SNAPSHOT
+            CrossbowOwnerProvider = CrossbowOwnerInputs.Qualify(instance),
+#endif
+        };
+#if AGR_SIMULATION_SNAPSHOT
+        if (result.WorldOriginProvider.HasValue && result.CrossbowOwnerProvider.HasValue)
+            throw new InvalidDataException("World and Crossbow owner providers cannot be combined");
+#else
+        if (instance.TryGetProperty("crossbow_owner_provider", out _))
+            throw new InvalidDataException("Current Crossbow inputs require the simulation snapshot build");
+#endif
         if (!instance.TryGetProperty("events", out var events)) return result;
         var previousTick = birth;
         int? previousOrder = null;
@@ -137,7 +152,12 @@ sealed class ReplayEventTimeline
                 throw new Exception("Recorded control/lifecycle requires exact particle generation and full entity identity");
             if (creation.ValueKind != JsonValueKind.Object
                 || creation.GetProperty("entity_handle").GetUInt32() != handle
+#if AGR_SIMULATION_SNAPSHOT
+                || (result.CrossbowOwnerProvider.HasValue ? creation.GetProperty("attach_type").GetInt32() != 3
+                    : creation.GetProperty("attach_type").GetInt32() is not (2 or 5))
+#else
                 || creation.GetProperty("attach_type").GetInt32() is not (2 or 5)
+#endif
                 || (creation.TryGetProperty("cluster", out var cluster) && cluster.GetBoolean()))
                 throw new Exception("Recorded control/lifecycle requires a qualified entity-owned creation provider");
             if (instance.TryGetProperty("resource_hash", out var resourceHash)

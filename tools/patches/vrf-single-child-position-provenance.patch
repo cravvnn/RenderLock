@@ -1,0 +1,111 @@
+diff --git a/ValveResourceFormat/Particles/ParticleSystemState.cs b/ValveResourceFormat/Particles/ParticleSystemState.cs
+--- a/ValveResourceFormat/Particles/ParticleSystemState.cs
++++ b/ValveResourceFormat/Particles/ParticleSystemState.cs
+@@ -200,6 +200,7 @@
+         private readonly HashSet<int> AuthoredPoints = [];
+         private readonly HashSet<int> AuthoredPointSummary = [];
+         private readonly HashSet<int> UnprovidedPointReads = [];
++        private readonly HashSet<int> AuthoredRootPointSummary = [];
+ 
+         private ParticleSystemState RootState => ParentSystem?.RootState ?? this;
+ 
+@@ -214,6 +215,9 @@
+         /// <summary>Control points written by the position-only child operator.</summary>
+         public int[] AuthoredControlPointIndices => RootState.AuthoredPointSummary.Order().ToArray();
+ 
++        /// <summary>Authored positions written on the root rather than a child.</summary>
++        public int[] AuthoredRootPositionIndices => RootState.AuthoredRootPointSummary.Order().ToArray();
++
+         /// <summary>Control points read without an external or preceding authored value.</summary>
+         public int[] UnprovidedControlPointIndices => RootState.UnprovidedPointReads.Order().ToArray();
+ 
+@@ -273,6 +277,10 @@
+             HighestControlPoint = Math.Max(HighestControlPoint, cp);
+             AuthoredPoints.Add(cp);
+             root.AuthoredPointSummary.Add(cp);
++            if (ParentSystem == null)
++            {
++                root.AuthoredRootPointSummary.Add(cp);
++            }
+ 
+             if (Data != null)
+             {
+diff --git a/ValveResourceFormat/Particles/PreEmissionOperators/SetSingleControlPointPosition.cs b/ValveResourceFormat/Particles/PreEmissionOperators/SetSingleControlPointPosition.cs
+--- a/ValveResourceFormat/Particles/PreEmissionOperators/SetSingleControlPointPosition.cs
++++ b/ValveResourceFormat/Particles/PreEmissionOperators/SetSingleControlPointPosition.cs
+@@ -36,7 +36,17 @@
+ 
+                 position = Vector3.Transform(position, transformInput.NextTransform(ref Particle.Default, particleSystemState));
+ 
+-                particleSystemState.SetControlPointValue(cp1, position);
++                if (particleSystemState.ParentSystem != null && cp1 is >= 0 and <= 63
++                    && cp1Pos is LiteralVectorProvider && transformInput is ControlPointTransformProvider)
++                {
++                    // Reuse the existing audited child-local writer/propagation.
++                    // A root, expression or other transform remains unqualified.
++                    particleSystemState.WriteAuthoredChildPosition(cp1, position);
++                }
++                else
++                {
++                    particleSystemState.SetControlPointValue(cp1, position);
++                }
+ 
+                 hasRunBefore = true;
+             }
+diff --git a/ValveResourceFormat/Particles/AuthoredRootPositionSummary.tla b/ValveResourceFormat/Particles/AuthoredRootPositionSummary.tla
+new file mode 100644
+--- /dev/null
++++ b/ValveResourceFormat/Particles/AuthoredRootPositionSummary.tla
+@@ -0,0 +1,18 @@
++------------------- MODULE AuthoredRootPositionSummary -------------------
++EXTENDS Integers, TLC
++\* ParticleSystemState.WriteAuthoredChildTransform records root writes separately
++\* from its existing descendant writer. The new SetSingleControlPointPosition
++\* caller is child-only. Existing child writer/compaction models own propagation;
++\* arithmetic/once/reset are checked by the actual host oracle, not this model.
++VARIABLES count, written, reported, childWritten
++vars == <<count,written,reported,childWritten>>
++Init == /\ count=0 /\ written=FALSE /\ reported=FALSE /\ childWritten=FALSE
++Write(node) == /\ count<2 /\ node \in {0,1} /\ count'=count+1
++               /\ written'=(written \/ node=0)
++               /\ reported'=(reported \/ node=0)
++               /\ childWritten'=(childWritten \/ node=1)
++Terminal == /\ count=2 /\ UNCHANGED vars
++Next == (\E node \in {0,1}: Write(node)) \/ Terminal
++Spec == Init /\ [][Next]_vars
++ExactRootSummary == written=reported
++============================================================================
+diff --git a/ValveResourceFormat/Particles/AuthoredRootPositionSummary.cfg b/ValveResourceFormat/Particles/AuthoredRootPositionSummary.cfg
+new file mode 100644
+--- /dev/null
++++ b/ValveResourceFormat/Particles/AuthoredRootPositionSummary.cfg
+@@ -0,0 +1,2 @@
++SPECIFICATION Spec
++INVARIANT ExactRootSummary
+diff --git a/ValveResourceFormat/Particles/AuthoredRootPositionSummary.mutants.json b/ValveResourceFormat/Particles/AuthoredRootPositionSummary.mutants.json
+new file mode 100644
+--- /dev/null
++++ b/ValveResourceFormat/Particles/AuthoredRootPositionSummary.mutants.json
+@@ -0,0 +1,22 @@
++[
++  {
++    "name": "omit root marker",
++    "replace": [
++      [
++        "reported'=(reported \\/ node=0)",
++        "reported'=reported"
++      ]
++    ],
++    "expect": "ExactRootSummary"
++  },
++  {
++    "name": "count child as root",
++    "replace": [
++      [
++        "reported'=(reported \\/ node=0)",
++        "reported'=TRUE"
++      ]
++    ],
++    "expect": "ExactRootSummary"
++  }
++]

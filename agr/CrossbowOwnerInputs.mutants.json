@@ -1,0 +1,10 @@
+[
+  {"name":"omit owner qualification","replace":[["ownerOK /\\ childrenOK /\\ birthOK THEN", "childrenOK /\\ birthOK THEN"]],"expect":"OwnerBound"},
+  {"name":"omit child qualification","replace":[["ownerOK /\\ childrenOK /\\ birthOK THEN", "ownerOK /\\ birthOK THEN"]],"expect":"ChildrenBound"},
+  {"name":"omit birth qualification","replace":[["ownerOK /\\ childrenOK /\\ birthOK THEN", "ownerOK /\\ childrenOK THEN"]],"expect":"BirthBound"},
+  {"name":"omit snapshot provider","replace":[["phase'=IF snapshotOK THEN \"simulate\" ELSE \"refused\"", "phase'=\"simulate\""]],"expect":"SnapshotIndependent"},
+  {"name":"ignore simulator acknowledgement","replace":[["phase'=IF ackOK THEN \"load\" ELSE \"refused\"", "phase'=\"load\""]],"expect":"Acknowledged"},
+  {"name":"reuse changed source","replace":[["published'=(epoch=boundEpoch /\\ rigOK)", "published'=rigOK"]],"expect":"CurrentSource"},
+  {"name":"skip saved rig evaluation","replace":[["published'=(epoch=boundEpoch /\\ rigOK)", "published'=(epoch=boundEpoch)"]],"expect":"SavedRig"},
+  {"name":"publish incomplete simulation","replace":[["completed'=TRUE", "completed'=FALSE"]],"expect":"Complete"}
+]

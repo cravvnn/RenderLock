@@ -71,3 +71,11 @@ models. It deliberately excludes the retained authored-hitbox, LockToBone,
 creation-admission and lighting research. The material and geometry dependencies
 must never receive it. Normal support requires additional current owner/provider
 qualification and export/render acceptance; a compiled simulator is insufficient.
+
+The simulation-only `vrf-single-child-position-provenance.patch` follows it.
+Literal `SetSingleControlPointPosition` on a child, using a CP transform,
+reuses the existing child-local writer and descendant propagation. Other provider
+types and root setters retain unqualified-write diagnostics. A separate summary
+reports root authored writes; snapshot requests acknowledge it, while ordinary
+output keeps its prior shape. This does not add the broader look-at, hitbox or
+root-setter research. Crossbow capture/normal/save/render acceptance is separate.

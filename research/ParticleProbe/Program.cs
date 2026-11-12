@@ -9,6 +9,8 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Buffers.Binary;
 #if AGR_SIMULATION_SNAPSHOT
+if(args.Length==2 && args[0]=="--single-child-position-oracle") { SingleChildPositionOracle.Check(args[1]);return; }
+if(args.Length==3 && args[0]=="--crossbow-owner-input-oracle") { CrossbowOwnerInputOracle.Check(args[1],args[2]);return; }
 if(args.Length==3 && args[0]=="--snapshot-row-cursor-oracle") { SnapshotRowCursorOracle.Check(args[1],args[2]);return; }
 if(args.Length==3 && args[0]=="--snapshot-skinning-oracle") { SnapshotSkinningOracle.Check(args[1],args[2]);return; }
 if(args.Length==3 && args[0]=="--snapshot-runtime-oracle") { SnapshotRuntimeOracle.Check(args[1],args[2]);return; }
@@ -149,6 +151,10 @@ hitbox_index=x.HitboxIndex,hitbox_coordinates=V(x.HitboxOffsetPosition),trail=x.
   snapshotRow.Add("snapshot_model_input_policy",SnapshotRuntimeInputs.Policy);
   snapshotRow.Add("snapshot_model_bindings",snapshotInputs.Bindings);
   snapshotRow.Add("snapshot_model_queried_binding_ids",snapshotInputs.Complete());
+  snapshotRow.Add("authored_root_position_indices",ControlPointAudit.InputProvenance(sim,"AuthoredRootPositionIndices")
+   ?? throw new InvalidOperationException("Snapshot helper lacks authored-root position provenance"));
+  if(replayEvents.CrossbowOwnerProvider.HasValue)
+   snapshotRow.Add("crossbow_owner_provider",replayEvents.CrossbowOwnerProvider.Value);
   qualifiedOutput=snapshotRow;
  }
 #endif
