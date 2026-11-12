@@ -27,3 +27,7 @@ command and normal package transaction models are adjacent to those components;
 the shared input audit is exercised by actual helper oracles and strict Python
 provenance checks. Native allocation, gameplay scheduling and crash durability
 are outside these offline simulator checks.
+
+See `docs/PARTICLE_INTEGRATION.md` for the later normal-export qualification and
+the complete three-helper runtime layout; portable application packaging remains
+a separate gate.

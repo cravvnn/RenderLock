@@ -5,7 +5,7 @@ import pytest
 
 
 @pytest.mark.parametrize('fps,base', [(24,1), (30,1), (64,1), (120,1), (128,1), (24,1.001)])
-def test_particles_and_lights_end_on_replay_ticks_at_any_output_rate(fps, base):
+def test_particles_and_lights_end_on_replay_ticks_at_any_output_rate(fps, base, tmp_path):
     bpy = pytest.importorskip('bpy')
     from agr.blender_simulated_effects import build_simulated_effects
     bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -23,11 +23,16 @@ def test_particles_and_lights_end_on_replay_ticks_at_any_output_rate(fps, base):
         for name,path in [('test.vpcf','root'),('light.vpcf','root/0')]]) for tick in range(100,104)]
     simulation = dict(schema_version=1,backend='timing fixture',warnings=[],start_tick=100,
                       end_tick=103,tick_rate=64,instances=[dict(id='1:1',birth=100,frames=frames)])
+    image=bpy.data.images.new('Explicit white timing texture',width=2,height=2)
+    image.pixels.foreach_set([1.]*16);image.filepath_raw=str(tmp_path/'white.png');image.file_format='PNG';image.save()
+    bpy.data.images.remove(image)
     assets = dict(definitions={
         'test.vpcf':dict(m_Renderers=[dict(_class='C_OP_RenderSprites',
             m_nOutputBlendMode='PARTICLE_OUTPUT_BLEND_MODE_ADD',
-            m_nOrientationType='PARTICLE_ORIENTATION_ALIGN_TO_PARTICLE_NORMAL',m_vecTexturesInput=[])]),
-        'light.vpcf':dict(m_Renderers=[dict(_class='C_OP_RenderStandardLight')])},textures={})
+            m_nOrientationType='PARTICLE_ORIENTATION_ALIGN_TO_PARTICLE_NORMAL',m_vecTexturesInput=[{'m_hTexture':'materials/white.vtex'}])]),
+        'light.vpcf':dict(m_Renderers=[dict(_class='C_OP_RenderStandardLight')])},
+        textures={'materials/white.vtex':dict(status='supported',directory=str(tmp_path),is_sprite_sheet=False,
+            sequences={'0':dict(status='supported',frames=[dict(image='white.png')])})})
     report = build_simulated_effects(simulation,assets,scene,camera)
     assert report['objects'] == 2 and report['point_lights'] == 1
     assert report['cycles_transparent_bounces'] == scene.cycles.transparent_max_bounces == 64
