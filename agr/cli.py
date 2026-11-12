@@ -561,6 +561,22 @@ def _convert(args, diagnostics):
         shot_package = shot_package.expanduser().resolve()
         if not shot_package.is_file():
             raise ValueError(f'Shot package does not exist: {shot_package}')
+    shot_reconstruction = None
+    if shot_package is not None:
+        from .shot_package import read_shot_collection, RECONSTRUCTION_PROFILE
+        collection = read_shot_collection(shot_package)
+        if collection.get('profile') == RECONSTRUCTION_PROFILE:
+            # A reconstruction .crav needs its map requirement met by an
+            # explicit, verified full prepared map; never a crop or the demo label.
+            if external_map is None or external_map.get('format') != 'renderlock-map-v2':
+                raise ValueError('A reconstruction .crav needs --external-map pointing at a complete prepared map package.')
+            from .crav_import import map_plan
+            from .map_package import load_package
+            from .shot_package import ShotCollectionError
+            try:
+                shot_reconstruction = map_plan(collection, load_package(external_map['path']), None)
+            except (ShotCollectionError, ValueError) as exc:
+                raise ValueError(f'Reconstruction .crav map requirement: {exc}') from exc
     input_path = (args.demo or args.segment).expanduser().resolve()
     if not input_path.exists():
         raise ValueError(f"Input does not exist: {input_path}")
@@ -806,6 +822,10 @@ def _convert(args, diagnostics):
             command += ['--shot-hero', str(args.shot_hero)]
         if shot_package is not None:
             command += ['--shot-package', str(shot_package)]
+        if shot_reconstruction is not None:
+            plan_path = work / 'shot-reconstruction-map.json'
+            plan_path.write_text(json.dumps(shot_reconstruction, indent=2), encoding='utf-8')
+            command += ['--shot-reconstruction-map', str(plan_path)]
         if character_shader is not None:
             command += ['--character-shader',str(character_shader)]
         if external_map is not None:
@@ -931,6 +951,15 @@ def _convert(args, diagnostics):
                     or type(camera.get("camera_count")) is not int
                     or camera["camera_count"] < 1):
                 raise RuntimeError('Blender completion report lacks the requested shot-package cameras; the scene was not published.')
+            if shot_reconstruction is not None:
+                bound = camera.get('reconstruction_map')
+                composed = report.get('external_map') or {}
+                if (not isinstance(bound, dict)
+                        or bound.get('manifest_sha256') != shot_reconstruction['manifest_sha256']
+                        or composed.get('prepared_manifest_sha256') != shot_reconstruction['manifest_sha256']):
+                    raise RuntimeError('Reconstruction .crav cameras are not bound to the composed prepared map; the scene was not published.')
+                report['shot_reconstruction'] = dict(shot_reconstruction, status='camera and full prepared map composed',
+                    pending=['capture-time map content identity', 'characters/effects at capture time', 'visual verification'])
         report["secondary_motion"] = merge_secondary_motion_coverage(
             report["scene_extras"].get("secondary_motion", {"status": "not_requested"}),
             report.get("blender", {}).get("entities", []))

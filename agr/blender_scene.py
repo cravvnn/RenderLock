@@ -747,7 +747,7 @@ def _review_setup(scene, positions):
 def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime=None, shot_hero=None,
                 character_shader=None, character_only=False, allow_partial_lighting=False, external_map=None,
                 map_viewport_proxy=False, map_project_scene=None, pending_world_receivers=False,
-                shot_package=None):
+                shot_package=None, shot_reconstruction_map=None):
     _init_blender()
     if external_map is not None:
         from agr.external_map import validate_map_library
@@ -758,7 +758,8 @@ def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime
                 project_scene=map_project_scene, fps=fps, partial=partial,
                 particle_runtime=particle_runtime, shot_hero=shot_hero,
                 character_shader=character_shader, character_only=character_only,
-                allow_partial_lighting=allow_partial_lighting, map_viewport_proxy=map_viewport_proxy)
+                allow_partial_lighting=allow_partial_lighting, map_viewport_proxy=map_viewport_proxy,
+                shot_package=shot_package, shot_reconstruction_map=shot_reconstruction_map)
     started = time.monotonic()
     timings = []
 
@@ -980,7 +981,8 @@ def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime
         from agr.blender_shot_package import apply_shot_package
         report['camera'] = apply_shot_package(scene, data, shot_package,
                                               scene_path=segment, fps=fps,
-                                              coordinates=coordinates)
+                                              coordinates=coordinates,
+                                              reconstruction_map=shot_reconstruction_map)
         report['warnings'].extend(report['camera'].get('warnings', []))
     elif shot_hero is not None:
         selected = [root for root in roots if root.get('hero_id') == str(shot_hero)]
@@ -1116,6 +1118,7 @@ def main(argv=None):
     parser.add_argument('--map-crop-margin',type=float,default=120.0)
     parser.add_argument('--shot-package', type=Path,
                         help='RenderLock .crav shot collection; its cameras replace the overview/follow camera')
+    parser.add_argument('--shot-reconstruction-map', type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     if args.external_map is not None:
         import math
@@ -1131,7 +1134,9 @@ def main(argv=None):
     return build_scene(args.segment, args.assets, args.output, args.fps, args.partial,args.particle_runtime,
                        args.shot_hero,args.character_shader,args.character_only,args.partial_lighting,args.external_map,
                        args.map_viewport_proxy,args.map_project_scene,
-                       shot_package=args.shot_package)
+                       shot_package=args.shot_package,
+                       shot_reconstruction_map=(json.loads(args.shot_reconstruction_map.read_text(encoding='utf-8'))
+                                                if args.shot_reconstruction_map else None))
 
 
 if __name__ == "__main__":

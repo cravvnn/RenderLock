@@ -135,7 +135,8 @@ def _metadata_identity(value) -> str | None:
 
 
 def validate_against_scene(collection: dict, data: dict, *,
-                           scene_path=None, fps: float | None = None) -> list[str]:
+                           scene_path=None, fps: float | None = None,
+                           reconstruction_map: dict | None = None) -> list[str]:
     """Check package identity/range against a decoded RenderLock scene manifest.
 
     Returns warnings. Raises ShotPackageImportError for identity or range
@@ -143,9 +144,15 @@ def validate_against_scene(collection: dict, data: dict, *,
     """
     validate_shot_collection(collection)
     if "profile" in collection:
-        raise ShotPackageImportError(
-            "Lightweight .crav reconstruction is not implemented yet; "
-            "the camera-only importer cannot satisfy map-selection requirements.")
+        # The CLI resolves the map requirement before Blender with an explicit,
+        # verified full prepared map and binds it at completion. Without that
+        # plan, a camera-only import cannot satisfy map selection.
+        if (not isinstance(reconstruction_map, dict)
+                or reconstruction_map.get("status") != "full prepared map"
+                or not isinstance(reconstruction_map.get("manifest_sha256"), str)):
+            raise ShotPackageImportError(
+                "A reconstruction .crav needs a verified full prepared map; "
+                "the camera-only importer cannot satisfy map-selection requirements.")
     if not isinstance(data, dict):
         raise ShotPackageImportError("scene manifest must be an object")
     errors = []
@@ -273,7 +280,8 @@ def _shot_report(shot: dict, camera, frames: list[float]) -> dict:
 
 
 def apply_shot_package(scene, data: dict, collection, *, scene_path=None,
-                       fps: float | None = None, coordinates: dict | None = None) -> dict:
+                       fps: float | None = None, coordinates: dict | None = None,
+                       reconstruction_map: dict | None = None) -> dict:
     """Create one camera per shot and make the first shot active.
 
     ``scene`` is a Blender scene. ``data`` is the decoded RenderLock scene
@@ -296,7 +304,8 @@ def apply_shot_package(scene, data: dict, collection, *, scene_path=None,
         raise ShotPackageImportError("scene FPS must be positive")
     if "scene" in collection and scene_path is not None:
         scene_path = Path(scene_path)
-    warnings = validate_against_scene(collection, data, scene_path=scene_path, fps=fps)
+    warnings = validate_against_scene(collection, data, scene_path=scene_path, fps=fps,
+                                      reconstruction_map=reconstruction_map)
     coordinates = scene_coordinates(data) if coordinates is None else coordinates
 
     for obj in list(bpy.data.objects):
@@ -382,6 +391,9 @@ def apply_shot_package(scene, data: dict, collection, *, scene_path=None,
         "limits": "Embedded camera only. Effects imported after this stage use the active shot camera; "
                   "map/visibility reconstruction and transparent-layer occlusion remain separate.",
     }
+    if "profile" in collection:
+        report["reconstruction_map"] = {key: reconstruction_map[key] for key in
+                                        ("package_id", "manifest_sha256", "game_version", "status")}
     scene["renderlock_shot_package"] = json.dumps(report, sort_keys=True)
     return report
 

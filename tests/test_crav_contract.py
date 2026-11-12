@@ -88,8 +88,46 @@ def test_relocated_replay_verified_by_bytes_not_name(tmp_path):
 
 
 def test_old_camera_importer_cannot_silently_ignore_reconstruction_request():
-    with pytest.raises(ShotPackageImportError, match="not implemented"):
+    with pytest.raises(ShotPackageImportError, match="verified full prepared map"):
         validate_against_scene(example(), {})
+
+
+def _scene_for_example():
+    replay = example()["replay"]
+    return {"tick_rate": replay["tick_rate"], "start_tick": 0, "end_tick": 100,
+            "metadata": {"demo_sha256": replay["sha256"], "build": replay["build"]}}
+
+
+@pytest.mark.parametrize("plan", [None, {}, {"status": "full prepared map"},
+                                  {"status": "cropped", "manifest_sha256": "b" * 64},
+                                  "full prepared map"])
+def test_reconstruction_import_requires_verified_full_map_plan(plan):
+    with pytest.raises(ShotPackageImportError, match="verified full prepared map"):
+        validate_against_scene(example(), _scene_for_example(), fps=30.0, reconstruction_map=plan)
+
+
+def test_reconstruction_import_with_full_map_plan_still_checks_scene_identity():
+    plan = {"status": "full prepared map", "manifest_sha256": "b" * 64,
+            "package_id": "midtown-fixture-v2", "game_version": "6861"}
+    assert isinstance(validate_against_scene(example(), _scene_for_example(), fps=30.0,
+                                             reconstruction_map=plan), list)
+    wrong = _scene_for_example()
+    wrong["metadata"]["demo_sha256"] = "c" * 64
+    with pytest.raises(ShotPackageImportError, match="SHA-256"):
+        validate_against_scene(example(), wrong, fps=30.0, reconstruction_map=plan)
+    short = _scene_for_example()
+    short["end_tick"] = 65
+    with pytest.raises(ShotPackageImportError, match="range"):
+        validate_against_scene(example(), short, fps=30.0, reconstruction_map=plan)
+
+
+def test_convert_refuses_reconstruction_crav_without_full_prepared_map(tmp_path, capsys):
+    from agr.cli import main
+    package = tmp_path / "shot.crav"
+    package.write_text(json.dumps(example()), encoding="utf-8")
+    assert main(["convert", "--demo", str(tmp_path / "missing.dem"), "--output",
+                 str(tmp_path / "scene.blend"), "--shot-package", str(package)]) == 1
+    assert "complete prepared map package" in capsys.readouterr().err
 
 
 def test_overlapping_shots_are_valid_but_ids_must_be_unique():
