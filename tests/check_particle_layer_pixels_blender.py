@@ -15,6 +15,11 @@ def reopen_fixture():
      image=bpy.data.images.load(s.render.filepath,check_existing=False);value=list(image.pixels[:4]);bpy.data.images.remove(image)
      assert max(abs(a-b) for a,b in zip(value,expected))<2e-5,(frame,value,expected)
      rows.append(dict(frame=frame,actual=value,expected=expected))
+    obj=bpy.data.objects['UniformUVquad'];obj.data.materials.clear();obj.data.materials.append(bpy.data.materials['zoom_then_distort'])
+    s.render.filepath=str(h/'zoom-then-distort-reopen.exr');bpy.ops.render.render(write_still=True)
+    image=bpy.data.images.load(s.render.filepath,check_existing=False);value=list(image.pixels[:4]);bpy.data.images.remove(image)
+    expected=[2/3,2/3,2/3,1.];assert max(abs(a-b)for a,b in zip(value,expected))<2e-5,(value,expected)
+    rows.append(dict(mode='zoom_then_distort_raw_previous',actual=value,expected=expected))
     (h/'zoom-v2-pixels-reopen.json').write_text(json.dumps(dict(status='PASS_REOPENED_ANIMATED_ZOOM_RGBA',frames=rows,libraries=0),indent=2),encoding='utf-8')
     print('REOPEN_ZOOM_RGBA_PASS',len(rows))
 
@@ -34,7 +39,7 @@ obj=bpy.data.objects.new('UniformUVquad',mesh);scene.collection.objects.link(obj
 cd=bpy.data.cameras.new('Pixel camera');cam=bpy.data.objects.new('Pixel camera',cd);scene.collection.objects.link(cam);cam.location=(0,0,2);cd.type='ORTHO';cd.ortho_scale=1;scene.camera=cam
 image=bpy.data.images.new('Known4x4',width=4,height=4,float_buffer=True);image.colorspace_settings.name='Non-Color';image.pixels.foreach_set([v for y in range(4) for x in range(4) for v in(x/3,y/3,.25,y/3)]);image.alpha_mode='STRAIGHT';image.save_render(str(h/'zoom-rgba-source.exr'),scene=scene);bpy.data.images.remove(image);image=bpy.data.images.load(str(h/'zoom-rgba-source.exr'));image.colorspace_settings.name='Non-Color';image.alpha_mode='STRAIGHT';assert abs(image.pixels[43]-2/3)<1e-6;image.pack()
 rows=[];animated_material=None
-cases=[('zoom_half',.5,False,None,2/3,.796875),('zoom_negative',-.5,False,None,2/3,.796875),('zoom_default',None,False,None,2/3,2/3),('zoom_particle',.25,False,'SPRITECARD_TEXTURE_PP_SCALE_SHADER_EXTRA_DATA1',2/3,.796875),('distort_zoom',.5,True,None,2/3,1/3),('zoom_default_particle',None,False,'SPRITECARD_TEXTURE_PP_SCALE_SHADER_EXTRA_DATA1',2/3,.796875),('zoom_animated','animated',False,None,2/3,.796875),('distort_default_multiply',None,True,None,2/9,2/9),('gradient_rgb_alpha',None,False,None,((128/255+.055)/1.055)**2.4,((128/255+.055)/1.055)**2.4)]
+cases=[('zoom_half',.5,False,None,2/3,.796875),('zoom_negative',-.5,False,None,2/3,.796875),('zoom_then_distort',.5,True,None,2/3,2/3),('zoom_default',None,False,None,2/3,2/3),('zoom_particle',.25,False,'SPRITECARD_TEXTURE_PP_SCALE_SHADER_EXTRA_DATA1',2/3,.796875),('distort_zoom',.5,True,None,2/3,1/3),('zoom_default_particle',None,False,'SPRITECARD_TEXTURE_PP_SCALE_SHADER_EXTRA_DATA1',2/3,.796875),('zoom_animated','animated',False,None,2/3,.796875),('distort_default_multiply',None,True,None,2/9,2/9),('gradient_rgb_alpha',None,False,None,((128/255+.055)/1.055)**2.4,((128/255+.055)/1.055)**2.4)]
 for name,rate,distort,pp,expected_r,expected_g in cases:
  material=bpy.data.materials.new(name);material.use_nodes=True;nodes=material.node_tree.nodes;links=material.node_tree.links;nodes.clear();graph=LayerNodes(nodes,links)
  controls={}
@@ -43,6 +48,10 @@ for name,rate,distort,pp,expected_r,expected_g in cases:
  if distort and name!='distort_default_multiply':controls['m_flDistortion']=2.
  layers=[dict(m_nTextureType='SPRITECARD_TEXTURE_ZOOM' if not distort else 'SPRITECARD_TEXTURE_UVDISTORTION_ZOOM',m_nTextureBlendMode='SPRITECARD_TEXTURE_BLEND_REPLACE',m_TextureControls=controls)]
  if distort:layers.insert(0,dict(m_nTextureBlendMode='SPRITECARD_TEXTURE_BLEND_REPLACE'))
+ if name=='zoom_then_distort':
+  material.use_fake_user=True
+  layers[0].update(m_nTextureType='SPRITECARD_TEXTURE_ZOOM',m_TextureControls={'m_flZoomScale':.5})
+  layers[1]['m_nTextureType']='SPRITECARD_TEXTURE_UVDISTORTION'
  if name=='distort_default_multiply':
   layers[-1]['m_nTextureType']='SPRITECARD_TEXTURE_UVDISTORTION';layers[-1]['m_nTextureBlendMode']='SPRITECARD_TEXTURE_BLEND_MULTIPLY'
  if name=='gradient_rgb_alpha':layers=[dict(m_nTextureType='SPRITECARD_TEXTURE_COLOR',m_nTextureChannels='SPRITECARD_TEXTURE_CHANNEL_MIX_RGBA_RGBALPHA',m_bReplaceTextureWithGradient=True,m_Gradient={'m_Stops':[dict(m_flPosition=0,m_Color=[0,0,0]),dict(m_flPosition=1,m_Color=[255,255,255])]})]
@@ -51,7 +60,7 @@ for name,rate,distort,pp,expected_r,expected_g in cases:
   sampled.append((index,raw));node=nodes.new('ShaderNodeTexImage');node.image=image;node.interpolation='Closest';node.extension='REPEAT'
   if name=='gradient_rgb_alpha':
    generated=bpy.data.images.new('Generated gradient',width=256,height=1,float_buffer=True);generated.colorspace_settings.name='Non-Color';generated.pixels.foreach_set(gradient_pixels(layer['m_Gradient']));generated.pack();node.image=generated
-  coordinate=(.5,.5,0) if name=='gradient_rgb_alpha' else (.51,.51,0) if name=='distort_default_multiply' and index==0 else (.6,.6,0) if distort and index==0 else (.6,.7,0)
+  coordinate=(.7,.7,0) if name=='zoom_then_distort' and index==0 else (.5,.5,0) if name=='gradient_rgb_alpha' else (.51,.51,0) if name=='distort_default_multiply' and index==0 else (.6,.6,0) if distort and index==0 else (.6,.7,0)
   uv=graph.vector(coordinate);links.new(uv,node.inputs['Vector']);return node,uv
  def parameter(value,default):
   if value!='animated':return default if value is None else value
@@ -71,5 +80,5 @@ for name,rate,distort,pp,expected_r,expected_g in cases:
 assert animated_material is not None
 obj.data.materials.clear();obj.data.materials.append(animated_material);scene.frame_set(2)
 bpy.ops.wm.save_as_mainfile(filepath=str(h/'zoom-rgba-v2-pixels.blend'))
-(h/'zoom-rgba-v2-pixels-build.json').write_text(json.dumps(dict(status='PASS_ACTUAL_ZOOM_NODES',cases=rows,limits='Nine rendered1x1 fixed-coordinate nearest-filter samples, including animated node, explicit PP multiplier, omitted native distortion amount with multiplied re-sample, and generated RGB-alpha gradient. Not game GPU derivative/atlas/filtering parity.'),indent=2),encoding='utf-8')
+(h/'zoom-rgba-v2-pixels-build.json').write_text(json.dumps(dict(status='PASS_ACTUAL_ZOOM_NODES',cases=rows,limits='Ten rendered1x1 fixed-coordinate nearest-filter samples, including animated node, explicit PP multiplier, omitted native distortion amount with multiplied re-sample, and generated RGB-alpha gradient. Not game GPU derivative/atlas/filtering parity.'),indent=2),encoding='utf-8')
 print('ZOOM_PIXELS_PASS',len(rows))

@@ -58,9 +58,20 @@ def test_declared_null_shader_proof_is_not_legacy_absence():
     with pytest.raises(UnsupportedEffect):sheet_random_offset_bypass(renderer,texture,provenance)
 
 
-def test_unintegrated_original_sheet_is_refused_instead_of_guessed():
+def test_incomplete_original_sheet_is_refused_instead_of_guessed():
     renderer,texture,provenance=fixture();texture['source_sheet']={}
-    with pytest.raises(UnsupportedEffect,match='not integrated'):sheet_random_offset_bypass(renderer,texture,provenance)
+    with pytest.raises(UnsupportedEffect,match='Unqualified original'):sheet_random_offset_bypass(renderer,texture,provenance)
+
+
+def test_original_sheet_random_offset_bypass_requires_exact_compiled_texture_identity():
+    renderer,texture,provenance=fixture()
+    texture.update(resource='materials/test.vtex_c',source_sheet=dict(schema_version=1,
+        policy='agr_source_particle_sheet_v1',input_sha256='a'*64,sequences=[dict(index=0,
+        clamp=True,total_time=1,frames=[dict(duration=1,min=[0,0],max=[1,1])])]))
+    provenance['input_sha256']={'materials/test.vtex':'a'*64}
+    assert sheet_random_offset_bypass(renderer,texture,provenance)
+    texture['source_sheet']['input_sha256']='b'*64
+    with pytest.raises(UnsupportedEffect,match='source identity'):sheet_random_offset_bypass(renderer,texture,provenance)
 
 
 @pytest.mark.parametrize('sprite,sheet,randomize,qualified',[

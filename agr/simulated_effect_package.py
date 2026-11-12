@@ -61,6 +61,9 @@ def validate_package(package, scene):
         validate_mask_package(package, scene)
         return
     provenance=package.get('assets',{}).get('provenance',{})
+    if 'native_rope_shader'in provenance:
+        from .particle_rope_shader_inputs import validate_inputs
+        validate_inputs(provenance['native_rope_shader'])
     if 'native_standard_light' in provenance:
         from .particle_standard_light import validate_native_inputs
         validate_native_inputs(provenance['native_standard_light'])
@@ -96,6 +99,9 @@ def validate_package(package, scene):
                 or provider.get('bone_count') != len(model.get('names', []))):
             raise ValueError('Prepared model particles do not match authored constraints; regenerate them')
     sim = package['simulation']
+    from .particle_owned_literal import RESOURCE as LITERAL_RESOURCE,validate_package as validate_literal_package
+    if 'owned_literal_provider'in package or any(row.get('resource')==LITERAL_RESOURCE for row in sim.get('instances',[])):
+        validate_literal_package(package,scene)
     if ('simulation_request_sha256' in package
             and sim.get('request_sha256') != package['simulation_request_sha256']):
         raise ValueError('Prepared particles have a mismatched simulator request identity')
@@ -141,6 +147,13 @@ def build_package_effects(package, data, manifest_file, scene, camera):
         directory = Path(texture['directory'])
         if not directory.is_absolute():
             texture['directory'] = str((Path(manifest_file).parent / directory).resolve())
+        if 'source_sheet' in texture:
+            from .particle_texture_animation import validate_asset_sheet
+            validate_asset_sheet(texture, assets.get('provenance', {}).get('input_sha256', {}))
+            sheet = texture['source_sheet']
+            directory = Path(sheet['directory'])
+            if not directory.is_absolute():
+                sheet['directory'] = str((Path(manifest_file).parent / directory).resolve())
     for model in assets.get('models', {}).values():
         directory = Path(model['directory'])
         if not directory.is_absolute():

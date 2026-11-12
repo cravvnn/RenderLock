@@ -102,7 +102,12 @@ def read_model_geometry(path):
     if len(primitives)!=1 or meshes[0].get('weights'):
         raise UnsupportedEffect('Particle model requires one primitive with zero base morph weights')
     primitive=primitives[0];attributes=primitive['attributes']
-    allowed={'POSITION','NORMAL','TANGENT','TEXCOORD_0'}|({'JOINTS_0','WEIGHTS_0'} if static_skin else set())
+    # The exporter can bake a one-root static skin and retain its inert joint
+    # streams while omitting the skin. Admit only that exact pair on static
+    # geometry, and validate every value below; never discard a morph/skin.
+    orphan_root_attributes=(not static_skin and not doc.get('animations')
+        and not primitive.get('targets') and {'JOINTS_0','WEIGHTS_0'}<=set(attributes))
+    allowed={'POSITION','NORMAL','TANGENT','TEXCOORD_0'}|({'JOINTS_0','WEIGHTS_0'} if static_skin or orphan_root_attributes else set())
     if primitive.get('mode',4)!=4 or primitive.get('extensions') or set(attributes)-allowed:
         raise UnsupportedEffect('Unsupported particle mesh topology or attributes')
     positions=accessor(attributes['POSITION'],'VEC3');uv=accessor(attributes['TEXCOORD_0'],'VEC2')
@@ -110,7 +115,7 @@ def read_model_geometry(path):
     indices=accessor(primitive['indices'],'SCALAR',(5121,5123,5125)).ravel()
     if len(positions)!=len(uv) or len(normals)!=len(positions) or len(indices)%3 or indices.max()>=len(positions):
         raise UnsupportedEffect('Invalid particle geometry vertex/index cardinality')
-    if static_skin:
+    if static_skin or orphan_root_attributes:
         joints=accessor(attributes['JOINTS_0'],'VEC4',(5121,5123));weights=accessor(attributes['WEIGHTS_0'],'VEC4')
         if (joints.shape!=weights.shape or joints.shape!=(len(positions),4) or np.any(joints)
                 or not np.allclose(weights,np.tile([1,0,0,0],(len(positions),1)),atol=2e-6,rtol=0)):

@@ -133,6 +133,10 @@ def build_morph_curves(shape_keys, keys, schedule, start_tick, frame_step):
 
 
 def build_model_particle(name,renderer,assets,samples,simulation,collection,texture,unit_scale):
+    from .particle_flashbang_sphere import is_renderer
+    if is_renderer(renderer):
+        from .blender_flashbang_sphere import build_particle
+        return build_particle(name,renderer,assets,samples,simulation,collection,texture,unit_scale)
     import bpy
     from mathutils import Matrix
     from .blender_effects import _linear

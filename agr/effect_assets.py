@@ -266,6 +266,45 @@ class EffectAssetAdapter:
         dest = self.decoder._entry('particle_texture', {resource: resolved.sha256}, self.identity, build)
         return dest, json.loads((dest / 'texture.json').read_text(encoding='utf-8'))
 
+    def texture_sheet(self, resource, provider, probe, dotnet=None):
+        """Retain the original atlas and typed timing beside verified static crops."""
+        from .particle_runtime import particle_command, particle_environment
+        from .particle_texture_animation import validate_sheet
+        resource = safe_resource_path(compiled(resource))
+        if not resource.endswith('.vtex_c'):
+            raise ConversionError('Original particle sheet requires a VTEX resource')
+        resolved = provider.resolve(resource)
+        probe = Path(probe).resolve()
+        command = particle_command(probe, dotnet)
+        identity = {**self.identity, 'sheet_policy': 'agr_source_particle_sheet_v1',
+            'helper_sha256': sha(probe), 'parser_sha256': sha(probe.with_name('ValveResourceFormat.dll')),
+            'validator_sha256': sha(Path(__file__).with_name('particle_texture_animation.py'))}
+        def read(directory):
+            descriptor = directory/'sheet.json'
+            if not descriptor.is_file() or not 0 < descriptor.stat().st_size <= 16*1024*1024:
+                raise ConversionError('Original particle sheet metadata missing or oversized')
+            value = validate_sheet(json.loads(descriptor.read_text(encoding='utf-8')))
+            if value.get('input_sha256') != resolved.sha256:
+                raise ConversionError('Original particle sheet source identity differs')
+            image = _export_path(directory, value.get('image', ''))
+            if not image.is_file() or not 0 < image.stat().st_size <= 256*1024*1024:
+                raise ConversionError('Original particle atlas missing or oversized')
+            info = png_info(image)
+            if info != {'width': value.get('width'), 'height': value.get('height'), 'sha256': value.get('image_sha256')}:
+                raise ConversionError('Original particle atlas bytes or dimensions differ')
+            return value
+        def build(temp):
+            output = temp/'sheet'; output.mkdir()
+            result = subprocess.run(command+['--particle-texture-sheet-v1', str(resolved.local_path), str(output)],
+                env=particle_environment(probe, dotnet), capture_output=True, text=True, timeout=120)
+            (temp/'sheet.log').write_text(result.stdout+result.stderr, encoding='utf-8')
+            if result.returncode:
+                raise ConversionError('Original particle sheet extraction failed: '+(result.stdout+result.stderr)[-1200:])
+            read(output)
+        directory = self.decoder._entry('particle_original_sheet', {resource: resolved.sha256}, identity, build)/'sheet'
+        value = read(directory)
+        return dict(value, directory=str(directory))
+
     def attachments(self, resource, provider):
         """Ordered attachment values; source attachment ID N maps to result[N-1]."""
         resource = safe_resource_path(compiled(resource))

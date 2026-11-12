@@ -1,0 +1,39 @@
+diff --git a/ValveResourceFormat/Particles/Particle.cs b/ValveResourceFormat/Particles/Particle.cs
+--- a/ValveResourceFormat/Particles/Particle.cs
++++ b/ValveResourceFormat/Particles/Particle.cs
+@@ -182,6 +182,10 @@
+         public float ScratchFloat1 { get; set; } = 0f;
+         /// <summary>Gets or sets the third general-purpose scratch float.</summary>
+         public float ScratchFloat2 { get; set; } = 0f;
++        /// <summary>Shader-specific scalar attribute 39, retained through initialization and operators.</summary>
++        public float ShaderExtraData1 { get; set; } = 0f;
++        /// <summary>Shader-specific scalar attribute 40, retained through initialization and operators.</summary>
++        public float ShaderExtraData2 { get; set; } = 0f;
+         /// <summary>
+         /// Gets or sets the hitbox offset position attribute. The sequential path initializers store
+         /// (path parameter, segment start control point, segment end control point) here when saving
+diff --git a/ValveResourceFormat/Particles/ParticleFieldExtensions.cs b/ValveResourceFormat/Particles/ParticleFieldExtensions.cs
+--- a/ValveResourceFormat/Particles/ParticleFieldExtensions.cs
++++ b/ValveResourceFormat/Particles/ParticleFieldExtensions.cs
+@@ -105,6 +105,8 @@
+                 ParticleField.ScratchFloat => particle.ScratchFloat0,
+                 ParticleField.ScratchFloat1 => particle.ScratchFloat1,
+                 ParticleField.ScratchFloat2 => particle.ScratchFloat2,
++                ParticleField.ShaderExtraData1 => particle.ShaderExtraData1,
++                ParticleField.ShaderExtraData2 => particle.ShaderExtraData2,
+                 ParticleField.ForceScale => particle.ForceScale,
+                 _ => 0f,
+             };
+@@ -178,6 +180,12 @@
+                     break;
+                 case ParticleField.ScratchFloat2:
+                     particle.ScratchFloat2 = value;
++                    break;
++                case ParticleField.ShaderExtraData1:
++                    particle.ShaderExtraData1 = value;
++                    break;
++                case ParticleField.ShaderExtraData2:
++                    particle.ShaderExtraData2 = value;
+                     break;
+                 case ParticleField.ForceScale:
+                     particle.ForceScale = value;

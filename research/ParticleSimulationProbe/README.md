@@ -31,3 +31,23 @@ are outside these offline simulator checks.
 See `docs/PARTICLE_INTEGRATION.md` for the later normal-export qualification and
 the complete three-helper runtime layout; portable application packaging remains
 a separate gate.
+
+## Additive shader scalar snapshots
+
+The isolated simulation dependency additionally applies
+`tools/patches/vrf-shader-extra-fields.patch`. Attributes39/40 are actual float
+properties through initializer/operator read and write, with emitted keys
+`shader_extra_data1`, `shader_extra_data2` and policy`agr_shader_extra_fields_v1`.
+Consumers never interpret absent old-packet fields as zero. No new RNG or clock
+is introduced. The fields are simulator outputs, not captured engine pixels.
+
+`dotnet ParticleSimulationProbe.dll --shader-extra-fields-oracle OUTPUT_JSON`
+checks real initialization, add-to-initial interpolation and chained scalar
+storage (1.5/4.5). The fresh flashbang request adds only these fields/policy;
+all3,974 existing particle samples and all other output metadata remain exact.
+The material parser remains separately pinned; never replace its DLL with this
+simulation assembly. The actual managed build is separate from AOT app packaging.
+
+Only ParticleSimulationProbe defines`AGR_SIMULATION_SHADER_EXTRAS`. Shared probe
+source conditionally emits these new fields/oracle/policy; ParticleProbe still
+compiles against the unchanged material parser without the simulation patch.

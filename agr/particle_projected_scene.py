@@ -10,9 +10,15 @@ from .particle_value_identity import digest
 POLICY='agr_projected_world_no_scene_receivers_v1'
 RESOURCE='particles/abilities/vampirebat/vampirebat_batswarm_explosion_proj.vpcf'
 RENDERER_SHA256='9150887303ea91309fce49a373a9d2c46ffe87574068d561eea343060a55a687'
+PROFILES={RESOURCE:RENDERER_SHA256,
+ 'particles/abilities/priest/priest_flashbang_explosion_ground_proj.vpcf':
+ '03f5bdb5cae525ac9c2437bc05b4ade79f46daca2cdc6ea7f851b064ed353f04'}
 
 def validate_profile(resource,renderer):
- if resource!=RESOURCE or digest(renderer)!=RENDERER_SHA256:
+ # Both exact renderers omit receiver overrides: current typed native defaults
+ # exclude characters and select world/water. Depth/material/color differences
+ # have no receiving surface only when the complete scene check proves zero.
+ if resource not in PROFILES or digest(renderer)!=PROFILES[resource]:
   raise ValueError('Projected layer requires its qualified world/water-only renderer definition')
 
 def no_world_receivers(scene):
@@ -30,8 +36,9 @@ def no_world_receivers(scene):
    counts['non_geometry']+=1;continue
   if obj.type=='CURVE' and obj.get('agr_scene_role')=='reference_grid':
    counts['reference_helpers']+=1;continue
-  # Effect meshes are separate from the map. Existing supported model renderers
-  # refuse accepts-decals modes; sprite/trail meshes are not world receivers.
+  # Known effect meshes are a particle role, separate from the world geometry
+  # selected by these exact projected profiles. Shader alpha is not used to
+  # classify receivers; maps/unknowns/instances still refuse above/below.
   if isinstance(obj.get('agr_particle_resource'),str) and obj['agr_particle_resource'].startswith('particles/'):
    counts['particles']+=1;continue
   if obj.get('agr_modifier_mask_backend')=='modifier_attached_models_v1' and isinstance(obj.get('agr_mask_owner'),str):

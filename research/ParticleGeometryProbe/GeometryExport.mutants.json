@@ -3,5 +3,6 @@
   {"name":"overwrite-existing-output","replace":[["SkipEmptyOutput == FALSE","SkipEmptyOutput == TRUE"]],"expect":"PreserveExistingOutput"},
   {"name":"discard-unsupported-animation","replace":[["SkipModel == FALSE","SkipModel == TRUE"]],"expect":"ValidatedResult"},
   {"name":"publish-failed-export","replace":[["SkipExport == FALSE","SkipExport == TRUE"]],"expect":"ValidatedResult"},
-  {"name":"publish-oversized-geometry","replace":[["SkipGeometryBound == FALSE","SkipGeometryBound == TRUE"]],"expect":"ValidatedResult"}
+  {"name":"publish-oversized-geometry","replace":[["SkipGeometryBound == FALSE","SkipGeometryBound == TRUE"]],"expect":"ValidatedResult"},
+  {"name":"failed-morph-static-fallback","replace":[["IgnoreCommand == FALSE","IgnoreCommand == TRUE"]],"expect":"NoFailedMorphFallback"}
 ]

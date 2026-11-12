@@ -30,6 +30,13 @@ def texture_control_value(value, age, default=0):
         result = age
     elif kind == 'PF_TYPE_LITERAL':
         result = value.get('m_flLiteralValue', default)
+    elif kind == 'PF_TYPE_RANDOM_UNIFORM':
+        low,high=value.get('m_flRandomMin'),value.get('m_flRandomMax')
+        if (any(type(v) not in (int,float) or not math.isfinite(v) for v in (low,high))
+                or low!=high or value.get('m_bHasRandomSignFlip',False)
+                or value.get('m_nRandomMode','PF_RANDOM_MODE_CONSTANT')!='PF_RANDOM_MODE_CONSTANT'):
+            raise UnsupportedEffect('Texture randomness requires separately captured values')
+        result=low
     else:
         raise UnsupportedEffect('Texture control provider ' + kind)
     mode = value.get('m_nMapType', 'PF_MAP_TYPE_DIRECT')
@@ -59,15 +66,18 @@ def trail_dimensions(particle, renderer, step):
     return length,max(0.,radius),[v/distance for v in delta]
 
 
-def texture_uv_parameters(controls, age, random_uv=(0., 0.), *, wrap_origin=True):
+def texture_uv_parameters(controls, age, random_uv=(0., 0.), *, wrap_origin=True,scale_factor=1):
     """ParticleTextureLayer.PlaceCorner: rotate about .5, divide, add wrapped origin.
 
     Authored rotation is radians. Clamping is per vertex in Source/VRF, so a
     fragment-stage clamp is not equivalent and must not silently stand in for it.
     """
     scale=tuple(texture_control_value(controls.get('m_flFinalTextureScale'+axis),age,1) for axis in ('U','V'))
-    if any(value==0 for value in scale):
-        raise UnsupportedEffect('Zero particle texture scale')
+    if type(scale_factor) not in (int,float) or not math.isfinite(scale_factor):
+        raise UnsupportedEffect('Invalid per-particle texture scale')
+    scale=tuple(value*scale_factor for value in scale)
+    if any(value==0 or not math.isfinite(value) or abs(value)>3.4028234663852886e38 for value in scale):
+        raise UnsupportedEffect('Zero or non-finite float32 particle texture scale')
     offset=tuple(texture_control_value(controls.get('m_flFinalTextureOffset'+axis),age)+random_uv[j]+.5
                  for j,axis in enumerate(('U','V')))
     origin=tuple(value-math.floor(value) for value in offset)if wrap_origin else offset
@@ -89,8 +99,10 @@ def build_texture_uv_nodes(nodes, links, coordinate, controls, samples, *, trail
     links.new(divide.outputs['Vector'],origin.inputs[0])
     wrapped=nodes.new('ShaderNodeVectorMath');wrapped.operation='FRACTION'
     links.new(wrapped.outputs['Vector'],origin.inputs[1])
-    for frame,age,random_uv in samples:
-        scale,offset,angle=texture_uv_parameters(controls,age,random_uv,wrap_origin=False)
+    for sample in samples:
+        frame,age,random_uv=sample[:3]
+        factor=sample[3] if len(sample)==4 else 1
+        scale,offset,angle=texture_uv_parameters(controls,age,random_uv,wrap_origin=False,scale_factor=factor)
         divide.inputs[1].default_value=(*scale,1)
         wrapped.inputs[0].default_value=(*offset,0)
         rotation.inputs['Angle'].default_value=angle
@@ -99,9 +111,9 @@ def build_texture_uv_nodes(nodes, links, coordinate, controls, samples, *, trail
     return origin
 
 
-def texture_uv_corners(controls, age, random_uv=(0., 0.)):
+def texture_uv_corners(controls, age, random_uv=(0., 0.), *, scale_factor=1):
     """Place/clamp vertices before interpolation, matching VRF PlaceCorner."""
-    scale, origin, angle = texture_uv_parameters(controls, age, random_uv)
+    scale, origin, angle = texture_uv_parameters(controls, age, random_uv,scale_factor=scale_factor)
     sin, cos = math.sin(angle), math.cos(angle)
     corners = []
     for u, v in ((0, 0), (1, 0), (0, 1), (1, 1)):
@@ -269,6 +281,9 @@ def validate_renderer_classes(tracks, assets, simulation=None, *, scene=None):
     validate_defaults({name:assets['definitions'][name] for name in {key[2] for key in tracks}},assets.get('provenance',{}))
     supported={'C_OP_RenderSprites','C_OP_RenderTrails','C_OP_RenderStandardLight','C_OP_RenderRopes'}
     projected={}
+    from .particle_rope_shader_inputs import PROFILE_KEY as ROPE_PROFILE,validate_inputs as validate_rope_inputs,needs_inputs as rope_needs_inputs
+    rope_proof=assets.get('provenance',{}).get(ROPE_PROFILE)
+    if rope_proof is not None:validate_rope_inputs(rope_proof)
     native_light='native_standard_light' in assets.get('provenance',{})
     if native_light:
         from .particle_standard_light import validate_native_inputs
@@ -287,9 +302,10 @@ def validate_renderer_classes(tracks, assets, simulation=None, *, scene=None):
                 from .particle_model_assets import validate_model
                 from .blender_particle_models import validate_model_samples
                 descriptor=validate_model(renderer,assets)
+                from .particle_flashbang_sphere import is_renderer,validate_samples as validate_sphere_samples
                 for key,samples in tracks.items():
                     if key[2]==resource:
-                        validate_model_samples(renderer,descriptor,samples)
+                        (validate_sphere_samples if is_renderer(renderer) else validate_model_samples)(renderer,descriptor,samples)
             elif kind=='C_OP_RenderProjected':
                 from .particle_projected_scene import validate_profile,no_world_receivers
                 validate_profile(resource,renderer)
@@ -297,6 +313,11 @@ def validate_renderer_classes(tracks, assets, simulation=None, *, scene=None):
             elif kind=='C_OP_RenderStandardLight' and native_light:
                 from .particle_standard_light import profile
                 profile(renderer)
+            elif kind=='C_OP_RenderRopes' and any('source_sheet' in assets['textures'].get(layer.get('m_hTexture'),{})
+                    for layer in renderer.get('m_vecTexturesInput',[])):
+                raise UnsupportedEffect('Original animated sheets on rope renderers require separate qualification')
+            elif kind=='C_OP_RenderRopes' and rope_needs_inputs(renderer) and rope_proof is None:
+                raise UnsupportedEffect('Rope renderer requires qualified native/shader inputs')
             elif kind not in supported:
                 raise UnsupportedEffect('Simulated renderer '+str(kind)+' in '+resource)
     return projected
@@ -304,8 +325,8 @@ def validate_renderer_classes(tracks, assets, simulation=None, *, scene=None):
 
 def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254):
     import bpy
-    from mathutils import Vector, Quaternion
-    from .blender_effects import _linear
+    from mathutils import Vector, Quaternion, Matrix
+    from .blender_effects import _linear, _channels
     if simulation.get('schema_version') != 1 or not simulation.get('backend'):
         raise ValueError('Particle simulation schema/backend identity missing')
     if simulation.get('warnings'):
@@ -326,12 +347,19 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
         resource_paths.setdefault((instance,resource),set()).add(path)
     def texture(resource,sequence):
         descriptor=assets['textures'][resource]
-        seq=static_texture_sequence(descriptor,sequence,resource)
-        path=Path(descriptor['directory'])/seq['frames'][0]['image']
+        if 'source_sheet' in descriptor:
+            from .particle_texture_animation import validate_asset_sheet
+            sheet=validate_asset_sheet(descriptor,assets.get('provenance',{}).get('input_sha256',{}))
+            path=Path(sheet['directory'])/sheet['image']
+            expected=sheet['image_sha256']
+        else:
+            seq=static_texture_sequence(descriptor,sequence,resource)
+            path=Path(descriptor['directory'])/seq['frames'][0]['image']
+            expected=seq['frames'][0].get('sha256')
         key=str(path.resolve())
         if key not in images:
             from .blender_images import load_packed_image
-            images[key]=load_packed_image(key,check_existing=False)
+            images[key]=load_packed_image(key,check_existing=False,expected_sha256=expected)
         return images[key]
     births={i['id']:i['birth'] for i in simulation['instances']}
     def material(instance,system_path,particle_id,resource,index,renderer,sequence,samples):
@@ -343,11 +371,13 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
         mat=bpy.data.materials.new('AGR simulated | '+Path(resource).stem);mat.use_nodes=True
         if hasattr(mat,'surface_render_method'):mat.surface_render_method='BLENDED'
         nodes=mat.node_tree.nodes;links=mat.node_tree.links;nodes.clear()
+        constant_paths=set()
         info=nodes.new('ShaderNodeObjectInfo');coord=nodes.new('ShaderNodeTexCoord')
         color=info.outputs['Color'];alpha=info.outputs['Alpha']
         from .particle_texture_layers import needs_extended_sprite_layers,build_layer_stack,gradient_pixels
         authored_layers=renderer.get('m_vecTexturesInput',[])
-        extended=needs_extended_sprite_layers(authored_layers)
+        animated=any('source_sheet' in assets['textures'].get(layer.get('m_hTexture'),{}) for layer in authored_layers)
+        extended=needs_extended_sprite_layers(authored_layers) or animated
         curve_age=any(isinstance(value,dict)and value.get('m_nType')=='PF_TYPE_COLLECTION_AGE'
             and value.get('m_nMapType')=='PF_MAP_TYPE_CURVE'
             for layer in authored_layers for value in layer.get('m_TextureControls',{}).values())
@@ -368,6 +398,10 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
                     images[raw_key]=image.image.copy();images[raw_key].colorspace_settings.name='Non-Color'
                 image.image=images[raw_key]
             controls=tex.get('m_TextureControls',{})
+            from .particle_texture_inputs import resolve_texture_random_inputs
+            controls,notes=resolve_texture_random_inputs(controls,
+                f'{instance}/{system_path}/{index}/{layer_index}',simulation.get('seed'),simulation.get('seed_policy'))
+            omissions.extend(resource+': '+note for note in notes)
             random_uv=(0.,0.)
             if controls.get('m_bRandomizeOffsets'):
                 from .particle_sheet_uv import sheet_random_offset_bypass,POLICY as SHEET_UV_POLICY
@@ -381,21 +415,30 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
                     random_uv=tuple(int.from_bytes(digest[j:j+4],'little')/2**32 for j in (0,4))
                     omissions.append(resource+': UV random offsets use a deterministic substitute seed; recorded engine seed unavailable')
             uv_samples=[]
-            for tick,_,_ in samples:
+            for tick,_,particle in samples:
                 context=contexts.get((instance,system_path,tick))
                 if (extended or curve_age)and context is None:
                     raise UnsupportedEffect('Extended texture composition requires actual per-system age snapshots')
                 age=context['age'] if extended or curve_age else (tick-births[instance])/simulation['tick_rate']
-                uv_samples.append((1+(tick-simulation['start_tick'])*frame_step,age,random_uv))
+                mode=controls.get('m_nPerParticleScale','SPRITECARD_TEXTURE_PP_SCALE_NONE')
+                from .particle_texture_layers import particle_texture_value
+                factor=particle_texture_value(mode,particle,simulation.get('shader_extra_data_policy'))
+                uv_samples.append((1+(tick-simulation['start_tick'])*frame_step,age,random_uv,factor))
             mapping=build_texture_uv_nodes(nodes,links,coord.outputs['UV'],controls,uv_samples,
                                            trail=renderer['_class']=='C_OP_RenderTrails')
+            sheet=assets['textures'].get(tex.get('m_hTexture'),{}).get('source_sheet')
+            if sheet is not None:
+                from .particle_texture_animation import build_sheet_nodes,renderer_settings
+                settings=renderer_settings(renderer,assets['definitions'][resource])
+                return build_sheet_nodes(nodes,links,image.image,mapping.outputs['Vector'],sheet,sequence,settings,samples,
+                    lambda tick:1+(tick-simulation['start_tick'])*frame_step,constant_paths)
             links.new(mapping.outputs['Vector'],image.inputs['Vector'])
             return image,mapping
         if extended:
             from .particle_render_controls import render_scalar
             def sample_layer(layer,index,raw=False):
                 image,mapping=mapped_texture(layer,index,raw)
-                return image,mapping.outputs['Vector']
+                return image,mapping.outputs['Vector'] if hasattr(mapping,'outputs') else mapping
             def parameter(value,default):
                 if not isinstance(value,dict) or value.get('m_nType','PF_TYPE_LITERAL')=='PF_TYPE_LITERAL':
                     return render_scalar(value,default=default)
@@ -406,7 +449,16 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
                     node.outputs[0].default_value=render_scalar(value,context=context,default=default)
                     node.outputs[0].keyframe_insert('default_value',frame=1+(tick-simulation['start_tick'])*frame_step)
                 return node.outputs[0]
-            layer_color,layer_alpha=build_layer_stack(nodes,links,layers,sample_layer,parameter)
+            def particle_parameter(mode):
+                from .particle_texture_layers import particle_texture_value
+                values=[particle_texture_value(mode,p,simulation.get('shader_extra_data_policy')) for _,_,p in samples]
+                if all(v==values[0] for v in values):return values[0]
+                node=nodes.new('ShaderNodeValue')
+                for (tick,_,_),value in zip(samples,values):
+                    node.outputs[0].default_value=value
+                    node.outputs[0].keyframe_insert('default_value',frame=1+(tick-simulation['start_tick'])*frame_step)
+                return node.outputs[0]
+            layer_color,layer_alpha=build_layer_stack(nodes,links,layers,sample_layer,parameter,particle_input=particle_parameter)
             mix=nodes.new('ShaderNodeMixRGB');mix.blend_type='MULTIPLY';mix.inputs[0].default_value=1
             links.new(color,mix.inputs[1]);links.new(layer_color,mix.inputs[2]);color=mix.outputs[0]
             mult=nodes.new('ShaderNodeMath');mult.operation='MULTIPLY'
@@ -449,7 +501,16 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
                 mult=nodes.new('ShaderNodeMath');mult.operation='MULTIPLY';links.new(alpha,mult.inputs[0]);links.new(layer_alpha,mult.inputs[1]);alpha=mult.outputs[0]
         power=nodes.new('ShaderNodeMath');power.operation='MULTIPLY';power.inputs[0].default_value=1
         if blend=='PARTICLE_OUTPUT_BLEND_MODE_ADD':links.new(alpha,power.inputs[0])
-        power.inputs[1].default_value=scalar(renderer.get('m_flOverbrightFactor'),default=1)
+        overbright=renderer.get('m_flOverbrightFactor')
+        if isinstance(overbright,dict) and overbright.get('m_nType','PF_TYPE_LITERAL')!='PF_TYPE_LITERAL':
+            from .particle_render_controls import render_scalar
+            power.name='AGR particle overbright'
+            for tick,_,_ in samples:
+                context=contexts.get((instance,system_path,tick))
+                if context is None:raise UnsupportedEffect('Missing particle brightness system snapshot')
+                power.inputs[1].default_value=render_scalar(overbright,default=1,context=context)
+                power.inputs[1].keyframe_insert('default_value',frame=1+(tick-simulation['start_tick'])*frame_step)
+        else:power.inputs[1].default_value=scalar(overbright,default=1)
         emit=nodes.new('ShaderNodeEmission');links.new(color,emit.inputs['Color']);links.new(power.outputs[0],emit.inputs['Strength'])
         transparent=nodes.new('ShaderNodeBsdfTransparent')
         if blend=='PARTICLE_OUTPUT_BLEND_MODE_ADD':
@@ -458,6 +519,10 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
             add=nodes.new('ShaderNodeMixShader');links.new(alpha,add.inputs[0]);links.new(transparent.outputs[0],add.inputs[1]);links.new(emit.outputs[0],add.inputs[2])
         output=nodes.new('ShaderNodeOutputMaterial');links.new(add.outputs[0],output.inputs['Surface'])
         _linear(mat.node_tree)
+        if mat.node_tree.animation_data and mat.node_tree.animation_data.action:
+            for curve in _channels(mat.node_tree.animation_data.action):
+                if curve.data_path in constant_paths:
+                    for point in curve.keyframe_points:point.interpolation='CONSTANT'
         materials[key]=mat;return mat
     objects=[];billboard_helpers=[];rope_objects=[];rope_systems=[];depth_rows=[]
     original_frame = scene.frame_current
@@ -489,6 +554,9 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
                     parameters=dict(type='ORTHO',height=2/(projection_y*unit_scale))
                 else:
                     raise UnsupportedEffect('Unsupported rope camera projection '+evaluated.data.type)
+                world_to_clip=projection@evaluated.matrix_world.inverted()@Matrix.Diagonal((unit_scale,unit_scale,unit_scale,1))
+                parameters['world_to_clip']=[list(row)for row in world_to_clip]
+                parameters['forward']=list((evaluated.matrix_world.to_3x3()@Vector((0,0,-1))).normalized())
                 camera_samples.append(dict(tick=tick,age=(tick-births[instance])/simulation['tick_rate'],
                     particles=particles,camera_position=[float(v/unit_scale) for v in evaluated.matrix_world.translation],
                     camera_projection=parameters))
@@ -517,7 +585,10 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
                         and layer.get('m_bEnabled',True) and not layer.get('m_bReplaceTextureWithGradient')}
                     resolved=sample['renderer']
                     prepare_rope_shader_colors(obj.data,resolved)
-                    mat,limitations=build_rope_material(resolved,layer_images,scene_light=(1,1,1),age=sample['age'])
+                    mat,limitations=build_rope_material(resolved,layer_images,scene_light=(1,1,1),age=sample['age'],
+                        mesh=obj.data,depth_compensated=obj.get('agr_rope_depth_bias_policy')=='projective_depth_proxy_v1',
+                        render_context=contexts.get((instance,system_path,tick)),
+                        native_inputs=assets.get('provenance',{}).get('native_rope_shader'))
                     obj.data.materials.append(mat);omissions.extend(resource+': '+item for item in limitations)
                     obj.name=f'AGR FX rope | {instance} | {system_path} | {index} | {tick}'
                     obj['agr_particle_resource']=resource;obj['agr_particle_instance']=instance
@@ -708,5 +779,8 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254)
     if projected:
         report['projected_layers']=projected
         report['limitations'].append('Projected world layers have no receiving world geometry in this exported scene; adding a map requires rebuilding effects with a qualified projected material/receiver provider.')
+    if any('source_sheet' in value for value in assets.get('textures',{}).values()):
+        report['texture_animation_policy']='agr_source_particle_sheet_v1'
+        report['limitations'].append('Original flat-sheet frames and blends are sampled and held at replay ticks; engine subframe animation/filtering and Source shading remain approximate.')
     scene['agr_simulated_effects_report']=json.dumps(report)
     return report

@@ -116,7 +116,7 @@ def prepare_depth_cards(rows,scene,camera,unit_scale=.0254):
  """Qualify replay samples and 24/30/60 output times before installing graphs."""
  import bpy,numpy as np
  from mathutils import Matrix,Vector
- from .particle_depth_bias import projective_depth_bias
+ from .particle_depth_bias import qualify_depth_card
  if not rows:return dict(policy=POLICY,objects=0)
  fps=scene.render.fps/scene.render.fps_base;frames={};prepared=[]
  original=scene.frame_current,scene.frame_subframe
@@ -139,7 +139,7 @@ def prepare_depth_cards(rows,scene,camera,unit_scale=.0254):
    projection=dict(world_to_clip=[list(r)for r in matrix],forward=list((view.matrix_world.to_3x3()@Vector((0,0,-1))).normalized()))
    for obj,bias in items:
     world=np.asarray([list(obj.evaluated_get(graph).matrix_world@v.co)for v in obj.data.vertices])/unit_scale
-    projective_depth_bias(world,bias,projection)
+    qualify_depth_card(world,bias,projection)
   for obj,bias in prepared:install_depth_card(obj,camera,bias,unit_scale)
  finally:
   scene.frame_set(original[0],subframe=original[1]);bpy.context.view_layer.update()

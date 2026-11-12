@@ -313,7 +313,9 @@ def build_layer_stack(nodes,links,layers,sample_layer,parameter,*,particle_input
                 rate=op('MULTIPLY',rate,particle_input(mode))
             rgba=graph.zoom(image,uv,rate)
         if distortion:
-            if previous is None or previous[2]!='SPRITECARD_TEXTURE_COLOR':
+            # DistortPrevious samples the preceding layer's raw texture at its
+            # original UV. It does not reapply that layer's zoom sweep.
+            if previous is None or previous[2] not in ('SPRITECARD_TEXTURE_COLOR','SPRITECARD_TEXTURE_ZOOM'):
                 raise UnsupportedEffect('UV distortion requires a preceding color texture')
             source=getattr(previous[0],'distortion_source',previous[0])
             if getattr(source,'animated',False):

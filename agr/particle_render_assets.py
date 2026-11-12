@@ -19,6 +19,14 @@ def prepare_render_assets(names, decoder, adapter, provider, runtime, *, definit
         if name not in textures:
             directory, descriptor = adapter.texture(name, provider)
             textures[name] = dict(descriptor, directory=str(directory))
+        descriptor = textures[name]
+        if any(len(sequence.get('frames', [])) > 1 for sequence in descriptor.get('sequences', {}).values()):
+            from .particle_model_assets import geometry_runtime
+            probe, dotnet = geometry_runtime(runtime)
+            sheet = adapter.texture_sheet(name, provider, probe, dotnet)
+            if 'source_sheet' in descriptor and descriptor['source_sheet'] != sheet:
+                raise UnsupportedEffect('Conflicting original particle sheet for the same texture')
+            descriptor['source_sheet'] = sheet
     models = {}
     for name in sorted(names):
         for renderer in definitions[name].get('m_Renderers', []):
@@ -53,6 +61,10 @@ def prepare_render_assets(names, decoder, adapter, provider, runtime, *, definit
             input_sha256={n: provider.resolve(compiled(n)).sha256 for n in names | texture_names}))
     if models:
         result['models'] = models
+    from .particle_rope_shader_inputs import needs_inputs,collect_inputs,PROFILE_KEY as ROPE_PROFILE
+    if any(r.get('_class')=='C_OP_RenderRopes'and needs_inputs(r)
+        for definition in result['definitions'].values()for r in definition.get('m_Renderers',[])):
+        result['provenance'][ROPE_PROFILE]=collect_inputs(provider)
     if any(renderer.get('_class')=='C_OP_RenderStandardLight'
            for definition in result['definitions'].values() for renderer in definition.get('m_Renderers',[])):
         from .particle_standard_light import collect_native_inputs,PROFILE_KEY

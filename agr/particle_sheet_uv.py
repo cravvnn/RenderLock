@@ -34,8 +34,10 @@ def sheet_random_offset_bypass(renderer, texture, provenance):
         # the corrected branch. Do not erase an unverified input silently.
         return False
     validate_shader_inputs(provenance['spritecard_sheet_uv'])
-    if texture.get('source_sheet') is not None:
-        raise UnsupportedEffect('Original animated sheet UV rendering is not integrated')
+    if 'source_sheet' in texture:
+        from .particle_texture_animation import validate_asset_sheet
+        validate_asset_sheet(texture, provenance.get('input_sha256', {}))
+        return True
     sequences = texture.get('sequences')
     if (type(texture.get('schema_version')) is not int or texture['schema_version'] != 1 or texture.get('atlas') is not True
             or not isinstance(sequences, dict) or not 1 <= len(sequences) <= 256

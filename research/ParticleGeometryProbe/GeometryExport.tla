@@ -9,27 +9,35 @@ EXTENDS TLC
 \* Native decoding/GLB arithmetic, filesystem races and crash durability are not
 \* modeled. No cache publication or retry exists in this helper. Future callers
 \* must hash+validate results inside their own conversion-cache transaction.
-VARIABLES phase, argsOK, emptyOutput, modelOK, exportOK, geometryOK, descriptor
-vars == <<phase,argsOK,emptyOutput,modelOK,exportOK,geometryOK,descriptor>>
+\* Static geometry uses a distinct command/policy, not a failed morph retry.
+\* modelKind abstracts decoded animation/skeleton/bodygroup classification.
+\* Python read_model_geometry additionally validates complete GLB rest skins;
+\* this model does not claim that the C# source metadata proves identity skins.
+VARIABLES phase, argsOK, emptyOutput, modelOK, exportOK, geometryOK, descriptor, command, modelKind
+vars == <<phase,argsOK,emptyOutput,modelOK,exportOK,geometryOK,descriptor,command,modelKind>>
 SkipArguments == FALSE
 SkipEmptyOutput == FALSE
 SkipModel == FALSE
 SkipExport == FALSE
 SkipGeometryBound == FALSE
+IgnoreCommand == FALSE
 Init == /\ phase="arguments" /\ descriptor=FALSE
  /\ argsOK \in BOOLEAN /\ emptyOutput \in BOOLEAN /\ modelOK \in BOOLEAN
  /\ exportOK \in BOOLEAN /\ geometryOK \in BOOLEAN
+ /\ command \in {"morph","mask","static"}
+ /\ modelKind \in {"morph","mask","static","other"}
 Step(from,to,valid) == /\ phase=from
  /\ phase'=(IF valid THEN to ELSE "failed")
  /\ descriptor'=(valid /\ to="done")
- /\ UNCHANGED <<argsOK,emptyOutput,modelOK,exportOK,geometryOK>>
+ /\ UNCHANGED <<argsOK,emptyOutput,modelOK,exportOK,geometryOK,command,modelKind>>
 Next == Step("arguments","destination",argsOK \/ SkipArguments)
  \/ Step("destination","model",emptyOutput \/ SkipEmptyOutput)
- \/ Step("model","export",modelOK \/ SkipModel)
+ \/ Step("model","export",(modelOK \/ SkipModel) /\ (command=modelKind \/ IgnoreCommand))
  \/ Step("export","bound",exportOK \/ SkipExport)
  \/ Step("bound","done",geometryOK \/ SkipGeometryBound)
 Spec == Init /\ [][Next]_vars
 ValidatedResult == descriptor => argsOK /\ modelOK /\ exportOK /\ geometryOK
 PreserveExistingOutput == descriptor => emptyOutput
 NoPrematureSuccess == descriptor => phase="done"
+NoFailedMorphFallback == descriptor => command=modelKind
 =============================================================================

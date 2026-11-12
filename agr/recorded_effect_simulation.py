@@ -267,6 +267,8 @@ def fixed_attachment(instance, start, end):
 
 def recorded_binding_profile(instance):
     """Choose the same conservative binding provider in preflight and Blender."""
+    from .particle_owned_literal import RESOURCE as LITERAL_RESOURCE,bindings as literal_bindings
+    if instance.get('resource')==LITERAL_RESOURCE:return False,False,literal_bindings
     model_profile = instance.get('resource') == REGEN_RESOURCE
     root_profile = model_profile or any(isinstance(event, dict) and event.get('type') == 'UPDATE_ENT'
         and isinstance(event.get('data'), dict)
@@ -484,6 +486,13 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
                 raise ValueError('Particle model/attachment providers across recorded model changes are not yet qualified')
             model_profile, root_profile, binding_provider = recorded_binding_profile(instance)
             bindings=binding_provider(instance,motion_start,data['end_tick'])
+            literal_provenance=None
+            from .particle_owned_literal import RESOURCE as LITERAL_RESOURCE,collect as collect_literal,DEFINITIONS as LITERAL_DEFINITIONS,validate_definitions as validate_literal_definitions
+            if instance.get('resource')==LITERAL_RESOURCE:
+                literal_provenance=collect_literal(data,instance,provider)
+                for name in LITERAL_DEFINITIONS:
+                    if name not in definitions:definitions[name]=decoder.dump(name,provider)
+                validate_literal_definitions({name:definitions[name]for name in LITERAL_DEFINITIONS})
             model_provenance=None
             if root_profile:
                 from .blender_particle_model import capture_root_model_points
@@ -582,6 +591,7 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
                      'simulation_request_sha256':request_sha256,
                      'coverage_scope':'One recorded instance; automatic isolated simulation, approximate rendering. Other instances have separate coverage.'}
             if model_provenance:package['model_provider']=model_provenance
+            if literal_provenance:package['owned_literal_provider']=literal_provenance
             package_path=out/f'{stem}.package.json';package_path.write_text(json.dumps(package),encoding='utf-8')
             result=build_package_effects(package,data,package_path,scene,camera)
             report['rendered_instances']+=1

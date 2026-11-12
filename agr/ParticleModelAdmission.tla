@@ -11,6 +11,19 @@ EXTENDS TLC
 \* embedded node Action before a late
 \* failure. Every newly owned ID must be removed; preexisting IDs are untouched.
 \* CLI invokes recorded_effect_simulation then this normal package transaction.
+\* The exact owned literal birth provider uses these same abstract interfaces:
+\* sourceCurrent includes full replay/event/range/native+definition identities;
+\* captureComplete includes helper request/event/materialized-CP acknowledgments.
+\* Its Python functions are pure, with no new schedule/clock or RELEASE state.
+\* The static sphere uses sourceCurrent for pinned model/material/GLB identity
+\* and renderable for complete per-sample checks. GeometryExport separately
+\* models the distinct static helper command, with no failed-morph fallback.
+\* native_rope_shader uses the same defaultsQualified/sourceCurrent gates for
+\* current native seed/blend and installed shader identities. Depth proxy math,
+\* immutable mesh attributes and layer composition add no clock/cache/lifecycle.
+\* Shader fields39/40 add numeric simulator state, emitted through captureComplete;
+\* their arithmetic/storage is checked by actual initializer/operator fixtures,
+\* not by pretending finite protocol states prove float or shader arithmetic.
 \* Native capture/source arithmetic, filesystem races and Blender internals are
 \* excluded. Actual tests cover attributes/hash failures and late bpy rollback.
 VARIABLES phase, sourceCurrent, defaultsQualified, captureComplete, renderable, allocated, accepted

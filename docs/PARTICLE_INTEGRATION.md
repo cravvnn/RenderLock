@@ -222,6 +222,46 @@ absolute error bound of 4e-7. The named constructor/defaults and FX branch are
 statically bound; no full current FX replay, renderer/caller execution, Source
 photometry, pixel equivalence or exact map-lighting interaction is claimed.
 
+## Original sheets and the owned flashbang
+
+The measured Windows build now supports the original literal-at-birth Venator
+flashbang path in normal exports. The entire13-system tree is admitted together:
+original30-frame fireball sheet, pinned static sphere, layered smoke/distortion,
+sparks/trails, camera-sampled rings and one qualified default point light.
+A separate static-model helper command never substitutes for failed morph output.
+The unchanged model GLB's repeated-index zero-surface triangles are removed only
+when constructing its Blender mesh to prevent a Blender5.2 custom-normal crash.
+
+Fresh60FPS CLI and independent reopen pass:158 new target objects plus6 masks,
+29 actual atlas samples/56 held fractional checks/25 distinct frame rectangles,
+20 sphere samples,425 brightness samples and4,950 bone/33 root checks. Prior
+23 object bindings/21 Actions/16 meshes remain exact. Actual late key allocation
+rolls back all new data. The default hero-follow camera misses the explosion;
+its four rendered frames verify scene stability. A separately rebuilt camera
+pointed at the effect requalifies depth, retains exact atlas animation and renders
+four visible CPU Cycles640x360/16-sample frames. Its66 ring meshes pass57 held
+visibility checks sampled at24/30/60FPS. Only60FPS is a full fresh CLI run.
+
+The simulation parser separately adds shader fields39/40. Existing3,974 particle
+samples stay exact after removing only these additive fields/policy. Typed
+missing fields still refuse. Constant unseeded uniform texture controls use the
+existing declared deterministic substitute policy; no engine RNG recovery is
+claimed. Collection-age brightness uses actual child-system snapshots.
+
+Rope depth interpolation, native zero-segment-seed UVs and the bounded BLEND_ADD
+approximation require current module/shader proofs. Conservative homogeneous
+XY/W rejection avoids rejecting entirely invisible triangles; visible camera-
+plane/depth-floor cases still refuse. Camera changes require rebuilding sampled
+ropes and requalifying cards. The compiled native slices and analytic pixels do
+not establish Source framebuffer/blending/filtering/lighting parity.
+
+Ground projection is a proved zero-world-receiver result in character-only
+scenes. A pending/imported map still refuses until a real receiving-surface and
+material provider exists. Old historical controls, mask parent ambient/lifecycle,
+original seed, broader providers, Linux native profiles and exact lighting remain
+incomplete. See the adjacent coverage documents for component and model bounds.
+Application rebuild and publication remain separate.
+
 ## Remaining limits
 
 This is not complete game-particle support. Other named attachments, derived

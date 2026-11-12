@@ -1,0 +1,7 @@
+[
+  {"name":"ignore input source bound", "replace":[["SkipInput == FALSE","SkipInput == TRUE"]], "expect":"QualifiedOutput"},
+  {"name":"accept cropped split or oversized layout", "replace":[["SkipLayout == FALSE","SkipLayout == TRUE"]], "expect":"QualifiedOutput"},
+  {"name":"overwrite competing atlas", "replace":[["OverwriteImage == FALSE","OverwriteImage == TRUE"]], "expect":"PreserveOthers"},
+  {"name":"overwrite competing descriptor", "replace":[["OverwriteDescriptor == FALSE","OverwriteDescriptor == TRUE"]], "expect":"PreserveOthers"},
+  {"name":"accept partial failed descriptor", "replace":[["PublishFailedWrite == FALSE","PublishFailedWrite == TRUE"]], "expect":"QualifiedOutput"}
+]

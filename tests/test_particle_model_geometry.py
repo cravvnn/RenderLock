@@ -135,6 +135,36 @@ def test_nonidentity_bind_and_nonroot_weights_are_refused(tmp_path,field,value):
     with pytest.raises(UnsupportedEffect):read_model_geometry(write(tmp_path/'bad.glb',d,b))
 
 
+def orphan_root_fixture():
+    d,b=static_fixture()
+    d.pop('skins');d['nodes']=[dict(mesh=0)];d['scenes']=[dict(nodes=[0])]
+    return d,b
+
+
+def test_baked_static_root_attributes_preserve_geometry(tmp_path):
+    d,b=orphan_root_fixture();g=read_model_geometry(write(tmp_path/'baked.glb',d,b))
+    baseline,raw=static_fixture(False);original=read_model_geometry(write(tmp_path/'plain.glb',baseline,raw))
+    assert g['static'] and g['morphs']==[]
+    for key in ('positions','normals','uv','indices'):
+        np.testing.assert_array_equal(g[key],original[key])
+
+
+@pytest.mark.parametrize('mutation',['joint','weight','missing-joints','missing-weights','count','animation','morph','nonidentity-node'])
+def test_orphan_root_attributes_never_discard_nontrivial_state(tmp_path,mutation):
+    d,b=orphan_root_fixture();p=d['meshes'][0]['primitives'][0];attrs=p['attributes']
+    if mutation in ('joint','weight'):
+        name='JOINTS_0' if mutation=='joint' else 'WEIGHTS_0'
+        a=d['accessors'][attrs[name]];offset=d['bufferViews'][a['bufferView']]['byteOffset']
+        struct.pack_into('<H' if mutation=='joint' else '<f',b,offset,1 if mutation=='joint' else .5)
+    elif mutation=='count':d['accessors'][attrs['WEIGHTS_0']]['count']=2
+    elif mutation=='missing-joints':attrs.pop('JOINTS_0')
+    elif mutation=='missing-weights':attrs.pop('WEIGHTS_0')
+    elif mutation=='animation':d['animations']=[{}]
+    elif mutation=='morph':p['targets']=[dict(POSITION=0)]
+    else:d['nodes'][0]['translation']=[1,0,0]
+    with pytest.raises(UnsupportedEffect):read_model_geometry(write(tmp_path/'bad.glb',d,b))
+
+
 def test_captured_affine_frame_preserves_source_axes_shear_and_normals(tmp_path):
     d,b=static_fixture(False);geometry=read_model_geometry(write(tmp_path/'source.glb',d,b))
     matrix=np.array([[2.,.75,-.25,100.],[.1,3.,.5,-200.],[.2,.4,4.,300.]])
