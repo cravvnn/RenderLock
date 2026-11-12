@@ -119,3 +119,31 @@ def test_extraction_rejects_reserved_sidecar_before_running_helper(tmp_path,monk
     output=tmp_path/'out';output.mkdir();(output/capture.FILE).write_text('prior')
     with pytest.raises(replay.ReplayError,match='network_projectiles'):replay.extract_replay(demo,output,1,2)
     assert (output/capture.FILE).read_text()=='prior'
+
+
+@pytest.mark.parametrize('reason',['capture_failed','serialized_budget_exceeded'])
+def test_failed_capture_is_retained_unavailable_with_exact_provenance(tmp_path,reason):
+    value=raw(False);value['coverage'].update(availability='unavailable',reason=reason)
+    result=retain(tmp_path,value)
+    assert result['availability']=='unavailable'and result['reason']==reason
+    assert result['capture']['tracks']==[] and result['provenance']['sidecar_sha256']
+    capture.validate_envelope(result,dict(metadata={'demo_sha256':'a'*64},start_tick=1,end_tick=2))
+    from agr.projectile_particles import selected_tracks
+    with pytest.raises(ValueError,match='capture unavailable'):
+        selected_tracks(result,dict(metadata={'demo_sha256':'a'*64},start_tick=1,end_tick=2,entities=[]))
+    from agr.recorded_projectile_effects import build_projectile_effects
+    data=dict(metadata={'demo_sha256':'a'*64},start_tick=1,end_tick=2,network_projectiles=result)
+    report=build_projectile_effects(data,None,None,None,None,None,None)
+    assert report['status']=='unavailable'and report['capture_reason']==reason
+    assert report['instances']==report['unsupported']==[] # Unknown count, not invented occurrences.
+
+
+@pytest.mark.parametrize('reason',['capture_failed','serialized_budget_exceeded'])
+@pytest.mark.parametrize('mutation',['retained_prefix','available','unknown_reason'])
+def test_capture_failure_cannot_become_a_qualified_prefix(reason,mutation):
+    value=raw(False);value['coverage'].update(availability='unavailable',reason=reason)
+    if mutation=='retained_prefix':
+        full=raw();value['tracks']=full['tracks'];value['coverage'].update(tracks=1,samples=3)
+    elif mutation=='available':value['coverage']['availability']='available'
+    else:value['coverage']['reason']='unqualified_failure'
+    with pytest.raises(ValueError):capture.validate_capture(value,1,2)

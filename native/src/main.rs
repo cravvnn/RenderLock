@@ -125,8 +125,7 @@ fn main() -> anyhow::Result<()> {
     eprintln!("AGR: reconstructing entity state from signon through tick {end}");
     parser.decode_segment(None, end + 1, &filter, |ctx| {
         if ctx.tick() > end || callback_error.is_some() { return; }
-        let result = (|| -> anyhow::Result<()> {
-            projectile_capture.begin_tick(ctx.tick(), end)?;
+        projectile_capture.capture_tick(ctx.tick(), end, |capture| {
             let mut owner_handles = HashSet::<u32>::new();
             for (_, entity) in ctx.entities().iter() {
                 if entity.class_name.as_ref() != "CCitadelPlayerPawn" { continue; }
@@ -145,10 +144,12 @@ fn main() -> anyhow::Result<()> {
                     .context("Projectile serializer unavailable")?;
                 let owner = entity.get_by_name("m_hOwnerEntity", serializer)
                     .and_then(|v| serde_json::to_value(v).ok()).and_then(|v| v.as_u64());
-                projectile_capture.observe(entity, serializer, ctx.tick(),
+                capture.observe(entity, serializer, ctx.tick(),
                     owner.is_some_and(|h| h <= u32::MAX as u64 && owner_handles.contains(&(h as u32))))?;
             }
-            projectile_capture.finish_tick(ctx.tick())?;
+            Ok(())
+        });
+        let result = (|| -> anyhow::Result<()> {
             if ctx.tick() < start { return Ok(()); }
             for (index, entity) in ctx.entities().iter() {
                 if entity.class_name.as_ref() != "CCitadelPlayerPawn" { continue; }

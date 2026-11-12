@@ -316,3 +316,39 @@ def test_inspect_team_requires_every_recorded_player_to_agree(tmp_path, monkeypa
     hero = inspect_replay(demo)["heroes"][0]
     assert hero.get("team") == expected
     assert hero["player_count"] == 2
+
+
+@pytest.mark.parametrize('failure',[None,'capture_failed','serialized_budget_exceeded'])
+def test_extract_replay_keeps_core_actor_data_when_optional_capture_is_unavailable(tmp_path,monkeypatch,failure):
+    # Python integration contract with supplied helper outputs; not a compiled
+    # native execution. The actual native callback/limit tests are separate.
+    import json
+    from types import SimpleNamespace
+    from agr import replay
+    from agr.network_projectile_capture import FILE,POLICY,CLASS,validate_envelope
+    demo=tmp_path/'demo.dem';demo.write_bytes(b'PBDEMS2\0'+b'\0'*8)
+    helper=tmp_path/'helper.exe';helper.write_bytes(b'synthetic helper identity')
+    monkeypatch.setattr(replay,'find_native_extractor',lambda:helper)
+    class Parsed:
+        build=1;map_name='start';match_id=1;tick_rate=64;total_ticks=3;total_seconds=3/64
+        def load(self,*a):raise RuntimeError('No synthetic optional markers')
+    monkeypatch.setattr(replay,'_dependencies',lambda:(SimpleNamespace(Demo=lambda _:Parsed()),None))
+    raw=[row(1),row(2)];expected,transforms=_entities_from_raw(raw,1,2,None)
+    def run(command,**kwargs):
+        output=__import__('pathlib').Path(command[2]);coverage=dict(availability='unavailable'if failure else 'available',
+            reason=failure,origin='signon',first_observed_tick=0,last_observed_tick=2,tracks=0,samples=0,scope='Synthetic helper output')
+        coverage['class']=CLASS
+        payload=dict(schema_version=1,policy=POLICY,requested_range=dict(start_tick=1,end_tick=2,inclusive=True),coverage=coverage,tracks=[])
+        (output/FILE).write_text(json.dumps(payload))
+        advertisement=dict(schema_version=1,policy=POLICY,file=FILE,
+            **{k:coverage[k]for k in ('availability','reason','tracks','samples')})
+        (output/'native_coverage.json').write_text(json.dumps(dict(source_world_half=32768,boon_version='0.15.0',projectile_particles=advertisement)))
+        (output/'raw_animation_state.json').write_text(json.dumps(raw));(output/'network_ticks.json').write_text('[]')
+        return SimpleNamespace(returncode=0)
+    monkeypatch.setattr(replay.subprocess,'run',run)
+    manifest=extract_replay(demo,tmp_path/'out',1,2)
+    data=json.loads(manifest.read_text())
+    assert data['entities']==expected and data['coverage']['transforms']==transforms
+    assert data['network_projectiles']['availability']==('unavailable'if failure else 'available')
+    assert data['network_projectiles']['reason']==failure
+    validate_envelope(data['network_projectiles'],data)

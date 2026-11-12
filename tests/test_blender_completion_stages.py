@@ -97,3 +97,21 @@ def test_mixed_material_completion_cannot_claim_generic_as_npr_or_drop_dynamic_s
     document=json.loads(path.read_text());document[stage]=result;path.write_text(json.dumps(document))
     with pytest.raises(RuntimeError,match='route/runtime'):
         read_blender_completion(path,**job,requested_stages=[stage])
+
+
+@pytest.mark.parametrize('reason',['capture_failed','serialized_budget_exceeded','helper_not_advertised'])
+def test_unavailable_projectile_capture_requires_partial_even_with_manager_objects(tmp_path,reason):
+    from agr.recorded_projectile_effects import merge_projectile_report
+    effects=dict(status='partial',candidate_instances=1,selected_recorded_instances=1,attempted_instances=1,
+        rendered_instances=1,objects=3,particle_tracks=1,point_lights=0,pre_shot_rendered_instances=0,
+        instances=[{'id':'manager'}],unsupported=[],candidate_by_birth_scope={'in_output':1},
+        unsupported_by_birth_scope={},limitations=[])
+    merge_projectile_report(effects,dict(status='unavailable',reason=reason,rendered_instances=0,
+        objects=0,instances=[],unsupported=[]))
+    assert effects['objects']==3 and effects['instances']==[{'id':'manager'}]
+    assert effects['status']=='unavailable' and effects['unsupported']==[]
+    path,job=completion(tmp_path,effects=effects)
+    with pytest.raises(RuntimeError,match='requested effects: unavailable'):
+        read_blender_completion(path,**job,requested_stages=['effects'])
+    result=read_blender_completion(path,**job,partial=True,requested_stages=['effects'])
+    assert any('effects unavailable'in v and reason in v for v in result['warnings'])

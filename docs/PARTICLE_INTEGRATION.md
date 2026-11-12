@@ -76,6 +76,29 @@ checks and21root checks pass the existing saved-scene verifier. Synthetic pixel,
 legacy-negative and late sibling rollback checks distinguish both texture branches.
 This is a rendering-path correction, not all shader variants or Source pixel parity.
 
+## Optional capture failures
+
+Projectile capture is independent of actor and clock extraction. A capture data
+or finite-budget failure discards every partial projectile track, stops further
+capture attempts and records unavailable coverage. A fully observed empty scan
+remains available. Serialized-size checking happens before output creation;
+output collisions, writes, flush/sync and core parser errors still fail extraction.
+
+The compiled extractor preserves actor and clock output byte for byte on the
+tested replay, both with healthy capture and a private reduced-budget control.
+Healthy projectile output also matches the previously qualified capture. Normal
+CLI controls verify all three outcomes: character-only export succeeds; strict
+requested-effects export refuses publication when capture is unavailable; explicit
+partial export keeps the other effects and an unavailable-coverage warning.
+Saved scenes reopen with packed assets and pass actor checks; seven consecutive
+CPU Cycles preview frames cover the character-only and explicit-partial controls.
+The reduced budget exists only in a private test source copy, not the product.
+
+The bounded model checks capture independence, discarded prefixes, no retry and
+exclusive publication across four observations. Rust, Python and actual replay
+checks cover concrete fields, limits and provenance separately. This compatibility
+fix does not qualify additional effect families or relax the coverage gate.
+
 ## Remaining limits
 
 This is not complete game-particle support. Other named attachments, derived

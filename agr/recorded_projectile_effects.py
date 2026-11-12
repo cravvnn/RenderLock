@@ -16,7 +16,11 @@ def build_projectile_effects(data,scene,camera,runtime,provider,decoder,adapter)
         from .network_projectile_capture import validate_envelope
         validate_envelope(capture,data)
     if capture is None or capture['availability']=='unavailable':
-        return dict(status='unavailable',reason='This saved extraction has no network projectile tracks; re-export the original replay with the updated native extractor.',
+        reason=capture['reason']if capture is not None else 'helper_not_advertised'
+        message=('This saved extraction has no qualified network projectile capture; re-export the original replay with the updated native extractor.'
+                 if reason=='helper_not_advertised'else
+                 f'Network projectile capture is unavailable ({reason}); particle coverage cannot be established. See the retained extraction diagnostics.')
+        return dict(status='unavailable',reason=message,capture_availability='unavailable',capture_reason=reason,
                     rendered_instances=0,objects=0,point_lights=0,particle_tracks=0,instances=[],unsupported=[])
     tracks=selected_tracks(capture,data)
     report=dict(status='partial',backend='network_projectile_simulation_v2',policy=POLICY,coverage_scope=SCOPE,
@@ -74,6 +78,8 @@ def build_projectile_effects(data,scene,camera,runtime,provider,decoder,adapter)
 def merge_projectile_report(report,projectiles):
     """Add separate projectile coverage without replacing manager diagnostics."""
     report['projectile_effects']=projectiles
+    if projectiles.get('status')=='unavailable':
+        report.update(status='unavailable',reason=projectiles['reason'])
     report['candidate_instances']+=projectiles.get('selected_recorded_instances',0)
     for key in ('selected_recorded_instances','attempted_instances','rendered_instances',
                 'objects','particle_tracks','point_lights','pre_shot_rendered_instances'):

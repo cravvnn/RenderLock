@@ -53,8 +53,12 @@ def validate_capture(value,start,end):
     first,last=c['first_observed_tick'],c['last_observed_tick']
     require((first is None and last is None)or(integer(first,-1,end)and integer(last,first,end)),'scan range differs')
     require(c['availability']in ('available','unavailable'),'unknown availability')
+    failed=c['reason']in ('capture_failed','serialized_budget_exceeded')
     require((c['reason']is None and last==end)if c['availability']=='available'
-        else c['reason']=='end_tick_not_observed','coverage reason/end differs')
+        else c['reason']=='end_tick_not_observed' or failed,'coverage reason/end differs')
+    if failed:
+        require(c['availability']=='unavailable'and c['tracks']==0 and c['samples']==0
+            and value['tracks']==[],'failed capture retained a partial prefix')
     tracks=value['tracks'];require(isinstance(tracks,list)and len(tracks)<=MAX_TRACKS,'track budget exceeded')
     require(integer(c['tracks'],0,MAX_TRACKS)and c['tracks']==len(tracks),'track count differs')
     require(integer(c['samples'],0,MAX_ROWS),'sample count exceeds bound')
