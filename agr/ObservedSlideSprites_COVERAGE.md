@@ -1,4 +1,4 @@
-Port status: component API only; no ordinary CLI cohort input or fresh normal slide acceptance yet. Historical native pins and original fingerprints remain.
+Port status: supplied-cohort ordinary CLI integration qualified by fresh normal, saved/actual rollback and CPU Cycles checks. Historical native pins and original fingerprints remain; automatic acquisition is not provided. See docs/PARTICLE_INTEGRATION.md.
 
 # Captured slide sprites
 
@@ -8,7 +8,8 @@ handler or allocation transaction across calls. It resolves measured renderer
 values into a copy, checks original accepted texture indices, and calls the same
 camera-bound math extracted from the observed ambient study. Signed roll/yaw/
 pitch texture scale follows the installed shader selectors7/8/9; zero scale
-remains refused. The ambient backend and its admission entry point are not ported.
+remains refused. The ambient backend has a separate supplied-input admission
+entry point and independent normal/save/render qualification.
 
 The optional `observed_slide_sprite_effects` stage validates a complete reference
 and uses the existing `simulated_effect_package` transaction. Its source profile,

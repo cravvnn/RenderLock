@@ -70,7 +70,8 @@ ordinary noise textures retain their explicit substitute seed and warning. This
 repairs hard smoke rectangles without an artificial edge fade or simulation change.
 Unknown shader inputs and incomplete sheet inventories refuse. Legacy packets
 without this proof retain their old behavior; regenerate exports to use the fix.
-Typed original animated-sheet sampling remains separate unintegrated work.
+Original flat animated-sheet sampling is separately qualified for the bounded
+Venator Flashbang profile. Other sheet/shader modes still require qualification.
 
 A short fresh muzzle export has21simulation frames exactly equal to the earlier
 export, unchanged definitions/textures/input hashes and45unchanged mesh/UV hashes.
@@ -299,9 +300,10 @@ fresh replay/model/birth/provider before Blender receives them. The report
 records the imported byte digest and instance IDs separately from FX coverage.
 
 This does not capture anything from a running game, prove that user-edited
-records are authentic, or establish complete particle coverage. Only the current
-qualified Windows Crossbow profile is supported by this importer; positive render
-children, other heroes/builds and Linux need their own qualification. Missing
+records are authentic, or establish complete particle coverage. Schema 1 supports
+only the current qualified Windows Crossbow profile; positive
+render children, other heroes/builds and Linux need their own qualification.
+The separately typed Silence schemas are described below. Missing
 observations remain unsupported and strict/explicit-partial rules are unchanged.
 
 
@@ -367,3 +369,117 @@ coverage, lifetime joins/orphans/endcaps, a common Source render clock or exact
 lighting/pixel parity. Captured sprite/trail geometry is baked for the export
 camera; camera edits require a new export. Automatic acquisition, portable
 captured-asset relocation and other native profiles need separate integration.
+
+
+## Supplied Silence observations and shared rendering additions
+
+The same optional observation input also accepts schema 2 original bound Silence
+birth/body envelopes, or schema 3 with an explicit original source-scene witness.
+The birth and child packets keep their original identities. Schema 3 separately
+proves that the fresh export consumes the same owning root, pose, model,
+skeleton, constraints and recorded event inputs. Added earlier replay history is
+allowed only when those consumed values match exactly. This does not qualify a
+new native reader or permit rewriting old fingerprints.
+
+Fresh evaluated hitboxes and CP attachments feed all four Silence systems. The
+saved scene must reproduce those inputs before allocating replacement geometry.
+The startup cylinder preserves affine component-scale/rotation order, including
+shear. Body sprites use the pinned paired flow sheet; root/scalar operators and
+normalized emission batches feed the original material fields. Ropes use the
+retained reference distance-size fade/clamp and remain camera baked. Missing
+provider/material inputs or unqualified provenance refuse; no child is omitted
+to turn an incomplete tree into a successful effect.
+
+This supplied historical profile completed a real ordinary export, independent
+saved-input recapture, actual late allocation rollback and two short CPU Cycles
+sequences. Startup and body-only off controls confirm visible contributions.
+It does not establish native filtering, clocks, original RNG, fog, depth,
+bloom, radiometry or Source pixel parity. Automatic acquisition, broader
+Mina blink/sprint/native attachment/lifecycle providers and Linux remain held.
+See `agr/ParticleSilenceNormal_COVERAGE.md` and the component coverage files.
+
+Observation files are homogeneous: schema 1 Crossbow and schemas 2/3 Silence
+cannot be combined into a mixed-profile envelope. A schema 3 source witness is
+required for its fresh-scene equivalence path. Do not manually rewrite a bound
+capture to make a different shot appear to match. The existing strict versus
+explicit-partial publication rules remain in force.
+
+## Supplied ambient inputs
+
+`--captured-ambient-inputs` and Advanced > Captured ambient effects import the
+qualified retained Venator censer sprite/rope groups. They are independent
+captures with separate native/reader/freeze/cleanup provenance; no common Source
+clock is inferred. Both remain unchanged while a separate exact binding proves
+the fresh owning rig inputs. Both renderers share one transaction and require a
+complete receipt even in partial mode. See `CAPTURED_AMBIENT_INPUTS.md` for the
+bounded descriptor, required settings and non-portable retained asset paths.
+
+The normal input profile has an independent saved reopen, real late second-
+component failure rollback and four CPU Cycles frames with an ambient-off
+control. Recorded-birth unsupported counts remain separate. Automatic collection,
+portable asset relocation, lifetime joins/death/endcaps/orphans, wider heroes or
+native profiles, map receivers and exact game lighting remain unqualified.
+
+## Qualification and delivery boundary
+
+The current combined two-hero ordinary export completed at 60 FPS over ticks
+17920..18240 inclusive with 62 earlier history ticks. It saved 8,373 effect
+objects: 5,088 from all 69 outward bats, 842 supplied slide objects, 1,605 supplied
+ambient objects, 206 Silence objects, six sustained mask variants and other
+recorded effects. It used explicit partial coverage and supplied capture inputs.
+
+Independent reopening checked 642 root and 115,881 bone samples, all 69 bat
+models, 207 model observations, both rope renderers and exact Silence input
+recapture. The worst model-matrix and morph-weight errors were below 1.90e-6
+and 1.59e-6 respectively. Empty-projectile rollback passed. All 4,179 file images
+were packed, with no linked libraries. Four consecutive original-camera CPU
+Cycles frames at 640x360/16 samples showed animated bats; hiding only their
+model camera rays changed 784 pixels. This is a short diagnostic, not a full
+sequence or Source image comparison.
+
+The saved 60 FPS scene was sampled on 24/30/60 FPS morph grids; those are not
+three fresh exports. All 81 earlier current-helper instance simulations and
+assets stayed exact. All older fields of 69 outward-bat simulations stayed
+exact, with only declared shader attributes added. Separately, the current
+simulator preserved all 400,487 prior values/types/array lengths across 69
+released frozen world-impact requests. That last check is simulator compatibility,
+not an additional normal export. The supplied Crossbow profile has its own
+current-runtime normal/save/rollback/Cycles qualification below.
+
+The combined report retains 1,084 unsupported/unavailable occurrences, including
+retained earlier history; 25 were born inside the output range. A homogeneous
+Silence observation file cannot also supply Crossbow observations. Crossbow is
+qualified separately, not silently subtracted from this combined report. See
+`PARTICLE_SUPPORT.md` for the integrated/held inventory and remaining behaviors.
+
+These changes are a source integration candidate, not a rebuilt or published
+application. Keep the separate material, simulation and geometry helpers and
+rebuild the required helpers from their pinned build glue/patches before a new
+app package. An older simulation helper cannot consume all new inputs. Never
+replace the separately qualified material parser to obtain simulation features.
+Individual prepared-math, normal-export, saved-scene and visual checks establish
+different scopes; none alone proves every particle or exact game lighting.
+Unsupported occurrence totals include retained history and do not count visibly
+missing effects. An earlier birth alone does not prove continued visibility.
+
+
+### Current complete geometry runtime and Crossbow regression
+
+The geometry helper must advertise `inventory-model-rest` as well as the existing
+model/static/authored/sheet commands. The older tested geometry host used by some
+retained Silence cases lacks that command; do not reuse it for Crossbow. A complete
+geometry runtime includes the native Skia/spirv dependencies, not only its managed
+host. The qualified complete host is
+`670f09c73e96e1ac504c001b54f67da1442c9ba3c3d00ea3a2b868073dad3c2c`;
+its parser is unchanged. Bat/cylinder/mask exports were byte-identical to retained
+outputs. This is a runtime composition correction; tracked geometry source already
+contains the required command and no parser/native build was changed.
+
+Current simulation plus that complete geometry runtime passed a fresh supplied
+Crossbow normal export, independent saved rig/input/UV/shader checks, actual late
+rope rollback and four CPU Cycles frames. Its ring alpha now follows the final
+30-particle normalized batch. All990alpha samples match the authored retained
+linear curve within2.91e-7;924values/types differ from the previous growing-count
+bug. Every other simulation field and the assets match. Native spline/tangent,
+clock and lighting parity remain unqualified. The combined checks above cover
+the other supplied selections; Crossbow remains separately qualified.

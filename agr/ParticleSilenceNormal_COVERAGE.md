@@ -74,5 +74,9 @@ Simplification: reuse one scene-state borrow and existing all-or-none importer,
 exclusive helper writer and package transaction. No old cross-effect wrapper,
 second pose cache, automatic live reader, lifecycle manager or alternate clock
 is added. Component checks cannot establish ordinary export/save/render acceptance.
-This is an unaccepted source candidate until fresh normal export, saved/rollback
-and short Cycles checks (including prior features/flashbang) pass.
+The supplied historical profile passed fresh normal export, independent saved
+input recapture, actual late allocation rollback and short startup/body CPU
+Cycles sequences. Current-helper Flashbang/Crossbow regressions and the combined
+Mina/Venator normal/save/render checks also passed. See
+`docs/PARTICLE_INTEGRATION.md` for counts and limits. This is qualified source,
+not automatic current-native acquisition, a rebuilt app or complete coverage.

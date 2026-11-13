@@ -4,7 +4,8 @@ These components are synchronous immutable validation/transformation functions.
 They introduce no process, cache, retry, file writer or persistent cursor, so no
 new lifecycle model is needed. Existing helper hitbox-history/cursor protocols
 are independent obligations and have not been ported or newly qualified here.
-The normal recorded-effect dispatcher does not yet acquire/use these inputs.
+The normal dispatcher now consumes the supplied profile and acquires fresh
+rig inputs; see `ParticleSilenceNormal_COVERAGE.md` for the qualified bridge.
 
 The birth packet keeps the exact old2007/5d5module pair, finite recorded AND
 observed fallback values, flags0, unit owner SRT, CP0 mode1/identity matrix and
@@ -45,5 +46,6 @@ old generic creation wrapper or relaxing current Crossbow. No code searches an
 entity list for a substitute model, guesses a hitbox, changes recorded events or
 infers empty history/lifetime. Hashes detect inconsistent bytes, not edited-data
 authenticity. Actual retained-packet admission/request reconstruction is input
-proof only; current helper integration, fresh rig/pose acquisition, normal export,
-actual Blender/save/rollback and Cycles remain pending.
+proof only. The separate normal bridge now qualifies current helper composition,
+fresh rig/pose inputs, actual saved recapture/rollback and CPU Cycles for this
+supplied historical profile. It does not qualify automatic native acquisition.

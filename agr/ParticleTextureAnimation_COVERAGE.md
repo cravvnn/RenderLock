@@ -1,4 +1,4 @@
-# Original flat particle sheets (pending integration qualification)
+# Original flat particle sheets (bounded normal-export qualification)
 
 `particle_texture_animation` validates immutable atlas timing and selects two
 authored rectangles plus a blend value from existing particle age/lifetime/manual

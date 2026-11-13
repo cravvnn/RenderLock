@@ -82,8 +82,9 @@ The host uses the existing single tick loop and existing simulator arrays,
 without a second clock, per-particle side dictionary or cache. The model chain
 follows parse/advance/query/ack into immutable particle ownership, initial copy,
 compaction and slot reuse; pure matrix arithmetic remains a numerical obligation.
-The enclosing normal package transaction is not yet connected to this provider,
-so these component models do not establish whole-export acceptance.
+The enclosing normal package transaction now uses this provider for the supplied
+Crossbow profile. These component models alone do not establish whole-export
+acceptance; the separate normal/save/rollback/CPU checks below do.
 
 The separate current owner/birth gate now binds the qualified client/particle
 pair, stable model, original CREATE3 and birth CP0 mode1, coherent unit-scale body,
@@ -110,6 +111,7 @@ Independent reopen verifies5973 bones/33roots, saved per-layer UVs and shader
 attributes, edited-motion rejection and actual late material rollback. Four
 consecutive CPU Cycles preview frames and a no-FX control show an attached weapon
 glow. This is a supplied-capture profile with approximate shading/lighting/seeds;
-automatic acquisition and ordinary CLI/UI wiring remain integration work.
-Silence, other hitbox/slide providers, Source lighting and map reconstruction
-remain separate. No old capture or hash-only widening replaces these gates.
+ordinary CLI/UI supplied-file wiring is qualified separately, while automatic
+acquisition remains integration work. Supplied Silence and slide profiles have
+their own qualification; Source lighting, map reconstruction and broader native
+providers remain held. No old capture or hash-only widening replaces these gates.

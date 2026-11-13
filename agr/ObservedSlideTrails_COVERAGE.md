@@ -1,4 +1,4 @@
-Port status: component API only; no ordinary CLI cohort input or fresh normal slide acceptance yet. Historical native pins and original fingerprints remain.
+Port status: supplied-cohort ordinary CLI integration qualified by fresh normal, saved/actual rollback and CPU Cycles checks. Historical native pins and original fingerprints remain; automatic acquisition is not provided. See docs/PARTICLE_INTEGRATION.md.
 
 # Measured current-property slide trails
 

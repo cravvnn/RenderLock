@@ -25,8 +25,8 @@ publication, even under `--partial`; a missing/mismatched/failed explicit cohort
 cannot be silently published as successful. Existing unsupported recorded birth
 counts, rendered instance counts and strict/partial policies are not replaced.
 
-This is source integration pending actual fresh normal-export, saved-scene,
-all-component rollback and Cycles acceptance. Headless command/publication tests
+This supplied cohort passed actual fresh normal-export, saved-scene,
+all-component rollback and CPU Cycles acceptance. Headless command/publication tests
 stub extraction and Blender explicitly and do not qualify native widgets, saved
 data or rendering. Automatic live acquisition is not provided by this renderer.
 Historical native/capture pins and original asset directories remain.

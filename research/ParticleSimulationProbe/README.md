@@ -48,7 +48,7 @@ all3,974 existing particle samples and all other output metadata remain exact.
 The material parser remains separately pinned; never replace its DLL with this
 simulation assembly. The actual managed build is separate from AOT app packaging.
 
-## Pending explicit snapshot simulator
+## Explicit snapshot simulator
 
 The simulation-only `vrf-explicit-snapshot-skinning.patch` registers the bounded
 sequential single-bone snapshot initializer and full-strength rigid position-pair
@@ -62,10 +62,11 @@ tick before Start/Update, and acknowledges only the bindings actually queried.
 Ordinary requests retain their previous output shape. The material helper keeps
 its unchanged parser and does not compile snapshot-dependent commands.
 
-This is an unaccepted component port. It does not qualify current replay owner
-selection, attachment-mode changes, automatic model input acquisition, Crossbow
-rendering or normal-export support. See `agr/ParticleSnapshotProvider_COVERAGE.md`
-for the separate admission and saved-scene gates.
+The supplied current-Windows Crossbow profile now has fresh normal-export,
+saved-input/UV/shader checks, actual rollback and short CPU Cycles qualification.
+Automatic acquisition, positive render children and other owner/attachment modes
+remain unqualified. See `docs/PARTICLE_INTEGRATION.md` and
+`agr/ParticleSnapshotProvider_COVERAGE.md` for the distinct scopes.
 
 Only ParticleSimulationProbe defines`AGR_SIMULATION_SHADER_EXTRAS`. Shared probe
 source conditionally emits these new fields/oracle/policy; ParticleProbe still
@@ -83,10 +84,11 @@ root-bone or missing-history fallback. Snapshot/hitbox mixed inputs refuse.
 Ordinary non-hitbox requests keep their previous output shape. Material parsing
 stays in its separately pinned helper; the local history mirror is excluded from
 both host projects because the simulation dependency supplies the compiled type.
-Silence birth/root-CP writers, fresh pose acquisition and ordinary-export wiring
-remain separate requirements. This component does not establish full Silence,
-current native capture, saved-scene or Cycles support. See the adjacent hitbox
-coverage documents for the state models, limits and code-oracle scope.
+The supplied historical Silence profile is now connected through fresh normal
+pose acquisition, all four systems, independent saved recapture/rollback and
+short CPU Cycles sequences. These component checks alone do not establish that
+acceptance or qualify automatic current-native acquisition. See
+`docs/PARTICLE_INTEGRATION.md` and the adjacent hitbox coverage documents.
 
 ## Root positions and scalar warp
 
@@ -115,7 +117,8 @@ The material parser and unrelated child camera-distance scheduling stay unchange
 capacity/replay/prune/age/callback/initializer-failure and prewarm boundaries.
 Ordinary output changes where it previously used the growing count: the retained
 flashbang ring alpha and flare rotation now follow the final batch count. Their
-numerical changes are audited; new normal/saved/visual qualification is required.
+numerical changes are audited and current Flashbang/Crossbow normal, saved and
+CPU Cycles regressions passed. Other affected profiles still need qualification.
 The pinned upstream curve interpolation remains its existing linear approximation.
 
 One qualified Silence instance also gets explicit material/aux policy markers and

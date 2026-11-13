@@ -5,8 +5,9 @@ and pure admission functions. They own no persistent state, retry, writer,
 process, renderer allocation or cache. No additional lifecycle machine is needed.
 Rendering stays inside the existing package allocation/rollback owner, composed
 by `CapturedSlideRender.tla` for all four siblings. The ordinary CLI now passes
-the bound snapshot through its particle runtime; actual normal-export/save/render
-acceptance for that path is still pending.
+the bound snapshot through its particle runtime. The supplied cohort has fresh
+normal-export, independent saved/actual rollback and short CPU Cycles acceptance;
+see `docs/PARTICLE_INTEGRATION.md` for the narrow admitted input profile.
 
 The descriptor names one source scene and four ordered component JSON files,
 each with a SHA-256 byte digest. Its paths may be relative to the descriptor.
@@ -27,4 +28,5 @@ standalone sprite reference. There is no partial batch return or empty fallback.
 Digests detect changes to a snapshot; they are not capture authenticity proofs.
 No recorded particle birth or prior unsupported count is removed here. Actual
 all-component allocation rollback, a fresh normal scene, saved-scene checks and
-short Cycles output remain required acceptance gates.
+short Cycles output passed for the supplied cohort. Other acquisition/native or
+asset-relocation profiles still require their own acceptance.

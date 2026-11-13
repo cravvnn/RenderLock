@@ -2,8 +2,9 @@
 
 This immutable component has no cache, process, file writer, allocation owner,
 retry or state across calls. It needs no separate lifecycle model. Existing
-package admission/rollback models will own later renderer integration; this
-component does not yet dispatch or admit any slide renderer.
+package admission/rollback models own the separate cohort renderer integration.
+This binding component itself does not dispatch or allocate a slide renderer;
+the qualified normal path is documented in `CapturedSlideRender_COVERAGE.md`.
 
 The retained source fingerprint is frozen verbatim from the research pipeline,
 including its projectile envelope, complete owner event history and file hashes.

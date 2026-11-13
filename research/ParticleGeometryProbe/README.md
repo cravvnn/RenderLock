@@ -44,14 +44,15 @@ at most one source root and no body selectors. It does not fall back from morph
 failure. Consumers must still validate every GLB primitive, node and any complete
 identity rest skin before cache publication. This command does not enable new
 static material or normal-export providers by itself.
-The pending texture-sheet command retains a bounded original flat atlas and
+The texture-sheet command retains a bounded original flat atlas and
 typed sequence timing. It refuses cropped/split formats, uses exclusive output
 files and leaves failed prefixes unaccepted. `TextureSheetExport.tla` models
 that admission and competing creation; decoder/image arithmetic still needs
 actual helper validation. See `agr/ParticleTextureAnimation_COVERAGE.md` for the
-current pending Python/Blender integration scope. Material parsing remains in its
-separate directory and is not replaced by this helper.
-# Authored owner-model rest inventory (pending provider integration)
+qualified flat Flashbang Python/Blender scope; paired flow is separately qualified
+for supplied Silence. Material parsing remains in its separate directory and is
+not replaced by this helper.
+## Authored owner-model rest inventory
 
 `--inventory-model-rest GAMEINFO MODEL.vmdl FRESH_OUTPUT.json` emits typed compiled
 model-order parent positions, rotations and scales with the source digest. It
@@ -60,3 +61,9 @@ Existing files/directories refuse before loading; exclusive create also protects
 a competing writer. Consumers must check process success, bounds and metadata.
 The Python collector reads at most4MiB and verifies source/order/parents/runtime.
 See `ModelRestInventory.tla` and `agr/ParticleSnapshotProvider_COVERAGE.md`.
+
+The supplied current Crossbow provider consumes this command in the normal
+pipeline. Bundle the complete runtime, including native Skia/spirv dependencies.
+A managed host without `inventory-model-rest`, or a dependency-incomplete folder,
+does not qualify the profile. See `docs/PARTICLE_INTEGRATION.md` for the current
+normal/save/rollback/CPU-render acceptance and separate material-parser pin.
