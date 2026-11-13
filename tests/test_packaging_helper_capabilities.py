@@ -105,3 +105,58 @@ def test_helper_without_world_origin_command_cannot_stage_release(packager, help
     with pytest.raises(ValueError,match='capability check failed'):
         packager.package(tmp_path,output,native,particles_dir=helper[0],dotnet_runtime=helper[1])
     assert not output.exists()
+
+
+@pytest.fixture
+def isolated_helpers(tmp_path, packager, monkeypatch):
+    simulation, geometry, runtime = [tmp_path / name for name in ('simulation', 'geometry', 'runtime')]
+    runtime.mkdir(); (runtime / 'dotnet.exe').write_bytes(b'runtime fixture')
+    for folder, dll in [(simulation, 'ParticleSimulationProbe'), (geometry, 'ParticleGeometryProbe')]:
+        folder.mkdir()
+        for name in [dll+'.dll', dll+'.deps.json', dll+'.runtimeconfig.json',
+                     'ValveResourceFormat.dll', 'libSkiaSharp.dll', 'spirv-cross.dll']:
+            (folder / name).write_bytes(b'typed fixture')
+    real_digest = packager.digest
+    def digest(path):
+        if path.name == 'ValveResourceFormat.dll':
+            return ('2fa0d37b732c457cc839dde6f3db7736fd3d3e76fb4ded287c90fad98927f608'
+                    if path.parent == simulation else
+                    '5c37d80d5962445ff9754897e695b50b0873b24dda7bca02c4e8868466a5e90e')
+        return real_digest(path)
+    monkeypatch.setattr(packager, 'digest', digest)
+    return simulation, geometry, runtime
+
+
+def test_geometry_without_rest_inventory_refuses(packager, isolated_helpers, monkeypatch):
+    def run(command, **kwargs):
+        commands = (sorted(packager.PARTICLE_COMMANDS) if 'Simulation' in command[1] else
+                    ['particle-model-v1', 'particle-authored-model-v1', 'particle-static-model-v1',
+                     'particle-texture-sheet-v1', 'inventory-particle-owner-model', 'inventory-particle-model-materials'])
+        return subprocess.CompletedProcess(command, 0, json.dumps({'commands': commands}), '')
+    monkeypatch.setattr(packager.subprocess, 'run', run)
+    with pytest.raises(ValueError, match='geometry helper capability check failed'):
+        packager.verify_isolated_particle_helpers(*isolated_helpers)
+
+
+@pytest.mark.parametrize('missing', ['libSkiaSharp.dll', 'spirv-cross.dll', 'ParticleSimulationProbe.deps.json'])
+def test_isolated_runtime_requires_complete_dependencies(packager, isolated_helpers, missing):
+    (isolated_helpers[0] / missing).unlink()
+    with pytest.raises(ValueError, match='Incomplete simulation helper'):
+        packager.verify_isolated_particle_helpers(*isolated_helpers)
+
+
+def test_isolated_parsers_cannot_replace_material_parser(packager, isolated_helpers, monkeypatch):
+    monkeypatch.setattr(packager, 'digest', lambda _: 'cbc14ee90f4fa7481448721c6e0a66a1c153ccd191f9c1deb977c3abb6466cd6')
+    with pytest.raises(ValueError, match='Unqualified simulation parser'):
+        packager.verify_isolated_particle_helpers(*isolated_helpers)
+
+
+def test_runtime_pair_is_required_before_output(packager, helper, tmp_path, monkeypatch):
+    probe, runtime = helper
+    monkeypatch.setattr(packager.subprocess, 'run', lambda *a, **k:
+                        subprocess.CompletedProcess(a, 0, json.dumps({'schema_version': 1, 'commands': sorted(packager.PARTICLE_COMMANDS)}), ''))
+    native=tmp_path/'native.exe'; native.write_bytes(b'fixture')
+    output=tmp_path/'candidate'
+    with pytest.raises(ValueError, match='Separate simulation, geometry'):
+        packager.package(tmp_path, output, native, particles_dir=probe, dotnet_runtime=runtime)
+    assert not output.exists()

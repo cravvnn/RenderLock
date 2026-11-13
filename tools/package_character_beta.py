@@ -28,6 +28,7 @@ SOURCE_ROOT_FILES = {
     "LICENSE", "CREDITS.md", "CONTRIBUTING.md", "CHANGELOG.md", "UPDATING.md", "CLOTH_WORKFLOW.md", "MAP_WORKFLOW.md",
     "bootstrap.py", "Launch_RenderLock.bat", "Launch_RenderLock_Windows.cmd",
     "launch_renderlock.sh", "portable_launcher.py", "Launch_RenderLock.cmd",
+    "CAPTURED_AMBIENT_INPUTS.md",
 }
 RUNTIME_REQUIREMENTS = ("numpy", "boon-deadlock", "polars", "python-snappy")
 SKIP_PARTS = {"__pycache__", ".pytest_cache", ".git", ".venv", "target", "bin", "obj"}
@@ -35,6 +36,7 @@ STALE_TOOLS = {"package_release.py", "package_startup_update.py"}
 PORTABLE_DOCUMENTS = (
     "README.md", "START_HERE.txt", "THIRD_PARTY.md", "LICENSE", "CREDITS.md",
     "CHANGELOG.md", "UPDATING.md", "CLOTH_WORKFLOW.md", "MAP_WORKFLOW.md", "CONTRIBUTING.md",
+    "CAPTURED_AMBIENT_INPUTS.md",
 )
 # Published b16 updaters accept only these root files and managed directories.
 # Keep new documentation beneath tools/ so those updaters can install this ZIP.
@@ -87,16 +89,57 @@ def copy_file(source, destination):
     shutil.copy2(source, destination)
 
 
+def verify_isolated_particle_helpers(simulation, geometry, runtime):
+    """Pure preflight; keep separately pinned parsers out of material decoding."""
+    if simulation is None or geometry is None or runtime is None:
+        raise ValueError("Separate simulation, geometry and .NET runtimes are required")
+    result = {}
+    profiles = (
+        ('simulation', simulation, 'ParticleSimulationProbe.dll', '--capabilities-v1',
+         '2fa0d37b732c457cc839dde6f3db7736fd3d3e76fb4ded287c90fad98927f608', PARTICLE_COMMANDS),
+        ('geometry', geometry, 'ParticleGeometryProbe.dll', '--capabilities',
+         '5c37d80d5962445ff9754897e695b50b0873b24dda7bca02c4e8868466a5e90e',
+         {'particle-model-v1', 'particle-authored-model-v1', 'particle-static-model-v1',
+          'particle-texture-sheet-v1', 'inventory-model-rest', 'inventory-particle-owner-model',
+          'inventory-particle-model-materials'}),
+    )
+    for name, folder, dll, flag, parser_sha, required in profiles:
+        folder, runtime = folder.resolve(), runtime.resolve()
+        for member in (dll, 'ValveResourceFormat.dll', 'libSkiaSharp.dll', 'spirv-cross.dll',
+                       Path(dll).stem + '.deps.json', Path(dll).stem + '.runtimeconfig.json'):
+            if not (folder / member).is_file():
+                raise ValueError(f"Incomplete {name} helper: {member}")
+        if digest(folder / 'ValveResourceFormat.dll') != parser_sha:
+            raise ValueError(f"Unqualified {name} parser")
+        try:
+            process = subprocess.run([str(runtime / 'dotnet.exe'), str(folder / dll), flag],
+                                     env=dict(os.environ, DOTNET_ROOT=str(runtime)),
+                                     capture_output=True, text=True, encoding='utf-8', timeout=30, check=True)
+            caps = json.loads(process.stdout)
+            commands = caps.get('commands')
+            if not isinstance(commands, list) or not all(isinstance(c, str) for c in commands) or not required <= set(commands):
+                raise ValueError('Required commands absent')
+        except (OSError, subprocess.SubprocessError, ValueError, AttributeError, TypeError) as error:
+            raise ValueError(f"{name} helper capability check failed") from error
+        result[name] = dict(sha256=digest(folder / dll), parser_sha256=parser_sha, capabilities=caps)
+    return result
+
+
 def stage_source(root, output):
     """Keep executable source, tests and notices; omit diagnostic workspaces."""
     excluded_tests = []
-    for folder in ("agr", "native", "tests", "tools", "artwork", "docs"):
+    for folder in ("agr", "native", "tests", "tools", "artwork", "docs",
+                   "research/ParticleProbe", "research/ParticleSimulationProbe", "research/ParticleGeometryProbe",
+                   "research/patches"):
         for path in sorted((root / folder).rglob("*")):
             relative = path.relative_to(root)
             if not path.is_file() or SKIP_PARTS.intersection(relative.parts[1:]):
                 continue
+            if folder == 'research/patches' and relative.name != 'vrf-shader-extra-fields.patch':
+                continue
             if ("licenses" not in relative.parts and relative.as_posix() != 'tools/map_builder/COPYING'
-                    and path.suffix.lower() not in {".py", ".rs", ".toml", ".lock", ".md", ".txt", ".patch", ".png", ".ico", ".gif"}):
+                    and path.suffix.lower() not in {".py", ".rs", ".toml", ".lock", ".md", ".txt", ".patch", ".png", ".ico", ".gif", ".cs", ".csproj", ".tla", ".cfg"}
+                    and not relative.name.endswith('.mutants.json')):
                 continue
             if folder == "tools" and relative.name in STALE_TOOLS:
                 # Superseded 0.2.x packaging scripts; the current flow uses
@@ -261,9 +304,9 @@ def stage_lighting_kit(portable, directory):
                 copy_file(path, target / folder / path.name)
 
 
-def stage_particles(portable, directory):
+def stage_particles(portable, directory, subdirectory='particles'):
     """Bundle the qualified particle simulation helper (DLL plus manifests)."""
-    target = portable / "tools/particles"
+    target = portable / "tools" / subdirectory
     for path in sorted(directory.resolve().iterdir()):
         if path.is_file() and path.suffix.lower() in (".dll", ".json"):
             copy_file(path, target / path.name)
@@ -283,7 +326,8 @@ def stage_dotnet(portable, directory):
 
 
 def package(root, output, native_helper, source2viewer_dir=None, lighting_kit=None,
-            particles_dir=None, dotnet_runtime=None, launcher_exe=None):
+            particles_dir=None, dotnet_runtime=None, launcher_exe=None,
+            particle_simulation_dir=None, particle_geometry_dir=None):
     root = root.resolve()
     output = output.resolve()
     if output.exists():
@@ -292,6 +336,7 @@ def package(root, output, native_helper, source2viewer_dir=None, lighting_kit=No
         raise ValueError("A verified Windows native replay helper is required")
     particle_helper = (verify_particle_helper(particles_dir, dotnet_runtime)
                        if particles_dir is not None else None)
+    isolated_helpers = verify_isolated_particle_helpers(particle_simulation_dir, particle_geometry_dir, dotnet_runtime)
     from agr import __version__
     output.mkdir(parents=True)
     source = output / f"RenderLock-{__version__}-source"
@@ -314,6 +359,8 @@ def package(root, output, native_helper, source2viewer_dir=None, lighting_kit=No
         stage_lighting_kit(portable, lighting_kit)
     if particles_dir is not None:
         stage_particles(portable, particles_dir)
+    stage_particles(portable, particle_simulation_dir, 'particle_simulation')
+    stage_particles(portable, particle_geometry_dir, 'particle_geometry')
     if dotnet_runtime is not None:
         stage_dotnet(portable, dotnet_runtime)
     shutil.copytree(root / "native/licenses", portable / "notices/native")
@@ -324,6 +371,7 @@ def package(root, output, native_helper, source2viewer_dir=None, lighting_kit=No
                     portable=archive(portable, output / (portable.name + ".zip")),
                     native_helper_sha256=digest(native_helper), runtime_dependencies=dependencies,
                     particle_helper=particle_helper,
+                    isolated_particle_helpers=isolated_helpers,
                     excluded_developer_tests=excluded_tests)
     (output / "packaging-receipt.json").write_text(json.dumps(receipts, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(receipts, indent=2))
@@ -338,6 +386,8 @@ if __name__ == "__main__":
     parser.add_argument("--source2viewer-dir", type=Path)
     parser.add_argument("--lighting-kit", type=Path)
     parser.add_argument("--particles-dir", type=Path)
+    parser.add_argument("--particle-simulation-dir", type=Path)
+    parser.add_argument("--particle-geometry-dir", type=Path)
     parser.add_argument("--dotnet-runtime", type=Path)
     parser.add_argument("--launcher-exe", type=Path)
     args = parser.parse_args()
@@ -345,4 +395,5 @@ if __name__ == "__main__":
     package(args.source, args.output, args.native_helper,
             source2viewer_dir=args.source2viewer_dir, lighting_kit=args.lighting_kit,
             particles_dir=args.particles_dir, dotnet_runtime=args.dotnet_runtime,
-            launcher_exe=args.launcher_exe)
+            launcher_exe=args.launcher_exe, particle_simulation_dir=args.particle_simulation_dir,
+            particle_geometry_dir=args.particle_geometry_dir)

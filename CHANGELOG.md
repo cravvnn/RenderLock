@@ -1,3 +1,11 @@
+# 0.3.0b30 - More particle families in normal exports
+
+- Connect shared animated model particles and outward Mina bats to ordinary exports, preserving history, exact owner binding, morph timing and whole-instance rollback.
+- Correct supported muzzle smoke/UV and alpha inputs; add qualified original flat Flashbang sheets, a sustained Venator mask component and finite Cycles point-light falloff.
+- Expose supplied Crossbow, slide, ambient and Silence inputs through the normal pipeline. These bounded profiles still require matching captures; automatic acquisition, wider native/Linux profiles and unresolved lifecycle effects remain unsupported.
+- Preserve explicit coverage, strict versus partial consent and core replay output when optional capture is unavailable. Bundle separate qualified material, simulation and geometry helpers with complete dependencies.
+- Verified fresh normal exports, saved-scene reopening, real rollback and short CPU Cycles previews. Exact Source lighting/map interaction and complete game-particle coverage are not claimed.
+
 # 0.3.0b29 - Qualified bat impacts and particle transparency
 
 - Retain explicitly unowned custom-origin effects independently of hero selection. Add the verified literal-at-birth bat-explosion profile for Windows game builds 6860 and 6861, preserving exact replay/resource/range provenance and legacy prepared-package identities.
