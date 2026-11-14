@@ -257,6 +257,10 @@ def build_convert_command(values: dict[str, str], *, partial: bool = False,
             command += ['--map-viewport-proxy']
         else:
             command += ['--no-map-viewport-proxy']
+        if values.get('map_light_textures', '1') != '1':
+            command += ['--map-texture-tier', 'full']
+        if values.get('map_crop_near', '1') != '1':
+            command += ['--map-crop-margin', '0']
     if values.get('source_hero_lighting','0') == '1' or character_lighting:
         if values.get('source_lighting','0') != '1':raise ValueError('Hero lighting requires Partial static diffuse lighting.')
         from .source_hero_lighting import validate_hero_decoder_paths
@@ -398,6 +402,7 @@ class AGRApp:
             "asset_source": "installed", "game_install": "", "source2viewer": "", "asset_cache": "",
             "map_enabled": "0", "map_name": "dl_midtown", "map_margin": "26",
             "external_map_enabled": "0", "external_map": "", "map_viewport_proxy": "1",
+            "map_light_textures": "1", "map_crop_near": "1",
             "prepared_map_proxy_default_applied": "0",
             "source_lighting": "0", "world_region_probe": "", "lighting_dotnet": "",
             "source_hero_lighting": "0", "source_npr_lighting": "0", "probe_atlas_decoder": "", "cubemap_decoder": "",

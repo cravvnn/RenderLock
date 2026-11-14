@@ -260,6 +260,10 @@ def compose_prepared_map(character_path, output, library, coordinates, *, proxy_
                        preview_lights_on_characters_only=stage_lights, reference_grids_hidden_in_render=grids)
     import os
     tier = MAP_OPTIONS['texture_tier']
+    if tier == 'auto':  # the smaller tier when this package carries one, otherwise full size
+        tier = '1024' if doc.get('texture_tiers', {}).get('1024') else None
+    elif tier == 'full':
+        tier = None
     if tier not in (None, '1024') or tier and not doc.get('texture_tiers', {}).get(tier):
         raise ValueError('External map: requested texture tier is not in this package.')
     assets = map_package.install_project_assets(package, project_scene, tier=tier)

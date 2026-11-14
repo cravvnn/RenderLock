@@ -1349,6 +1349,10 @@ def _build_map(app, page):
     _path_row(app, body, 'Map .blend', 'external_map', app._browse_external_map)
     _check(app, body, 'Simplified map in viewport', app.values['map_viewport_proxy'],
            info='Use an approximate, untextured map while editing. New packages reuse a cached proxy. The full textured map supplies renders and still needs loading and render memory. Small viewport details may be omitted.')
+    _check(app, body, 'Lighter map textures', app.values['map_light_textures'],
+           info='Use the 1024-pixel map textures when the map package includes them. Renders need much less memory. Turn off for full-size textures.')
+    _check(app, body, 'Keep only the map near the action', app.values['map_crop_near'],
+           info='Keep the map within 120 metres of the characters and cameras in the clip and leave the rest out of the scene. Turn off to keep the whole map, which needs far more memory.')
     buttons = tk.Frame(body, background=gui_theme.CARD)
     buttons.grid(row=_next_row(body), column=0, columnspan=3, sticky='w', pady=_pad((0, ROW_GAP)))
     RoundedButton(buttons, text='Download map', style='quiet', command=app._open_map_link,

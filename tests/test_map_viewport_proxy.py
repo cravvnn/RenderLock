@@ -58,6 +58,22 @@ def test_gui_only_requests_proxy_with_map_and_preserves_choice(tmp_path):
     assert values['map_viewport_proxy'] == '1'
 
 
+def test_gui_map_memory_controls_default_on_and_only_add_flags_when_turned_off(tmp_path):
+    for name in ('replay.dem', 'blender.exe', 'RenderLockMap.blend'):
+        (tmp_path / name).touch()
+    values = dict(input=str(tmp_path / 'replay.dem'), mode='replay', assets=str(tmp_path),
+        asset_source='prepared', blender=str(tmp_path / 'blender.exe'), output=str(tmp_path / 'out.blend'),
+        start='1', end='3', fps='64', character_look='standard', external_map_enabled='1',
+        external_map=str(tmp_path / 'RenderLockMap.blend'), map_viewport_proxy='1')
+    command = build_convert_command(values)
+    assert '--map-texture-tier' not in command and '--map-crop-margin' not in command
+    command = build_convert_command(dict(values, map_light_textures='0', map_crop_near='0'))
+    assert command[command.index('--map-texture-tier') + 1] == 'full'
+    assert command[command.index('--map-crop-margin') + 1] == '0'
+    command = build_convert_command(dict(values, external_map_enabled='0', map_light_textures='0', map_crop_near='0'))
+    assert '--map-texture-tier' not in command and '--map-crop-margin' not in command
+
+
 def test_proxy_retry_keeps_full_map_and_map_retry_removes_dependent_proxy():
     command = ['python', '-m', 'agr', 'convert', '--external-map', 'map.blend',
                '--map-viewport-proxy', '--source-lighting', '--output', 'out.blend']
