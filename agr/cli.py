@@ -803,6 +803,10 @@ def _convert(args, diagnostics):
             command += ['--external-map', external_map['path']]
             if external_map.get('format') == 'renderlock-map-v2':
                 command += ['--map-project-scene', str(output)]
+                if getattr(args, 'map_texture_tier', 'full') != 'full':
+                    command += ['--map-texture-tier', args.map_texture_tier]
+                if getattr(args, 'map_crop_margin', 0):
+                    command += ['--map-crop-margin', str(args.map_crop_margin)]
         if getattr(args, 'map_viewport_proxy', False):
             command += ['--map-viewport-proxy']
         if getattr(args,'character_only',False):
@@ -1000,6 +1004,10 @@ def parser():
     cv.add_argument('--character-shader',type=Path,help='Qualified user-supplied Elagrimm BLENDER-Deadlock-Shader.blend; partial Eevee Source-lighting bridge and artistic rim; requires --source-npr-lighting')
     cv.add_argument('--character-only',action='store_true',help='Omit map geometry from the Blender scene while retaining prepared lighting assets and coordinates for a separate map')
     cv.add_argument('--external-map',type=Path,help='Append the supported downloaded RenderLockMap.blend and connect current-package textures; cutting remains manual, independently of Source lighting')
+    cv.add_argument('--map-texture-tier',choices=('full','1024'),default='full',
+                    help='Prepared map textures: full size, or the 1024-pixel tier when the package carries one (less memory)')
+    cv.add_argument('--map-crop-margin',type=float,default=0.0,
+                    help='Keep only the prepared map within this many metres of the characters and cameras in the clip; 0 keeps the whole map')
     proxy = cv.add_mutually_exclusive_group()
     proxy.add_argument('--map-viewport-proxy',dest='map_viewport_proxy',action='store_true',default=None,
                        help='Use the simplified viewport map; enabled by default for new prepared map packages')

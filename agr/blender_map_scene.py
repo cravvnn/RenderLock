@@ -10,6 +10,10 @@ import time
 import numpy as np
 
 
+# Set by blender_scene.main from --map-texture-tier / --map-crop-margin before composition.
+MAP_OPTIONS = dict(texture_tier=None, crop_margin=0.0)
+
+
 def _image_bindings(scene, names):
     import bpy
     result = {}; digests = {}
@@ -46,7 +50,10 @@ def _image_bindings(scene, names):
 def _animation_hash():
     import bpy
     digest = hashlib.sha256()
+    from .map_package import NAMESPACE
     for action in sorted(bpy.data.actions, key=lambda item: item.name):
+        if action.name.startswith(NAMESPACE):
+            continue  # Port review: the prepared map's own prop animation is not character animation.
         digest.update(action.name.encode('utf-8'))
         if getattr(action, 'is_action_legacy', False):
             curves = list(action.fcurves)
@@ -139,6 +146,7 @@ def compose_prepared_map(character_path, output, library, coordinates, *, proxy_
     original = character_snapshot(scene, names)
     bpy.ops.wm.open_mainfile(filepath=library['path'], load_ui=False)
     map_scene = bpy.context.scene
+    map_fps = map_scene.render.fps / map_scene.render.fps_base
     mapping = bpy.data.collections.get(map_package.COLLECTION)
     proxy = bpy.data.collections.get(map_package.PROXY_COLLECTION)
     if mapping is None or proxy is None or bpy.data.libraries or set(names) & {o.name for o in bpy.data.objects}:
@@ -210,8 +218,53 @@ def compose_prepared_map(character_path, output, library, coordinates, *, proxy_
         Path(output).with_suffix('.character-integrity.json').write_text(
             json.dumps(dict(changed=changed,before=original,after=composed),indent=2)+'\n',encoding='utf-8')
         raise ValueError('External map: composition changed character animation, materials or packed resources: ' + ', '.join(changed))
-    assets = map_package.install_project_assets(package, project_scene)
+    # Port review (builder 25). Runs after the character integrity check above.
+    # 1. Map prop actions are keyed at the map file's frame rate; restate their keys at the replay scene's rate.
+    ratio = (scene.render.fps / scene.render.fps_base) / map_fps
+    retimed = 0
+    if abs(ratio - 1) > 1e-9:
+        for action in bpy.data.actions:
+            if not action.name.startswith(doc['namespace']):
+                continue
+            curves = (list(action.fcurves) if getattr(action, 'is_action_legacy', False) else
+                      [curve for layer in action.layers for strip in layer.strips
+                       for bag in getattr(strip, 'channelbags', ()) for curve in bag.fcurves])
+            for curve in curves:
+                for point in curve.keyframe_points:
+                    point.co.x *= ratio; point.handle_left.x *= ratio; point.handle_right.x *= ratio
+                curve.update()
+            retimed += 1
+        for obj in objects:
+            data = obj.animation_data
+            if data is None:
+                continue
+            for track in data.nla_tracks:
+                for strip in track.strips:
+                    if strip.action is not None and strip.action.name.startswith(doc['namespace']):
+                        length = (strip.action_frame_end - strip.action_frame_start) * ratio
+                        strip.action_frame_start *= ratio
+                        strip.action_frame_end = strip.action_frame_start + length
+                        strip.frame_end = strip.frame_start + length * strip.repeat * strip.scale
+    # 2. The preview Key/Fill lights keep lighting the characters but not the map, and the reference grid is not
+    #    rendered once a real map is present.
+    stage = bpy.data.collections.get('AGR | reference grid and lighting')
+    characters = scene.collection.children.get('RenderLockChar')
+    stage_lights = 0; grids = 0
+    if stage is not None and characters is not None:
+        for obj in list(stage.all_objects):
+            if obj.type == 'LIGHT':
+                obj.light_linking.receiver_collection = characters; stage_lights += 1
+            elif obj.get('agr_scene_role') and obj.type == 'CURVE':
+                obj.hide_render = True; grids += 1
+    port_review = dict(map_fps=map_fps, action_time_ratio=ratio, retimed_actions=retimed,
+                       preview_lights_on_characters_only=stage_lights, reference_grids_hidden_in_render=grids)
+    import os
+    tier = MAP_OPTIONS['texture_tier']
+    if tier not in (None, '1024') or tier and not doc.get('texture_tiers', {}).get(tier):
+        raise ValueError('External map: requested texture tier is not in this package.')
+    assets = map_package.install_project_assets(package, project_scene, tier=tier)
     resource_paths = {row['file']:row for row in doc['files'] if row['file'] != map_package.LIBRARY}
+    tiered_images = 0
     for block in [*map_images, *volumes]:
         source = Path(bpy.path.abspath(block.filepath)).resolve()
         if not source.is_relative_to(package['folder']):
@@ -219,6 +272,8 @@ def compose_prepared_map(character_path, output, library, coordinates, *, proxy_
         relative = source.relative_to(package['folder']).as_posix()
         if relative not in resource_paths:
             raise ValueError('External map: undeclared image or volume dependency.')
+        if tier and relative.startswith('textures/') and 'textures-' + tier + '/' + relative.split('/', 1)[1] in resource_paths:
+            relative = 'textures-' + tier + '/' + relative.split('/', 1)[1]; tiered_images += 1
         target = map_package.project_asset_path(assets, resource_paths[relative])
         block.filepath = '//' + target.relative_to(Path(project_scene).resolve().parent).as_posix()
     result = dict(status='appended', workflow='prepared_map_first', package_id=doc['package_id'],
@@ -226,10 +281,10 @@ def compose_prepared_map(character_path, output, library, coordinates, *, proxy_
         collection=mapping.name, character_collection='RenderLockChar', imported_objects=len(objects),
         mesh_objects=len(meshes), vertices=inventory['vertices'], coordinate_matrix=[list(row) for row in matrix],
         texture_relink='automatic', map_cutting='manual', linked_libraries=len(bpy.data.libraries),
-        lighting_basis=lighting,
+        lighting_basis=lighting, port_review=port_review,
         textures=dict(status='connected', manifest_sha256=package['manifest_sha256'],
             referenced_images=len(map_images), connected_images=len(map_images),
-            external_files=len(resource_paths), project_relative=True),
+            external_files=len(resource_paths), project_relative=True, tier=tier, tiered_images=tiered_images),
         limits=['Static map snapshot; geometry and ambient prop motion can differ from the replay.',
                 'Map materials, baked lighting, reflections and fog are reconstructed approximations; full game-render parity is not implied.',
                 'Keep RenderLockMapAssets beside the exported scene. The viewport proxy does not remove full-map loading or render memory.'])
@@ -261,6 +316,42 @@ def build_map_first(build, segment, assets, output, *, library, project_scene, *
     report = build(segment, assets, character_path, external_map=None, map_viewport_proxy=False, pending_world_receivers=True, **options)
     scene, mapping, proxy = compose_prepared_map(character_path, output, library, report['coordinates'],
         proxy_enabled=proxy_enabled, project_scene=project_scene or output)
+    # Port review switch: keep only the map within <margin> metres of where the characters go in this clip.
+    import os
+    margin = float(MAP_OPTIONS['crop_margin'] or 0)
+    if margin > 0:
+        import numpy as np
+        from mathutils import Vector
+        collection = bpy.data.collections['RenderLockMap']; characters = scene.collection.children['RenderLockChar']
+        frame = scene.frame_current; points = []
+        movers = [o for o in characters.all_objects if o.type in {'ARMATURE', 'CAMERA'}]
+        for f in sorted({*range(scene.frame_start, scene.frame_end + 1, 6), scene.frame_end}):
+            scene.frame_set(f)
+            points += [tuple(o.matrix_world.translation) for o in movers]
+        scene.frame_set(frame)
+        points = np.asarray(points, dtype=np.float64)
+        if not len(points) or not np.isfinite(points).all():
+            raise ValueError('External map: no character positions to crop the map around.')
+        far = []; kept = 0
+        for obj in collection.all_objects:
+            if obj.type != 'MESH':
+                continue
+            box = np.asarray([obj.matrix_world @ Vector(corner) for corner in obj.bound_box], dtype=np.float64)
+            low, high = box.min(axis=0), box.max(axis=0)
+            nearest = np.clip(points, low, high)
+            if float(np.min(np.linalg.norm(nearest - points, axis=1))) > margin:
+                far.append(obj)
+            else:
+                kept += 1
+        namespace = collection.get('renderlock_map_profile') and json.loads(collection['renderlock_map_profile'])['namespace']
+        bpy.data.batch_remove(far)
+        for blocks in (bpy.data.meshes, bpy.data.materials, bpy.data.images):
+            for block in list(blocks):
+                if block.users == 0 and namespace and block.name.startswith(namespace):
+                    blocks.remove(block)
+        mapping = dict(mapping, crop=dict(margin_metres=margin, sample_points=len(points),
+            mesh_objects_kept=kept, mesh_objects_removed=len(far)))
+        scene['renderlock_external_map'] = json.dumps(mapping)
     report['output'] = str(output);report['external_map'] = mapping
     report['warnings'].extend(mapping['limits'])
     if proxy is not None:

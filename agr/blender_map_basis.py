@@ -15,6 +15,27 @@ _GROUP_NODES = {
     'Deadlock probe light': 648,
     'Deadlock reflections': 1013,
 }
+# Port review: deadlockrigs 1.0.0 (map builder 25) graph inventory, counted on the 6861 Midtown build.
+_GROUP_NODES_25 = {
+    'Deadlock baked light': 120,
+    'Deadlock fog': 38,
+    'Deadlock probe light': 648,
+    'Deadlock reflections': 1013,
+    'Deadlock planar UV': 84,
+    'DL Lighting dl_midtown': 100,
+}
+
+
+def group_inventory(namespace=''):
+    # Return (builder, expected counts) for the lighting graphs present, or raise.
+    import bpy
+    for builder, expected in ((14, _GROUP_NODES), (25, _GROUP_NODES_25)):
+        trees = [bpy.data.node_groups.get(namespace + name) for name in expected]
+        if all(tree is not None and len(tree.nodes) == count for tree, count in zip(trees, expected.values())):
+            if builder == 14 and bpy.data.node_groups.get(namespace + 'Deadlock planar UV') is not None:
+                continue
+            return builder, expected
+    raise ValueError('External map: unsupported prepared lighting graph.')
 
 
 def transport_matrices(matrix):
@@ -70,7 +91,8 @@ def prepare_lighting_basis(world, matrix, *, namespace=''):
     import bpy
     values = transport_matrices(matrix)
     groups = {}
-    for name, count in _GROUP_NODES.items():
+    builder, expected_groups = group_inventory(namespace)
+    for name, count in expected_groups.items():
         tree = bpy.data.node_groups.get(namespace + name)
         if (tree is None or tree.library or len(tree.nodes) != count
                 or tree.get('renderlock_lighting_basis') is not None):
@@ -95,6 +117,21 @@ def prepare_lighting_basis(world, matrix, *, namespace=''):
                 raise ValueError(f'External map: ambiguous {name} {output} lookup.')
             plans.append((tree, sockets[0], 'position' if output == 'Position' else 'direction',
                           name + ' ' + output))
+    if builder == 25:
+        # New world-space lookups in builder 25. Each must be a single linked socket, as above.
+        def single(tree, node_type, output, kind, label):
+            sockets = [n.outputs[output] for n in tree.nodes
+                       if n.type == node_type and output in n.outputs and n.outputs[output].is_linked]
+            if len(sockets) != 1:
+                raise ValueError(f'External map: ambiguous {label} lookup.')
+            plans.append((tree, sockets[0], kind, label))
+        single(groups['Deadlock baked light'], 'NEW_GEOMETRY', 'Incoming', 'direction', 'Deadlock baked light Incoming')
+        single(groups['Deadlock planar UV'], 'NEW_GEOMETRY', 'Position', 'position', 'Deadlock planar UV Position')
+        single(groups['Deadlock planar UV'], 'NEW_GEOMETRY', 'True Normal', 'direction', 'Deadlock planar UV True Normal')
+        lit = groups['DL Lighting dl_midtown']
+        single(lit, 'NEW_GEOMETRY', 'Normal', 'direction', 'DL Lighting Normal')
+        single(lit, 'NEW_GEOMETRY', 'Incoming', 'direction', 'DL Lighting Incoming')
+        single(lit, 'GROUP_INPUT', 'Normal', 'normal', 'DL Lighting input Normal')
     sky = [n.outputs['Generated'] for n in world.node_tree.nodes
            if n.type == 'TEX_COORD' and n.outputs['Generated'].is_linked]
     fog_distance = [n.outputs['View Distance'] for n in groups['Deadlock fog'].nodes
@@ -122,6 +159,21 @@ def prepare_lighting_basis(world, matrix, *, namespace=''):
     result = dict(algorithm=ALGORITHM, matrix=[[float(x) for x in row] for row in matrix],
                   vector_transports=len(plans), fog_distance_scale=values['distance_scale'])
     encoded = json.dumps(result, sort_keys=True)
+    if builder == 25:
+        lit = groups['DL Lighting dl_midtown']
+        far = [n.outputs['View Distance'] for n in lit.nodes if n.type == 'CAMERA' and n.outputs['View Distance'].is_linked]
+        if len(far) != 1:
+            raise ValueError('External map: ambiguous DL Lighting view distance.')
+        targets = [link.to_socket for link in far[0].links]
+        for link in list(far[0].links):
+            lit.links.remove(link)
+        node = lit.nodes.new('ShaderNodeMath'); node.operation = 'MULTIPLY'
+        node.name = 'RenderLock | authored view distance'; node.inputs[1].default_value = values['distance_scale']
+        lit.links.new(far[0], node.inputs[0])
+        for target in targets:
+            lit.links.new(node.outputs[0], target)
+        result = dict(result, builder=25)
+        encoded = json.dumps(result, sort_keys=True)
     for tree in (*groups.values(), world.node_tree):
         tree['renderlock_lighting_basis'] = encoded
     return result

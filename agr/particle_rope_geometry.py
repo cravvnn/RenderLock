@@ -58,6 +58,10 @@ def rope_sample(nodes,t,orientation,camera):
         plane=np.array((0,0,1),dtype=np.float32)
     else:plane=camera-position
     width=np.cross(tangent,plane)
+    # Port review: for normal-aligned ribbons the game puts the texture's U=0 edge on the other side
+    # (Crossbow buff ground ring, live footage 2026-11-13). Source 2 Viewer treats this sign as arbitrary.
+    # Camera-facing and world-Z ribbons are unchanged: no footage checked for them.
+    if orientation=='PARTICLE_ORIENTATION_ALIGN_TO_PARTICLE_NORMAL':width=-width
     if np.dot(width,width)<=_EPS:
         width=np.cross(tangent,(0,0,1) if abs(tangent[2])<.999 else (1,0,0))
     width=_normalize(width,(0,1,0))

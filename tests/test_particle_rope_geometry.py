@@ -32,7 +32,8 @@ def test_segment_shader_extras_copy_n1_without_interpolation_and_keep_legacy_geo
 def test_ribbon_is_connected_interpolated_and_uses_chord_texture_length():
     mesh=build_rope_geometry(nodes(),settings())
     assert len(mesh['faces'])==4 and len(mesh['vertices'])==16
-    assert mesh['vertices'][0]==[0,2,0] and mesh['vertices'][-2]==[20,-2,0]
+    # Normal-aligned ribbons put the U=0 edge on the other side (matched to live game footage, review branch).
+    assert mesh['vertices'][0]==[0,-2,0] and mesh['vertices'][-2]==[20,2,0]
     assert mesh['vertices'][1][0]==4.375 # duplicated open endpoint, not linear interpolation
     assert mesh['uv'][1]==(0,.5) and mesh['uv'][-2]==(1,2.)
     assert mesh['colors'][0]==[1,.5,0,.5]

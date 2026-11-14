@@ -134,6 +134,6 @@ def validate_response(simulation,instance_id,header):
         unprovided_control_point_indices=[],materialized_control_point_indices=[0,1,2,3,4])
     row=rows[0]
     if (any(not confirmed_points(row,k,v)for k,v in expected.items())
-            or row.get('control_point_input_policy')!='agr_authored_root_position_v4'
+            or row.get('control_point_input_policy') not in ('agr_authored_root_position_v4','agr_s2v211_function_write_audit_v1')
             or row.get('native_static_controls') is not None):
         raise ValueError('Silence response lacks exact recorded and authored control-point provenance')

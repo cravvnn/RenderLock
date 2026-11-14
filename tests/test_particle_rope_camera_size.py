@@ -32,7 +32,8 @@ def test_geometry_applies_size_before_splining_without_editing_particle_state():
     before=copy.deepcopy(particles)
     renderer=dict(r(m_flMinSize=.25),m_nMinTesselation=1,m_nMaxTesselation=1,m_nOrientationType='PARTICLE_ORIENTATION_ALIGN_TO_PARTICLE_NORMAL')
     geometry=build_rope_geometry(particles,renderer,camera_position=[0,0,10])
-    assert geometry['vertices'][0]==[0,2.5,0]
+    # Normal-aligned ribbons put the U=0 edge on the other side (matched to live game footage, review branch).
+    assert geometry['vertices'][0]==[0,-2.5,0]
     assert geometry['colors'][0][3]==pytest.approx(.5)
     assert particles==before
     with pytest.raises(UnsupportedEffect,match='sampled camera'):build_rope_geometry(particles,renderer)

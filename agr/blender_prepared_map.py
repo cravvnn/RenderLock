@@ -51,7 +51,7 @@ def retain_sky_mips(world, output):
     original = original.reshape(height, width, 4)
     result = []
     for level in (4, 7):
-        old = bpy.data.images.get(f'{sky.name} mip{level}')
+        old = bpy.data.images.get(f'{sky.name} mip{level}') or bpy.data.images.get(f'sky_mip{level}')
         factor = 2**level
         if old is None or width % factor or height % factor:
             raise ValueError('External map: missing or unqualified fog sky mip.')
@@ -101,7 +101,7 @@ def prepare(source, output, provenance):
     import bpy
     from agr import map_package
     from agr.blender_prepared_proxy import build_cached_proxy
-    from agr.blender_map_basis import _GROUP_NODES
+    from agr.blender_map_basis import group_inventory
     source = Path(source).resolve(); output = Path(output).resolve()
     if (source == output or output.is_relative_to(source.parent)
             or source.is_relative_to(output) or output.exists() and any(output.iterdir())):
@@ -121,13 +121,27 @@ def prepare(source, output, provenance):
     world = bpy.data.worlds.get('Midtown sky')
     if collection is None or world is None or bpy.data.collections.get(map_package.COLLECTION):
         raise ValueError('External map: incomplete or ambiguous builder hierarchy.')
-    for name, count in _GROUP_NODES.items():
-        group = bpy.data.node_groups.get(name)
-        if group is None or len(group.nodes) != count or group.get('renderlock_lighting_basis'):
+    builder, expected_groups = group_inventory()
+    for name in expected_groups:
+        if bpy.data.node_groups[name].get('renderlock_lighting_basis'):
             raise ValueError('External map: unsupported prepared lighting graph: ' + name)
+    # Builder 25 packs small generated particle gradients. Store each as a texture file beside the others.
+    if builder == 25:
+        staging = source.parent / 'textures'
+        for image in bpy.data.images:
+            if image.packed_file:
+                if image.source != 'FILE' or tuple(image.size) != (256, 1) or not image.name.startswith('particle gradient '):
+                    raise ValueError('External map: unqualified packed image: ' + image.name)
+                target = staging / ('renderlock-' + image.name.replace(' ', '-') + '.png')
+                if not target.exists():
+                    target.write_bytes(image.packed_file.data)
+                image.unpack(method='REMOVE'); image.filepath = str(target); image.reload()
+                if image.packed_file or tuple(image.size) != (256, 1):
+                    raise ValueError('External map: packed gradient did not round-trip: ' + image.name)
     output.mkdir(parents=True, exist_ok=True)
     root = source.parent
     copied = {}
+    origins = {}
 
     def copy_file(filepath):
         target_source = Path(bpy.path.abspath(filepath)).resolve()
@@ -151,11 +165,13 @@ def prepare(source, output, provenance):
             if map_package.file_hash(target) != expected:
                 raise ValueError('External map: resource copy failed: ' + relative)
             copied[relative] = expected
+            origins[relative] = target_source
         return '//' + relative
 
     rebased = []
     for image in bpy.data.images:
-        if image.source == 'FILE' and not image.packed_file:
+        # Builder 25 keeps its fog sky mips as files; retain_sky_mips replaces and removes them below.
+        if image.source == 'FILE' and not image.packed_file and image.name not in ('sky_mip4', 'sky_mip7'):
             rebased.append((image,copy_file(image.filepath)))
     for volume in bpy.data.volumes:
         if volume.filepath:
@@ -164,6 +180,16 @@ def prepare(source, output, provenance):
     # FILE pixels can be lazy-loaded; the new hashed name does not exist beside
     # the still-open source mainfile.
     sky_mips = retain_sky_mips(world, output)
+    # Port review (builder 25): carry the builder's 1024-pixel texture tier under the same content-addressed names.
+    tier_files = 0
+    tier_source = root / 'textures_1024'
+    if builder == 25 and tier_source.is_dir():
+        for relative, original in sorted(origins.items()):
+            small = tier_source / original.name
+            if relative.startswith('textures/') and original.parent == root / 'textures' and small.is_file():
+                target = output / 'textures-1024' / relative.split('/', 1)[1]
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(small, target); tier_files += 1
     for block,filepath in rebased:
         block.filepath = filepath
     for image in bpy.data.images:
@@ -174,6 +200,10 @@ def prepare(source, output, provenance):
     if any(image.source != 'FILE' or image.packed_file for image in bpy.data.images):
         raise ValueError('External map: package has unexpected generated or packed image data.')
     # Map data must not steal generated character image/material/group names.
+    # Port review (builder 25): animated props bring actions and armatures; namespace them too.
+    for blocks in (bpy.data.actions, bpy.data.armatures):
+        for block in list(blocks):
+            block.name = map_package.NAMESPACE + block.name
     for blocks in (bpy.data.images, bpy.data.materials, bpy.data.node_groups, bpy.data.meshes):
         for block in list(blocks):
             block.name = map_package.NAMESPACE + block.name
@@ -191,11 +221,13 @@ def prepare(source, output, provenance):
     provenance = dict(provenance, native_blend_sha256=digest)
     profile = dict(format=map_package.FORMAT, schema_version=2,
         package_id=f'midtown-{provenance["game_version"]}-{digest[:12]}-v2',
-        builder=dict(commit=map_package.BUILDER_COMMIT, map_builder=14),
+        builder=dict(commit=map_package.BUILDER_COMMIT if builder == 14 else map_package.REVIEW_BUILDER_COMMIT, map_builder=builder),
         source=provenance, map_name='dl_midtown', blender_min=[5, 2, 0],
         source_frame='vrf_blender_metres', collection=map_package.COLLECTION,
         world=world.name, namespace=map_package.NAMESPACE,
         inventory=inventory, proxy=proxy, stored_sky_mips=sky_mips)
+    if tier_files:
+        profile['texture_tiers'] = {'1024': tier_files}
     collection['renderlock_map_profile'] = json.dumps(profile, sort_keys=True)
     bpy.context.scene['renderlock_prepared_map'] = json.dumps(profile, sort_keys=True)
     bpy.context.scene.world = world

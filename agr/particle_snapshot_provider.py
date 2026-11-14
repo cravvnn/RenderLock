@@ -178,6 +178,6 @@ def validate_response(simulation,instance_id,headers):
         authored_control_point_indices=[3],authored_root_position_indices=[],unprovided_control_point_indices=[],
         materialized_control_point_indices=[0,1,2,3,5])
     if (any(not confirmed_points(row,k,value) for k,value in expected.items())
-            or row.get('control_point_input_policy')!='agr_authored_child_controls_v2'
+            or row.get('control_point_input_policy') not in ('agr_authored_child_controls_v2','agr_s2v211_function_write_audit_v1')
             or row.get('native_static_controls') is not None):
         raise ValueError('Crossbow snapshot response lacks the exact external/authored control-point provenance')

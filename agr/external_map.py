@@ -128,7 +128,7 @@ def validate_map_completion(result, library, coordinates=None):
                 or textures.get('connected_images') != definition['file_images']
                 or textures.get('external_files') != definition['resource_files']
                 or textures.get('project_relative') is not True
-                or basis.get('vector_transports') != 6
+                or basis.get('vector_transports') != (12 if basis.get('builder') == 25 else 6)
                 or basis.get('algorithm') != ALGORITHM):
             raise RuntimeError('External map: prepared map lighting or portable resources were not completed; the scene was not published.')
     try:

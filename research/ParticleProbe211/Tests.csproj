@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Port of RenderLock's shipped particle simulation helper (public b30 research/ParticleProbe) to pristine Source 2
+       Viewer 21.1. Built as the library's friend assembly so 21.1 itself stays unmodified. Review build only. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFramework>net11.0</TargetFramework><AssemblyName>Tests</AssemblyName><RootNamespace>Helper211</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><TreatWarningsAsErrors>false</TreatWarningsAsErrors><AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <SignAssembly>true</SignAssembly><AssemblyOriginatorKeyFile>../../deadlockrigs-v1-review-20261113-01/vrf-21.1/src/Misc/ValveResourceFormat.snk</AssemblyOriginatorKeyFile>
+    <DefineConstants>$(DefineConstants);AGR_SIMULATION_SHADER_EXTRAS;AGR_SIMULATION_SNAPSHOT;AGR_SIMULATION_HITBOX;AGR_SIMULATION_BATCH;AGR_S2V_211</DefineConstants>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup><Compile Include="src/*.cs" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="../../deadlockrigs-v1-review-20261113-01/vrf-21.1/src/ValveResourceFormat/ValveResourceFormat.csproj" /></ItemGroup>
+</Project>

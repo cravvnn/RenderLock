@@ -29,7 +29,7 @@ def resolve_texture_random_inputs(controls,identity,seed,seed_policy):
         if low==high:continue # Already exact, handled by texture_control_value.
         if value.get('m_nRandomSeed',-1)!=-1:
             raise UnsupportedEffect('Explicit texture random seeds require a separate stream implementation')
-        if (seed_policy!='agr_substitute_sha256_v1' or type(seed) is not int or not 0<=seed<=0xffffffff
+        if (seed_policy not in ('agr_substitute_sha256_v1','agr_substitute_sha256_root_s2v211_v1') or type(seed) is not int or not 0<=seed<=0xffffffff
                 or not isinstance(identity,str) or not identity):
             raise UnsupportedEffect('Random texture input requires the declared substitute seed policy')
         key=json.dumps([seed,identity,field],separators=(',',':')).encode()

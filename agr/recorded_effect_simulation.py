@@ -181,7 +181,8 @@ def substitute_seed(data, instance):
 
 
 def validate_seed_response(simulation, requested):
-    if simulation.get('seed_policy') != SEED_POLICY or simulation.get('seed') != requested:
+    # s2v211 port: one substitute root seed, child seeds derived by Source 2 Viewer 21.1.
+    if simulation.get('seed_policy') not in (SEED_POLICY, 'agr_substitute_sha256_root_s2v211_v1') or simulation.get('seed') != requested:
         raise ValueError('Simulator did not honor the requested substitute seed; rebuild ParticleProbe')
     for instance in simulation.get('instances', []):
         rows = instance.get('system_seeds', [])

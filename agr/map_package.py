@@ -20,6 +20,11 @@ CONVERTER_SHA256 = frozenset({
     '9142f59e64dc97b7afab4cca3c5cbb4197d38beccb1f7d7f4ffbd691a053e707',
 })
 _SHA = re.compile(r'^[0-9a-f]{64}$')
+# Port review: builder ABIs this copy accepts. The second is deadlockrigs 1.0.0 (4a30eee, map builder 25) run with
+# Source 2 Viewer 21.1 and three local patches; review identity only, not a qualified release pin.
+REVIEW_BUILDER_COMMIT = 'deadlockrigs-1.0.0-4a30eee+s2v21.1-3patches'
+BUILDERS = frozenset({(BUILDER_COMMIT, 14), (REVIEW_BUILDER_COMMIT, 25)})
+REVIEW_CONVERTER_SHA256 = '50502077543856a3f760eecf53b073dcdea5073c193f0274c2088b5a2a8f4d13'
 HOSTED_MANIFESTS = frozenset({'92c52ac4f56f132e752a609b4163b7b1384aebca456676484d5ca28e85c0101b'})
 _VERIFIED_PACKAGES = {}
 
@@ -51,7 +56,7 @@ def validate_document(doc):
     from .blender_prepared_proxy import ALGORITHM
     try:
         if (doc['format'] != FORMAT or type(doc['schema_version']) is not int or doc['schema_version'] != 2
-                or doc['builder']['commit'] != BUILDER_COMMIT or doc['builder']['map_builder'] != 14
+                or (doc['builder']['commit'], doc['builder']['map_builder']) not in BUILDERS
                 or doc['map_name'] != 'dl_midtown' or doc['blender_min'] != [5, 2, 0]
                 or doc['source_frame'] != 'vrf_blender_metres'
                 or doc['collection'] != COLLECTION or doc['world'] != 'Midtown sky'
@@ -64,7 +69,7 @@ def validate_document(doc):
             raise _fail('The prepared map has incomplete source identity.')
         if source['kind'] == 'installed_game' and (any(not _SHA.fullmatch(source.get(key, '')) for key in
                 ('build_request_sha256','map_archive_sha256','root_archive_sha256'))
-                or source.get('source2viewer_sha256') not in CONVERTER_SHA256):
+                or source.get('source2viewer_sha256') not in CONVERTER_SHA256 | {REVIEW_CONVERTER_SHA256}):
             raise _fail('The locally built map lacks its installed-source or converter identity.')
         if source['kind'] == 'installed_game':
             adapter = source.get('adapter_sha256', {})
@@ -108,8 +113,8 @@ def validate_document(doc):
                     or not _SHA.fullmatch(row['sha256'])):
                 raise _fail('The prepared map has duplicate or invalid resource entries.')
             if name != LIBRARY and (len(PurePosixPath(name).parts) < 2
-                    or PurePosixPath(name).parts[0] not in {'textures', 'lightmaps', 'volumes'}
-                    or PurePosixPath(name).suffix.lower() not in {'.png', '.exr', '.vdb'}):
+                    or PurePosixPath(name).parts[0] not in {'textures', 'textures-1024', 'lightmaps', 'volumes'}
+                    or PurePosixPath(name).suffix.lower() not in {'.png', '.exr', '.vdb', '.dds'}):
                 raise _fail('The prepared map contains an unsupported resource file.')
             names.add(name.casefold());total += row['bytes']
         matching = [row for row in files if row['file'] == LIBRARY]
@@ -190,15 +195,21 @@ def library_definition(library):
                 namespace=doc['namespace'], resource_files=len(doc['files'])-1)
 
 
-def install_project_assets(package, scene_output):
-    """Copy once per map/project folder; never share mutable hardlinked images."""
+def install_project_assets(package, scene_output, *, tier=None):
+    """Copy once per map/project folder; never share mutable hardlinked images.
+
+    Port review: with tier='1024', a full-size texture that has a 1024 counterpart is left out and the counterpart
+    is installed instead; the project folder is named per tier so the two never mix.
+    """
     parent = Path(scene_output).resolve().parent
-    destination = (parent / 'RenderLockMapAssets' / package['manifest_sha256'][:16]).resolve()
+    destination = (parent / 'RenderLockMapAssets' / (package['manifest_sha256'][:16] + ('-t' + tier if tier else ''))).resolve()
     if not destination.is_relative_to(parent):
         raise _fail('The project map-assets folder leaves the output folder.')
     marker = destination / 'map-assets.json'
     pending = destination / 'map-assets-pending.json'
     identity = dict(format=FORMAT, manifest_sha256=package['manifest_sha256'])
+    if tier:
+        identity['tier'] = tier
     complete = marker.is_file()
     if destination.exists():
         owned = marker if complete else pending
@@ -211,6 +222,9 @@ def install_project_assets(package, scene_output):
         destination.mkdir(parents=True)
         pending.write_text(json.dumps(identity), encoding='utf-8')
     files = [row for row in package['document']['files'] if row['file'] != LIBRARY]
+    tiered = {row['file'].split('/', 1)[1] for row in files if row['file'].startswith('textures-1024/')}
+    files = [row for row in files if (not row['file'].startswith('textures-1024/') if not tier else
+             not (row['file'].startswith('textures/') and row['file'].split('/', 1)[1] in tiered))]
     short_names = {}
     for index, row in enumerate(files):
         relative = relative_path(row['file'])

@@ -46,7 +46,16 @@ def build_cached_proxy(scene, source):
     ignored = []
     objects = list(source.all_objects)
     lights = {o.name for o in objects if o.type == 'LIGHT'}
+    # Port review (builder 25): animated props and particle systems live in their own child collections and stay
+    # out of the static proxy. Static cells may carry the vertex-motion modifier; the proxy uses their rest mesh.
+    dynamic = set()
+    for name in ('Midtown animated props', 'particles'):
+        child = source.children.get(name)
+        if child is not None:
+            dynamic.update(child.all_objects)
     for obj in objects:
+        if obj in dynamic:
+            continue
         if obj.type not in {'MESH', 'LIGHT', 'EMPTY', 'VOLUME'} or obj.animation_data or obj.instance_type != 'NONE':
             raise ValueError('Viewport proxy: unqualified prepared map object: ' + obj.name)
         if obj.type != 'MESH':
@@ -61,7 +70,8 @@ def build_cached_proxy(scene, source):
                 raise ValueError('Viewport proxy: unqualified non-cell render mesh: ' + obj.name)
             ignored.append(obj.name)
             continue
-        if obj.hide_render or obj.hide_viewport or obj.modifiers or obj.data.shape_keys:
+        if (obj.hide_render or obj.hide_viewport or obj.data.shape_keys or any(m.type != 'NODES'
+                or m.node_group is None or m.node_group.name.rpartition(' | ')[2] != 'Deadlock motion' for m in obj.modifiers)):
             raise ValueError('Viewport proxy: unqualified static mesh settings: ' + obj.name)
         groups[match.group(1)].append(obj)
     if not groups or len(ignored) > 4096:

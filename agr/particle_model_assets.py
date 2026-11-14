@@ -80,7 +80,14 @@ def geometry_runtime(runtime):
     else:
         simulator = Path(runtime['probe']).resolve()
         probe = simulator.parent.parent / 'particle_geometry' / ('ParticleGeometryProbe' + simulator.suffix)
+        if not probe.is_file():
+            # s2v211 port: the simulation helper lives elsewhere; geometry stays the release's own helper.
+            import os
+            probe = Path(os.environ.get('AGR_PORT_GEOMETRY_PROBE', probe))
     dotnet = runtime.get('geometry_dotnet', runtime.get('dotnet'))
+    if not dotnet:
+        import os  # s2v211 port: the simulator is a self-hosted exe, the geometry helper still needs the release runtime
+        dotnet = os.environ.get('AGR_PORT_GEOMETRY_DOTNET')
     if not probe.is_file():
         raise UnsupportedEffect('Animated model particles require the separate ParticleGeometryProbe runtime')
     simulator_parser = Path(runtime['probe']).resolve().parent / 'ValveResourceFormat.dll'

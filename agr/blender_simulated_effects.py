@@ -519,6 +519,37 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254,
                     links.new(image.outputs['Color'],luminance.inputs[0]);luminance.inputs[1].default_value=LUMA
                     layer_alpha=luminance.outputs['Value']
                 mult=nodes.new('ShaderNodeMath');mult.operation='MULTIPLY';links.new(alpha,mult.inputs[0]);links.new(layer_alpha,mult.inputs[1]);alpha=mult.outputs[0]
+        if renderer['_class']=='C_OP_RenderTrails':
+            # Port review: literal head/tail alpha scales as a linear ramp along the trail (mesh V: 0 head, 1 tail).
+            def _literal(value,default=1.):
+                if value is None:return default
+                if isinstance(value,(int,float)):return float(value)
+                if isinstance(value,dict) and value.get('m_nType','PF_TYPE_LITERAL')=='PF_TYPE_LITERAL':return float(value.get('m_flLiteralValue',default))
+                return None
+            head_alpha=_literal(renderer.get('m_flHeadAlphaScale'));tail_alpha=_literal(renderer.get('m_flTailAlphaScale'))
+            if head_alpha is not None and tail_alpha is not None and (head_alpha,tail_alpha)!=(1.,1.):
+                split=nodes.new('ShaderNodeSeparateXYZ');links.new(coord.outputs['UV'],split.inputs[0])
+                ramp=nodes.new('ShaderNodeMapRange');ramp.name='AGR trail head/tail alpha'
+                ramp.inputs['From Min'].default_value=0;ramp.inputs['From Max'].default_value=1
+                ramp.inputs['To Min'].default_value=head_alpha;ramp.inputs['To Max'].default_value=tail_alpha
+                links.new(split.outputs['Y'],ramp.inputs['Value'])
+                fade=nodes.new('ShaderNodeMath');fade.operation='MULTIPLY';links.new(alpha,fade.inputs[0]);links.new(ramp.outputs[0],fade.inputs[1]);alpha=fade.outputs[0]
+                mat['agr_trail_alpha_ramp']=[head_alpha,tail_alpha]
+            # Port review: size fade. Source fades a trail out as its half width grows from start to end, both a
+            # radius per unit of camera distance. Live per shading point; the radius is a keyed object property.
+            start_fade=_literal(renderer.get('m_flStartFadeSize'),None) if 'm_flStartFadeSize' in renderer else None
+            end_fade=_literal(renderer.get('m_flEndFadeSize'),None) if 'm_flEndFadeSize' in renderer else None
+            if start_fade is not None and end_fade is not None and end_fade>start_fade and renderer.get('m_bEnableFadingAndClamping') is True:
+                width=nodes.new('ShaderNodeAttribute');width.attribute_type='OBJECT';width.attribute_name='agr_trail_radius'
+                view=nodes.new('ShaderNodeCameraData')
+                ratio=nodes.new('ShaderNodeMath');ratio.operation='DIVIDE'
+                links.new(width.outputs['Fac'],ratio.inputs[0]);links.new(view.outputs['View Distance'],ratio.inputs[1])
+                size=nodes.new('ShaderNodeMapRange');size.name='AGR trail size fade';size.clamp=True
+                size.inputs['From Min'].default_value=start_fade;size.inputs['From Max'].default_value=end_fade
+                size.inputs['To Min'].default_value=1;size.inputs['To Max'].default_value=0
+                links.new(ratio.outputs[0],size.inputs['Value'])
+                faded=nodes.new('ShaderNodeMath');faded.operation='MULTIPLY';links.new(alpha,faded.inputs[0]);links.new(size.outputs[0],faded.inputs[1]);alpha=faded.outputs[0]
+                mat['agr_trail_size_fade']=[start_fade,end_fade]
         power=nodes.new('ShaderNodeMath');power.operation='MULTIPLY';power.inputs[0].default_value=1
         if blend=='PARTICLE_OUTPUT_BLEND_MODE_ADD':links.new(alpha,power.inputs[0])
         overbright=renderer.get('m_flOverbrightFactor')
@@ -724,6 +755,7 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254,
                     obj.rotation_quaternion=Vector((1,0,0)).rotation_difference(Vector(direction))
                     obj.location-=Vector(direction)*length*renderer.get('m_flForwardShift',0)*unit_scale
                     obj.scale=(max(1e-9,length*unit_scale),1,max(1e-9,radius*unit_scale))
+                    obj['agr_trail_radius']=float(radius*unit_scale);obj.keyframe_insert('["agr_trail_radius"]',frame=frame)
                 else:
                     radius=p['radius']*scalar(renderer.get('m_flRadiusScale'),default=1)*unit_scale
                     obj.scale=(radius,radius,radius)

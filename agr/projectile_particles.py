@@ -89,6 +89,17 @@ def controls(track,data):
         rotation=[sr*cp*cy-cr*sp*sy,cr*sp*cy+sr*cp*sy,cr*cp*sy-sr*sp*cy,cr*cp*cy+sr*sp*sy]
         vector(f.get('m_vInitialPosition'));vector(f.get('m_vInitialVelocity'))
         result.append(dict(tick=row['tick'],position=position,rotation=rotation))
+    import os
+    if os.environ.get('AGR_PORT_PROJECTILE_HEADING')=='1' and len(result)>1:
+        # Port review trial: orientation from the flight direction (pitch/yaw of the position step, roll 0)
+        # instead of the recorded m_angRotation. Matched by eye against live footage 2026-11-13 only.
+        for index,point in enumerate(result):
+            a,b=(result[index],result[index+1]) if index+1<len(result) else (result[index-1],result[index])
+            dx,dy,dz=(b['position'][i]-a['position'][i] for i in range(3))
+            if dx*dx+dy*dy+dz*dz<1e-12:continue
+            pitch=-math.atan2(dz,math.hypot(dx,dy))/2;yaw=math.atan2(dy,dx)/2
+            sy,cy=math.sin(yaw),math.cos(yaw);sp,cp=math.sin(pitch),math.cos(pitch)
+            point['rotation']=[-sp*sy,sp*cy,cp*sy,cp*cy]
     return owner,result
 
 
@@ -148,7 +159,7 @@ def validate_package(package,data):
     if (type(sim.get('schema_version'))is not int or sim['schema_version']!=1
             or not isinstance(sim.get('backend'),str)or not sim['backend'] or sim.get('warnings')!=[]
             or sim.get('request_sha256')!=sha or type(sim.get('seed'))is not int or sim['seed']!=plan['seed']
-            or sim.get('seed_policy')!='agr_substitute_sha256_v1'
+            or sim.get('seed_policy') not in ('agr_substitute_sha256_v1','agr_substitute_sha256_root_s2v211_v1')
             or any(type(sim.get(k))is not int or sim[k]!=plan[k] for k in ('start_tick','end_tick','tick_rate'))
             or package.get('simulation_request_sha256')!=sha):
         raise ValueError('Projectile simulator request or response identity differs')

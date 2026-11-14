@@ -1103,7 +1103,19 @@ def main(argv=None):
     parser.add_argument('--external-map',type=Path)
     parser.add_argument('--map-viewport-proxy',action='store_true')
     parser.add_argument('--map-project-scene',type=Path,help=argparse.SUPPRESS)
+    parser.add_argument('--map-texture-tier',choices=('full','1024'),default='full')
+    parser.add_argument('--map-crop-margin',type=float,default=0.0)
     args = parser.parse_args(argv)
+    if args.external_map is not None:
+        import math
+        if not math.isfinite(args.map_crop_margin) or not 0 <= args.map_crop_margin <= 5000:
+            raise ValueError('External map: --map-crop-margin must be between 0 and 5000 metres.')
+        program_root = str(Path(__file__).resolve().parents[1])
+        if program_root not in sys.path:
+            sys.path.insert(0, program_root)
+        from agr import blender_map_scene
+        blender_map_scene.MAP_OPTIONS.update(texture_tier=None if args.map_texture_tier == 'full' else args.map_texture_tier,
+                                             crop_margin=args.map_crop_margin)
     attach_blender_log(args.output)
     return build_scene(args.segment, args.assets, args.output, args.fps, args.partial,args.particle_runtime,
                        args.shot_hero,args.character_shader,args.character_only,args.partial_lighting,args.external_map,
