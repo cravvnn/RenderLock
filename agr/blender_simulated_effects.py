@@ -348,6 +348,7 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254,
     collection=bpy.data.collections.new('AGR Simulated Effects')
     scene.collection.children.link(collection)
     materials={};images={};omissions=[];sheet_uv_bypasses=set()
+    from .particle_refraction import is_screen_refraction,NOTE as REFRACTION_NOTE
     resource_paths={}
     for instance,path,resource,_ in tracks:
         resource_paths.setdefault((instance,resource),set()).add(path)
@@ -616,6 +617,9 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254,
                 if renderer.get('m_bOnlyRenderInEffectsBloomPass'):
                     omissions.append(resource+': source bloom-only pass omitted; use scene compositor glare')
                     continue
+                if is_screen_refraction(renderer):
+                    omissions.append(resource+': '+REFRACTION_NOTE)
+                    continue
                 from .particle_rope_inputs import resolve_rope_inputs
                 renderer_samples=[]
                 for sample in camera_samples:
@@ -681,6 +685,9 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254,
                 continue # Whole live-array geometry was baked once per system above.
             if renderer.get('m_bOnlyRenderInEffectsBloomPass'):
                 omissions.append(resource+': source bloom-only pass omitted; use scene compositor glare')
+                continue
+            if is_screen_refraction(renderer):
+                omissions.append(resource+': '+REFRACTION_NOTE)
                 continue
             kind=renderer['_class'];light=kind=='C_OP_RenderStandardLight';trail=kind=='C_OP_RenderTrails'
             if kind not in ('C_OP_RenderSprites','C_OP_RenderTrails','C_OP_RenderStandardLight'):
