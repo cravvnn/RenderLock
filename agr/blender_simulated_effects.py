@@ -313,9 +313,9 @@ def validate_renderer_classes(tracks, assets, simulation=None, *, scene=None):
                         if is_silence_renderer(renderer):validate_silence_samples(renderer,descriptor,samples,simulation or {})
                         else:(validate_sphere_samples if is_renderer(renderer) else validate_model_samples)(renderer,descriptor,samples)
             elif kind=='C_OP_RenderProjected':
-                from .particle_projected_scene import validate_profile,no_world_receivers
+                from .particle_projected_scene import validate_profile,receiver_plan
                 validate_profile(resource,renderer)
-                projected[resource]=no_world_receivers(scene)
+                projected[resource]=receiver_plan(scene)
             elif kind=='C_OP_RenderStandardLight' and native_light:
                 from .particle_standard_light import profile
                 profile(renderer)
@@ -671,6 +671,11 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254,
                 continue
             if renderer['_class']=='C_OP_RenderProjected':
                 if resource not in projected:raise UnsupportedEffect('Projected scene receiver preflight is missing')
+                if projected[resource]['status']=='deferred_to_map_composition':
+                    from .blender_projected_decals import build_projector
+                    note=build_projector(f'AGR FX projector | {instance} | {system_path} | {particle_id}.{index}',
+                        resource,renderer,assets,samples,simulation,collection,unit_scale,frame_step)
+                    if note:omissions.append(resource+': '+note)
                 continue
             if renderer['_class']=='C_OP_RenderRopes':
                 continue # Whole live-array geometry was baked once per system above.
@@ -793,7 +798,7 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254,
     if depth_rows:
         from .blender_particle_live_depth import prepare_depth_cards
         depth_report=prepare_depth_cards(depth_rows,scene,camera,unit_scale)
-    if projected:
+    if any(row['status']!='deferred_to_map_composition' for row in projected.values()):
         from .particle_projected_scene import no_world_receivers
         no_world_receivers(scene)
     report={'status':'experimental','instances':len(simulation['instances']),'particle_tracks':len(tracks),'objects':len(objects),'point_lights':sum(o.type=='LIGHT' for o in objects),'textures':len(images),'backend':simulation['backend'],'omissions':sorted(set(omissions)),
@@ -834,7 +839,10 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254,
     report['limitations'].append('Tracking uses world-up; roll is ambiguous on the world-up axis. A different active camera requires retargeting constraints.')
     if projected:
         report['projected_layers']=projected
-        report['limitations'].append('Projected world layers have no receiving world geometry in this exported scene; adding a map requires rebuilding effects with a qualified projected material/receiver provider.')
+        if any(row['status']=='deferred_to_map_composition' for row in projected.values()):
+            report['limitations'].append('Projected world layers are drawn as decals cut from the prepared map after composition; a review approximation of the game decal, judged by eye only.')
+        else:
+            report['limitations'].append('Projected world layers have no receiving world geometry in this exported scene; adding a map requires rebuilding effects with a qualified projected material/receiver provider.')
     if any('source_sheet' in value for value in assets.get('textures',{}).values()):
         report['texture_animation_policy']='agr_source_particle_sheet_v1'
         report['limitations'].append('Original flat-sheet frames and blends are sampled and held at replay ticks; engine subframe animation/filtering and Source shading remain approximate.')

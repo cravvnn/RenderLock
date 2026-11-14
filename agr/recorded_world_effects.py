@@ -61,6 +61,9 @@ def prepare_world_package(data,instance,runtime,provider,decoder,adapter,directo
   textures[name]={**descriptor,'directory':str(directory)}
  assets=dict(models={},definitions=definitions,textures=textures,
   provenance=dict(converter=decoder.identity,input_sha256={n:provider.resolve(compiled(n)).sha256 for n in names|texture_names}))
+ from .particle_projected_material import collect_projected_materials
+ projected_materials=collect_projected_materials(definitions,decoder,adapter,provider)
+ if projected_materials:assets['projected_materials']=projected_materials
  package=dict(schema_version=1,backend=BACKEND,entity_ids=[],scene_identity=world_identity(data,instance,client_sha256=client_sha256),
   world_origin_provider=header,simulation_request_sha256=request_sha,simulation=sim,assets=assets,
   coverage_scope='One recorded unowned literal-birth explosion. Authored simulation and Blender shading use approximate Source behavior and AGR substitute seeds; projected rendering is verified separately.')

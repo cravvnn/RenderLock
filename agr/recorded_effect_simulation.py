@@ -469,8 +469,8 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
                 from .particle_world_origin import request_header,POLICY as WORLD_POLICY
                 from .recorded_world_effects import prepare_world_package
                 request_header(data,instance)
-                from .particle_projected_scene import no_world_receivers
-                no_world_receivers(scene) # Includes maps scheduled for later composition.
+                from .particle_projected_scene import receiver_plan
+                receiver_plan(scene) # A scheduled prepared map receives the projected layer after composition.
                 report['attempted_instances']+=1
                 package,package_path=prepare_world_package(data,instance,runtime,provider,decoder,adapter,
                     out/f'world-{number:06d}')

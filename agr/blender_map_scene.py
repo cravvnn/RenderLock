@@ -356,6 +356,10 @@ def build_map_first(build, segment, assets, output, *, library, project_scene, *
         mapping = dict(mapping, crop=dict(margin_metres=margin, sample_points=len(points),
             mesh_objects_kept=kept, mesh_objects_removed=len(far)))
         scene['renderlock_external_map'] = json.dumps(mapping)
+    from .blender_projected_decals import build_pending_decals
+    decals = build_pending_decals(scene, bpy.data.collections['RenderLockMap'])
+    if decals['projectors']:
+        report['projected_decals'] = decals
     report['output'] = str(output);report['external_map'] = mapping
     report['warnings'].extend(mapping['limits'])
     if proxy is not None:

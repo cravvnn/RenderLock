@@ -21,6 +21,15 @@ def validate_profile(resource,renderer):
  if resource not in PROFILES or digest(renderer)!=PROFILES[resource]:
   raise ValueError('Projected layer requires its qualified world/water-only renderer definition')
 
+PENDING_POLICY='agr_projected_world_map_decal_review_v1'
+
+def receiver_plan(scene):
+ """With a prepared map scheduled, the projected layer is built as a decal after composition (review)."""
+ if scene is not None and hasattr(scene,'get') and scene.get('agr_pending_world_receivers'):
+  return dict(policy=PENDING_POLICY,status='deferred_to_map_composition',
+   scope='Projected onto prepared-map surfaces after composition. Review approximation, judged by eye only.')
+ return no_world_receivers(scene)
+
 def no_world_receivers(scene):
  """Inspect every source role, including hidden geometry and instance objects."""
  if scene is None:raise ValueError('Projected layer requires actual scene receiver classification')

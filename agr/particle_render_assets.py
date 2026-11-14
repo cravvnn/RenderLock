@@ -61,6 +61,10 @@ def prepare_render_assets(names, decoder, adapter, provider, runtime, *, definit
             input_sha256={n: provider.resolve(compiled(n)).sha256 for n in names | texture_names}))
     if models:
         result['models'] = models
+    from .particle_projected_material import collect_projected_materials
+    projected_materials = collect_projected_materials(result['definitions'], decoder, adapter, provider)
+    if projected_materials:
+        result['projected_materials'] = projected_materials
     from .particle_rope_shader_inputs import needs_inputs,collect_inputs,PROFILE_KEY as ROPE_PROFILE
     if any(r.get('_class')=='C_OP_RenderRopes'and needs_inputs(r)
         for definition in result['definitions'].values()for r in definition.get('m_Renderers',[])):
