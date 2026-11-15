@@ -123,3 +123,39 @@ def test_literal_first_set_after_creation_is_held_from_creation():
     updates = rows[1]['updates']
     assert [u['tick'] for u in updates] == [100, 104] and updates[0]['backfilled'] is True
     assert updates[0]['position'] == updates[1]['position'] == [9.0, 8.0, 7.0]
+
+
+CONFIGURED = {'m_controlPointConfigurations': [{'m_name': 'preview', 'm_drivers': [
+    {'m_iControlPoint': 1, 'm_iAttachType': 'PATTACH_POINT_FOLLOW', 'm_attachmentName': 'umbrella_top_fx', 'm_entityName': 'self'},
+    {'m_iControlPoint': 2, 'm_iAttachType': 'PATTACH_ABSORIGIN_FOLLOW', 'm_entityName': 'self'}]}]}
+
+
+def configured_instance(**creation):
+    row = instance([], mode=-1)
+    row['create']['control_point_configuration'] = 'preview'
+    row['events'][0]['data']['create_particle'].update(control_point_configuration='preview', **creation)
+    return row
+
+
+def test_named_configuration_supplies_the_bindings():
+    rows = broad_bindings(configured_instance(), 90, 130, definition=CONFIGURED)
+    assert rows[0] == dict(control_point=0, provider='entity_origin', target_entity='56:895', assumed=True)
+    assert rows[1] == dict(control_point=1, provider='named_attachment', attachment_name='umbrella_top_fx',
+                           target_entity='56:895', configuration='preview')
+    assert rows[2]['provider'] == 'entity_origin' and rows[2]['configuration'] == 'preview'
+
+
+def test_named_configuration_without_its_definition_is_checked_at_binding_level_only():
+    assert [row['control_point'] for row in broad_bindings(configured_instance(), 90, 130)] == [0]
+
+
+@pytest.mark.parametrize('definition, message', [
+    ({}, 'no control point configuration named preview'),
+    ({'m_controlPointConfigurations': [{'m_name': 'preview', 'm_drivers': [
+        {'m_iAttachType': 'PATTACH_POINT_FOLLOW', 'm_attachmentName': 'a', 'm_vecOffset': [1.0, 0, 0]}]}]}, 'offset'),
+    ({'m_controlPointConfigurations': [{'m_name': 'preview', 'm_drivers': [
+        {'m_iAttachType': 'PATTACH_WORLDORIGIN'}]}]}, 'driver mode PATTACH_WORLDORIGIN'),
+])
+def test_unsupported_configurations_stay_refused(definition, message):
+    with pytest.raises(ValueError, match=message):
+        broad_bindings(configured_instance(), 90, 130, definition=definition)

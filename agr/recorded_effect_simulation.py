@@ -575,7 +575,9 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
             except ValueError:
                 # Broad path: simulate from the recorded bindings without a per-effect profile, labelled unverified.
                 from .particle_owned_broad import broad_bindings,POLICY as BROAD_POLICY,SCOPE as BROAD_SCOPE,validate_response as validate_broad_response
-                bindings=broad_bindings(instance,motion_start,data['end_tick'],exported=set(entity_objects))
+                configured=instance['events'][0].get('data',{}).get('create_particle',{}).get('attach_type')==-1
+                bindings=broad_bindings(instance,motion_start,data['end_tick'],exported=set(entity_objects),
+                                        definition=get_definition(instance['resource']) if configured else None)
                 model_profile=root_profile=False;broad=True
             literal_provenance=None
             from .particle_owned_literal import RESOURCE as LITERAL_RESOURCE,collect as collect_literal,DEFINITIONS as LITERAL_DEFINITIONS,validate_definitions as validate_literal_definitions
@@ -615,7 +617,16 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
                 if binding.get('provider') == 'entity_origin':
                     transforms.append((binding['control_point'],None,None,target))
                     continue
-                definition=attachments[f"{target}/{binding['attachment']}"]['definition']
+                if binding.get('provider') == 'named_attachment':
+                    # Named by the effect's own configuration, so look it up in the character's installed model.
+                    from .vendor.resource_hash import resource_id
+                    handle=str(entities[target].get('model_handle'))
+                    model=next((p for p in provider.resources if p.endswith('.vmdl_c') and str(resource_id(p[:-2]))==handle),None)
+                    if model is None or entities[target].get('model_tracks'):raise ValueError('Attachment model is not available for a configured effect')
+                    named=[row for row in adapter.attachments(model,provider) if row.get('m_name')==binding['attachment_name']]
+                    if len(named)!=1:raise ValueError('Configured attachment '+binding['attachment_name']+' is absent from the character model')
+                    definition=named[0]
+                else:definition=attachments[f"{target}/{binding['attachment']}"]['definition']
                 if (definition['m_nInfluences']!=1 or abs(definition['m_influenceWeights'][0]-1)>1e-6
                         or definition.get('m_bIgnoreRotation') or definition['m_bInfluenceRootTransform'][0]):
                     raise ValueError('Unsupported attachment influence/rotation mode')
@@ -684,19 +695,29 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
             if model_profile and names!=set(REGEN_DEFINITIONS):
                 raise ValueError('Simulator regeneration system tree differs from qualified definitions')
             from .particle_render_assets import prepare_render_assets
-            assets=prepare_render_assets(names,decoder,adapter,provider,runtime,
-                definitions=definitions,textures=textures,omit_unsupported_layers=broad)
+            layers_left_out=False
+            try:
+                assets=prepare_render_assets(names,decoder,adapter,provider,runtime,
+                    definitions=definitions,textures=textures,omit_unsupported_layers=broad)
+            except ValueError:
+                # No per-effect profile covers every layer: build what the importer can and say what was left out.
+                if broad or model_profile:raise
+                assets=prepare_render_assets(names,decoder,adapter,provider,runtime,
+                    definitions=definitions,textures=textures,omit_unsupported_layers=True)
+                assets.setdefault('omitted_layers',{});layers_left_out=True
             package={'schema_version':1,'backend':'simulated_states_v1','entity_ids':[instance['entity_id']],
                      'scene_identity':scene_identity(data,[instance['entity_id']]),'simulation':simulation,'assets':assets,
                      'simulation_request_sha256':request_sha256,
                      'coverage_scope':'One recorded instance; automatic isolated simulation, approximate rendering. Other instances have separate coverage.'}
             if broad:package['coverage_scope']=BROAD_SCOPE
+            if layers_left_out:package['coverage_scope']='One recorded instance built with unsupported layers left out; the result is not compared with the game.'
             if model_provenance:package['model_provider']=model_provenance
             if literal_provenance:package['owned_literal_provider']=literal_provenance
             package_path=out/f'{stem}.package.json';package_path.write_text(json.dumps(package),encoding='utf-8')
             result=build_package_effects(package,data,package_path,scene,camera)
             report['rendered_instances']+=1
             entry={'id':instance['id'],'resource':instance['resource'],'package':str(package_path),'rendering':result}
+            if layers_left_out:entry['unverified']='layers_left_out'
             if broad:
                 entry['unverified']=BROAD_POLICY
                 report['unverified_owned_instances']=report.get('unverified_owned_instances',0)+1

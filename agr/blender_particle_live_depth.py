@@ -112,13 +112,16 @@ def install_depth_card(obj,camera,bias,unit_scale=.0254):
  obj['agr_particle_depth_sampled_camera']=camera.name
  return dict(policy=POLICY,objects=1,camera=camera.name,bias=bias)
 
-def prepare_depth_cards(rows,scene,camera,unit_scale=.0254):
- """Qualify replay samples and 24/30/60 output times before installing graphs."""
+def prepare_depth_cards(rows,scene,camera,unit_scale=.0254,skip_unqualified=False):
+ """Qualify replay samples and 24/30/60 output times before installing graphs.
+
+ skip_unqualified (unverified paths only): a card whose depth offset cannot be applied for this camera keeps its
+ simulated position and is counted under 'without_offset' instead of refusing the effect."""
  import bpy,numpy as np
  from mathutils import Matrix,Vector
  from .particle_depth_bias import qualify_depth_card
  if not rows:return dict(policy=POLICY,objects=0)
- fps=scene.render.fps/scene.render.fps_base;frames={};prepared=[]
+ fps=scene.render.fps/scene.render.fps_base;frames={};prepared=[];failed=set()
  original=scene.frame_current,scene.frame_subframe
  for row in rows:
   values={bias for _,_,bias in row['samples']}
@@ -139,9 +142,14 @@ def prepare_depth_cards(rows,scene,camera,unit_scale=.0254):
    projection=dict(world_to_clip=[list(r)for r in matrix],forward=list((view.matrix_world.to_3x3()@Vector((0,0,-1))).normalized()))
    for obj,bias in items:
     world=np.asarray([list(obj.evaluated_get(graph).matrix_world@v.co)for v in obj.data.vertices])/unit_scale
-    qualify_depth_card(world,bias,projection)
+    if obj.name in failed:continue
+    try:qualify_depth_card(world,bias,projection)
+    except UnsupportedEffect:
+     if not skip_unqualified:raise
+     failed.add(obj.name)
+  prepared=[(obj,bias)for obj,bias in prepared if obj.name not in failed]
   for obj,bias in prepared:install_depth_card(obj,camera,bias,unit_scale)
  finally:
   scene.frame_set(original[0],subframe=original[1]);bpy.context.view_layer.update()
- return dict(policy=POLICY,objects=len(prepared),qualified_camera_frames=len(frames),camera=camera.name,
+ return dict(policy=POLICY,objects=len(prepared),qualified_camera_frames=len(frames),camera=camera.name,without_offset=len(failed),
   scope='Live projective geometry/UV evaluation; camera bounds qualified at supplied replay samples and 24/30/60 FPS. Camera/projection edits need requalification; Source clipping-floor, lighting and full shader parity remain unsupported.')

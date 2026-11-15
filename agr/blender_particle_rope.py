@@ -8,9 +8,12 @@ from .particle_rope_geometry import build_rope_geometry
 from .installed_effects import scalar
 
 
-def bake_rope_geometry(samples,renderer,scene,collection,*,start_tick,tick_rate,unit_scale=.0254,definition=None,triangle_pairs=False,shader_extra_policy=None):
+def bake_rope_geometry(samples,renderer,scene,collection,*,start_tick,tick_rate,unit_scale=.0254,definition=None,triangle_pairs=False,shader_extra_policy=None,unbiased_ticks=None):
+    """unbiased_ticks (unverified paths only): a list that receives each tick whose depth offset could not be
+    applied for the sampled camera; that tick's rope is then built at its simulated position instead of refusing."""
     import bpy
     from .blender_effects import _linear
+    from .installed_effects import UnsupportedEffect
     previous=None;prepared=[];vertices=0
     for sample in samples:
         tick=sample['tick']
@@ -23,10 +26,15 @@ def bake_rope_geometry(samples,renderer,scene,collection,*,start_tick,tick_rate,
         bias=scalar(sample.get('renderer',renderer).get('m_flDepthBias'),default=0)
         if bias and len(mesh['vertices']):
             from .particle_depth_bias import projective_depth_bias,discard_xy_clipped_triangles
-            if triangle_pairs:mesh=discard_xy_clipped_triangles(mesh,sample.get('camera_projection'))
-            mesh['source_vertices']=mesh['vertices']
-            mesh['vertices'],mesh['depth_ratio']=projective_depth_bias(mesh['vertices'],bias,sample.get('camera_projection'))
-            mesh['depth_bias']=bias
+            try:
+                biased=discard_xy_clipped_triangles(mesh,sample.get('camera_projection')) if triangle_pairs else dict(mesh)
+                biased['source_vertices']=biased['vertices']
+                biased['vertices'],biased['depth_ratio']=projective_depth_bias(biased['vertices'],bias,sample.get('camera_projection'))
+                biased['depth_bias']=bias
+                mesh=biased
+            except UnsupportedEffect:
+                if unbiased_ticks is None:raise
+                unbiased_ticks.append(tick)
         vertices+=input_vertex_count
         if vertices>2_000_000:raise ValueError('Rope geometry bake exceeds vertex budget')
         prepared.append((tick,mesh))

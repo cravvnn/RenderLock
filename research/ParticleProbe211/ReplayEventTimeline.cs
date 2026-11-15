@@ -184,7 +184,7 @@ sealed class ReplayEventTimeline
 #endif
             if (creation.ValueKind != JsonValueKind.Object
                 || creation.GetProperty("entity_handle").GetUInt32() != handle
-                || (broad ? creation.GetProperty("attach_type").GetInt32() is < 0 or > 15
+                || (broad ? creation.GetProperty("attach_type").GetInt32() is < -1 or > 15
                     : observedModeThree ? creation.GetProperty("attach_type").GetInt32() != 3
                     : creation.GetProperty("attach_type").GetInt32() is not (2 or 5))
                 || (creation.TryGetProperty("cluster", out var cluster) && cluster.GetBoolean()))

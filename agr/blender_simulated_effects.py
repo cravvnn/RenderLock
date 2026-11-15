@@ -275,8 +275,33 @@ def collect_system_samples(simulation):
     return systems
 
 
-def validate_renderer_classes(tracks, assets, simulation=None, *, scene=None):
-    """Refuse unsupported live renderers before baking sibling geometry."""
+def leave_out_layers(simulation):
+    """True when every instance was simulated by an unverified broad path: a layer the importer cannot build is
+    then left out and reported instead of refusing the whole effect."""
+    from .particle_owned_broad import is_unverified
+    rows=simulation.get('instances') or []
+    return bool(rows) and all(is_unverified(row) for row in rows)
+
+
+def validate_renderer_classes(tracks, assets, simulation=None, *, scene=None, leave_out=False):
+    """Refuse unsupported live renderers before baking sibling geometry.
+
+    leave_out: record a layer that fails its checks under assets['omitted_layers'] instead of raising."""
+    if leave_out:
+        projected={}
+        for resource in sorted({key[2] for key in tracks}):
+            for layer_index in range(len(assets['definitions'][resource].get('m_Renderers',[]))):
+                if str(layer_index) in assets.get('omitted_layers',{}).get(resource,{}):continue
+                only={key:samples for key,samples in tracks.items() if key[2]==resource}
+                try:
+                    projected.update(_validate_renderer_classes(only,assets,simulation,scene=scene,only_layer=layer_index))
+                except ValueError as reason:
+                    assets.setdefault('omitted_layers',{}).setdefault(resource,{})[str(layer_index)]='layer left out: '+str(reason)
+        return projected
+    return _validate_renderer_classes(tracks,assets,simulation,scene=scene)
+
+
+def _validate_renderer_classes(tracks, assets, simulation=None, *, scene=None, only_layer=None):
     from .particle_texture_control_defaults import validate_defaults
     validate_defaults({name:assets['definitions'][name] for name in {key[2] for key in tracks}},assets.get('provenance',{}))
     supported={'C_OP_RenderSprites','C_OP_RenderTrails','C_OP_RenderStandardLight','C_OP_RenderRopes'}
@@ -291,6 +316,7 @@ def validate_renderer_classes(tracks, assets, simulation=None, *, scene=None):
     for resource in sorted({key[2] for key in tracks}):
         for layer_index,renderer in enumerate(assets['definitions'][resource].get('m_Renderers',[])):
             if str(layer_index) in assets.get('omitted_layers',{}).get(resource,{}):continue
+            if only_layer is not None and layer_index!=only_layer:continue
             kind=renderer.get('_class')
             if kind in ('C_OP_RenderSprites','C_OP_RenderTrails'):
                 from .particle_texture_layers import enabled_texture_layers
@@ -345,7 +371,9 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254,
     from .particle_render_controls import render_contexts
     contexts=render_contexts(simulation,silence_context=silence_context)
     native_lights='native_standard_light' in assets.get('provenance',{})
-    projected=validate_renderer_classes(tracks,assets,simulation,scene=scene)
+    leave_out=leave_out_layers(simulation) or 'omitted_layers' in assets
+    if leave_out:assets=dict(assets,omitted_layers={name:dict(rows) for name,rows in assets.get('omitted_layers',{}).items()})
+    projected=validate_renderer_classes(tracks,assets,simulation,scene=scene,leave_out=leave_out)
     collection=bpy.data.collections.new('AGR Simulated Effects')
     scene.collection.children.link(collection)
     materials={};images={};omissions=[];sheet_uv_bypasses=set()
@@ -614,17 +642,7 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254,
                 camera_samples.append(dict(tick=tick,age=(tick-births[instance])/simulation['tick_rate'],
                     particles=particles,camera_position=[float(v/unit_scale) for v in evaluated.matrix_world.translation],
                     camera_projection=parameters))
-            for index,renderer in renderers:
-                if str(index) in assets.get('omitted_layers',{}).get(resource,{}):
-                    omissions.append(resource+': '+assets['omitted_layers'][resource][str(index)])
-                    continue
-                if renderer.get('m_bOnlyRenderInEffectsBloomPass'):
-                    omissions.append(resource+': source bloom-only pass omitted; use scene compositor glare')
-                    continue
-                if is_screen_refraction(renderer):
-                    omissions.append(resource+': '+REFRACTION_NOTE)
-                    continue
-                from .particle_rope_inputs import resolve_rope_inputs
+            def build_rope_layer(index,renderer):
                 renderer_samples=[]
                 for sample in camera_samples:
                     context=contexts.get((instance,system_path,sample['tick']))
@@ -633,12 +651,15 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254,
                     renderer_samples.append(dict(sample,renderer=resolved,
                         age=context['age'] if context is not None else sample['age']))
                     omissions.extend(resource+': '+note for note in notes)
+                unbiased=[] if leave_out else None
                 baked=bake_rope_geometry(renderer_samples,renderer,scene,collection,
                     start_tick=simulation['start_tick'],tick_rate=simulation['tick_rate'],
-                    unit_scale=unit_scale,definition=definition,triangle_pairs=True,
+                    unit_scale=unit_scale,definition=definition,triangle_pairs=True,unbiased_ticks=unbiased,
                     shader_extra_policy=simulation.get('shader_extra_data_policy') if any(
                         layer.get('m_TextureControls',{}).get('m_nPerParticleDistortion','SPRITECARD_TEXTURE_PP_SCALE_NONE')
                         != 'SPRITECARD_TEXTURE_PP_SCALE_NONE' for _,layer in enabled_texture_layers(renderer.get('m_vecTexturesInput',[]))) else None)
+                if unbiased:
+                    omissions.append(resource+': rope depth offset left out on some frames: it cannot be applied for this camera')
                 by_tick={sample['tick']:sample for sample in renderer_samples}
                 for obj in baked:
                     tick=obj['agr_rope_geometry_tick'];sample=by_tick[tick]
@@ -662,6 +683,31 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254,
                 objects.extend(baked);rope_objects.extend(baked)
                 rope_systems.append(dict(instance=instance,path=system_path,resource=resource,renderer=index,
                     meshes=len(baked),subdivisions=sorted({o['agr_rope_subdivisions'] for o in baked})))
+            for index,renderer in renderers:
+                if str(index) in assets.get('omitted_layers',{}).get(resource,{}):
+                    omissions.append(resource+': '+assets['omitted_layers'][resource][str(index)])
+                    continue
+                if renderer.get('m_bOnlyRenderInEffectsBloomPass'):
+                    omissions.append(resource+': source bloom-only pass omitted; use scene compositor glare')
+                    continue
+                if is_screen_refraction(renderer):
+                    omissions.append(resource+': '+REFRACTION_NOTE)
+                    continue
+                from .particle_rope_inputs import resolve_rope_inputs
+                if leave_out:
+                    # A layer that fails part-way is removed whole and reported.
+                    kept=len(objects),len(rope_objects),len(rope_systems),len(omissions)
+                    before={obj.name for obj in collection.objects}
+                    try:
+                        build_rope_layer(index,renderer)
+                    except ValueError as reason:
+                        for obj in [obj for obj in collection.objects if obj.name not in before]:
+                            bpy.data.objects.remove(obj,do_unlink=True)
+                        del objects[kept[0]:],rope_objects[kept[1]:],rope_systems[kept[2]:],omissions[kept[3]:]
+                        omissions.append(resource+': rope layer left out: '+str(reason))
+                    continue
+                build_rope_layer(index,renderer)
+                continue
     finally:
         scene.frame_set(original_frame,subframe=original_subframe)
     for (instance,system_path,resource,particle_id),samples in tracks.items():
@@ -811,7 +857,9 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254,
     depth_report=None
     if depth_rows:
         from .blender_particle_live_depth import prepare_depth_cards
-        depth_report=prepare_depth_cards(depth_rows,scene,camera,unit_scale)
+        depth_report=prepare_depth_cards(depth_rows,scene,camera,unit_scale,skip_unqualified=leave_out)
+        if depth_report.get('without_offset'):
+            omissions.append(f"sprite depth offset left out on {depth_report['without_offset']} sprites: it cannot be applied for this camera")
     if any(row['status']!='deferred_to_map_composition' for row in projected.values()):
         from .particle_projected_scene import no_world_receivers
         no_world_receivers(scene)

@@ -5,7 +5,9 @@ package built this way says so. Covered: creation in any attach mode on the owne
 creation to the owner's origin or to one of its attachment points, literal transforms, release and destruction.
 A control point bound to another exported character follows that character. One bound to an entity that is not
 exported uses its recorded fallback position, held still. A literal control point first set after creation holds
-its first recorded value from creation.
+its first recorded value from creation. An effect created with a named control point configuration (creation mode
+-1, used by animation-driven effects) takes its bindings from that configuration in the effect's own definition;
+control point 0 then defaults to the owner's origin when the configuration does not set it.
 Still refused: a binding to an unexported entity without a fallback position, a binding made or changed after
 creation, and non-zero attachment offsets.
 """
@@ -18,6 +20,9 @@ SCOPE = ('One recorded instance simulated from its recorded bindings without a p
 # Creation modes that follow the owner when no control point 0 binding is recorded:
 # ABSORIGIN, ABSORIGIN_FOLLOW, CUSTOMORIGIN_FOLLOW.
 ORIGIN_CREATION_MODES = (0, 1, 3)
+CONFIGURATION_MODE = -1
+DRIVER_ORIGIN = ('PATTACH_ABSORIGIN', 'PATTACH_ABSORIGIN_FOLLOW')
+DRIVER_ATTACHMENT = ('PATTACH_POINT', 'PATTACH_POINT_FOLLOW')
 
 
 def require(ok, message):
@@ -35,10 +40,39 @@ def _zero_offsets(binding):
                 'attachment offsets are not supported')
 
 
-def broad_bindings(instance, start, end, exported=()):
+def configuration_drivers(creation, definition, owner):
+    """Bindings set by the named control point configuration of the effect's own definition, by control point."""
+    name = creation.get('control_point_configuration')
+    require(isinstance(name, str) and name, 'creation names no control point configuration')
+    if definition is None:
+        return {}
+    rows = [row for row in definition.get('m_controlPointConfigurations') or []
+            if isinstance(row, dict) and row.get('m_name') == name]
+    require(len(rows) == 1 and isinstance(rows[0].get('m_drivers'), list),
+            f'the effect has no control point configuration named {name}')
+    result = {}
+    for driver in rows[0]['m_drivers']:
+        require(isinstance(driver, dict), 'invalid configuration driver')
+        cp, mode, attachment = driver.get('m_iControlPoint', 0), driver.get('m_iAttachType'), driver.get('m_attachmentName')
+        require(type(cp) is int and 0 <= cp <= 63 and cp not in result and driver.get('m_entityName', 'self') == 'self'
+                and not any(driver.get('m_vecOffset') or []) and not any(driver.get('m_angOffset') or []),
+                'configuration driver with an offset or another entity is not supported')
+        if mode in DRIVER_ORIGIN:
+            result[cp] = dict(control_point=cp, provider='entity_origin', target_entity=owner, configuration=name)
+        elif mode in DRIVER_ATTACHMENT and isinstance(attachment, str) and attachment:
+            result[cp] = dict(control_point=cp, provider='named_attachment', attachment_name=attachment,
+                              target_entity=owner, configuration=name)
+        else:
+            raise ValueError(f'Owned particles: configuration driver mode {mode} is not supported')
+    return result
+
+
+def broad_bindings(instance, start, end, exported=(), definition=None):
     """Return one binding per control point: entity origin, attachment point or literal transform.
 
     exported: identities of every character in the scene; a binding to one of them carries 'target_entity'.
+    definition: the effect's decoded definition, needed to resolve a named control point configuration; without it
+    such an effect is only checked at binding level.
     """
     controls = compile_control_events(instance, start, end)
     birth = instance['created_tick']
@@ -52,7 +86,7 @@ def broad_bindings(instance, start, end, exported=()):
         return type(value) is int and f'{value & 0x3fff}:{value >> 14}' == owner
     creation = instance['events'][0].get('data', {}).get('create_particle')
     require(isinstance(creation, dict) and creation.get('entity_handle') == handle
-            and type(creation.get('attach_type')) is int and 0 <= creation['attach_type'] <= 15
+            and type(creation.get('attach_type')) is int and CONFIGURATION_MODE <= creation['attach_type'] <= 15
             and creation.get('cluster', False) is False, 'creation record differs from its instance')
     bindings = {}
     for event in controls['entity_binding_events']:
@@ -93,6 +127,12 @@ def broad_bindings(instance, start, end, exported=()):
                 # First set after creation: hold that first value from creation (the game's own default is unknown).
                 bindings[cp]['updates'].append(dict(update, tick=birth, backfilled=True))
         bindings[cp]['updates'].append(update)
+    if creation['attach_type'] == CONFIGURATION_MODE:
+        require(own(handle), 'a configured effect on another entity is not supported')
+        for cp, row in configuration_drivers(creation, definition, owner).items():
+            bindings.setdefault(cp, row)
+        # The configuration may leave control point 0 unset; the game's default for it is not known.
+        bindings.setdefault(0, dict(control_point=0, provider='entity_origin', target_entity=owner, assumed=True))
     if 0 not in bindings:
         require(creation['attach_type'] in ORIGIN_CREATION_MODES and own(handle),
                 'no control point 0 binding is recorded')
