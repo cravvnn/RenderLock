@@ -466,8 +466,12 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
             if instance.get('selection_scope') == WORLD_CUSTOM_ORIGIN_SCOPE:
                 if not is_world_custom_origin_candidate(instance):
                     raise ValueError('World-effect selection differs from its explicit unattached creation')
-                from .particle_world_origin import request_header,POLICY as WORLD_POLICY
+                from .particle_world_origin import request_header,POLICY as WORLD_POLICY,RESOURCE as WORLD_RESOURCE
                 from .recorded_world_effects import prepare_world_package
+                if instance.get('resource')!=WORLD_RESOURCE:
+                    # Broad path: any other unowned effect is simulated from its recorded literal points, unverified.
+                    from .particle_world_literal import request_header,POLICY as WORLD_POLICY
+                    from .recorded_world_literal_effects import prepare_world_literal_package as prepare_world_package
                 request_header(data,instance)
                 from .particle_projected_scene import receiver_plan
                 receiver_plan(scene) # A scheduled prepared map receives the projected layer after composition.
@@ -478,7 +482,8 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
                 if result.get('objects',0)<=0:
                     raise ValueError('World particle package produced no rendered geometry or lights')
                 report['rendered_instances']+=1
-                report['world_attachment_provider']=WORLD_POLICY
+                if instance.get('resource')==WORLD_RESOURCE:report['world_attachment_provider']=WORLD_POLICY
+                else:report['unverified_world_instances']=report.get('unverified_world_instances',0)+1
                 report['instances'].append(dict(id=instance['id'],resource=instance['resource'],
                     package=str(package_path),rendering=result,selection_scope=WORLD_CUSTOM_ORIGIN_SCOPE))
                 for key in ('objects','particle_tracks','point_lights'):report[key]+=result.get(key,0)

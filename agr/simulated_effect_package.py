@@ -98,6 +98,10 @@ def validate_package(package, scene):
         from .projectile_particles import validate_package as validate_projectile_package
         validate_projectile_package(package,scene)
         return
+    if package.get('backend') == 'simulated_world_literal_unverified_v1':
+        from .particle_world_literal import validate_package as validate_world_literal_package
+        validate_world_literal_package(package, scene)
+        return
     if package.get('backend') == 'simulated_world_origin_v1':
         from .particle_world_origin import validate_package as validate_world_package
         validate_world_package(package, scene)

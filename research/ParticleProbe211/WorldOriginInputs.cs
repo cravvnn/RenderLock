@@ -6,6 +6,11 @@ using System.Text.Json;
 static class WorldOriginInputs
 {
     public const string Policy = "agr_world_literal_birth_release_v1";
+    /// <summary>Any unowned effect driven only by recorded literal control points. Simulated as recorded,
+    /// not compared with the game: no per-resource profile, client build or definition pin.</summary>
+    public const string UnverifiedPolicy = "agr_world_literal_unverified_v1";
+    public static bool IsUnverified(JsonElement? header)
+        => header.HasValue && header.Value.GetProperty("policy").GetString() == UnverifiedPolicy;
     public const string Resource = "particles/abilities/vampirebat/vampirebat_batswarm_explosion.vpcf";
     public const string ClientHash = "d0341ce77398614af905ef8669d328fd4d45958282acef66789a250492e466b5";
     public const string LegacyClientHash = "2007fddaf9f48211e1ed188aff3c31ad47ba667cbaace16f5dd30e9376b884c7";
@@ -30,8 +35,12 @@ static class WorldOriginInputs
             "bounded in-range birth and actual 64Hz output are required");
         Require(Fields(header, "policy", "client_sha256", "instance_id", "resource", "created_tick", "start_tick",
             "end_tick", "tick_rate", "demo_sha256", "events_sha256"), "unknown or incomplete provider fields");
-        Require(header.GetProperty("policy").GetString() == Policy && QualifiedClient(header.GetProperty("client_sha256").GetString())
-            && header.GetProperty("resource").GetString() == Resource && instance.GetProperty("resource").GetString() == Resource
+        var unverified = header.GetProperty("policy").GetString() == UnverifiedPolicy;
+        var resource = instance.GetProperty("resource").GetString();
+        Require((unverified ? header.GetProperty("client_sha256").ValueKind == JsonValueKind.Null && !string.IsNullOrEmpty(resource)
+                : header.GetProperty("policy").GetString() == Policy && QualifiedClient(header.GetProperty("client_sha256").GetString())
+                    && resource == Resource)
+            && header.GetProperty("resource").GetString() == resource
             && header.GetProperty("created_tick").GetInt32() == birth && header.GetProperty("start_tick").GetInt32() == start
             && header.GetProperty("end_tick").GetInt32() == end && header.GetProperty("tick_rate").GetInt32() == rate
             && Sha(header.GetProperty("demo_sha256")) && Sha(header.GetProperty("events_sha256")), "provider identity or timing differs");
@@ -49,6 +58,7 @@ static class WorldOriginInputs
             "laser_static_provider", "model_hitbox_policy", "model_hitbox_bindings", "snapshot_model_policy", "snapshot_model_bindings" })
             Require(!instance.TryGetProperty(key, out _), "world and entity/model providers cannot be combined");
         var events = instance.GetProperty("events").EnumerateArray().ToArray();
+        if (unverified) return QualifyUnverified(instance, header, events, index, birth, end);
         Require(events.Length == 3, "requires three complete birth-time events");
         var kinds = new[] { "CREATE", "UPDATE_TRANSFORM", "RELEASE" };
         var firstOrder = events[0].GetProperty("order").GetInt32();
@@ -84,6 +94,38 @@ static class WorldOriginInputs
                 && rotation.GetProperty("w").GetSingle() == 1, "world birth requires identity orientation");
         var controls = instance.GetProperty("control_points").EnumerateArray().ToArray();
         Require(controls.Length == end - birth + 1 && controls.All(c => Fields(c, "tick", "position", "rotation")),
+            "world controls must be explicit literal snapshots only");
+        return header.Clone();
+    }
+
+    private static JsonElement? QualifyUnverified(JsonElement instance, JsonElement header, JsonElement[] events, int index, int birth, int end)
+    {
+        Require(events.Length >= 2 && events.Length <= 4096 && events[0].GetProperty("type").GetString() == "CREATE"
+            && events[0].GetProperty("tick").GetInt32() == birth, "creation must be the first recorded event");
+        long previous = long.MinValue;
+        foreach (var item in events)
+        {
+            var kind = item.GetProperty("type").GetString();
+            Require(kind is "CREATE" or "UPDATE_TRANSFORM" or "RELEASE", "only literal transforms and release are supported");
+            var tick = item.GetProperty("tick").GetInt32(); long order = item.GetProperty("order").GetInt32();
+            Require(tick >= birth && tick <= end && order > previous, "event time or order is outside the request");
+            previous = order;
+            var data = item.GetProperty("data");
+            Require(data.GetProperty("type").GetString() == "GAME_PARTICLE_MANAGER_EVENT_" + kind
+                && data.GetProperty("index").GetInt32() == index, "recorded event identity differs");
+        }
+        Require(events.Count(item => item.GetProperty("type").GetString() == "CREATE") == 1, "one creation is required");
+        var creation = events[0].GetProperty("data").GetProperty("create_particle");
+        var summary = instance.GetProperty("create");
+        var hash = instance.GetProperty("resource_hash").GetString();
+        foreach (var row in new[] { creation, summary })
+            Require(Fields(row, "particle_name_index", "attach_type", "entity_handle", "cluster")
+                && row.GetProperty("particle_name_index").GetString() == hash && row.GetProperty("attach_type").GetInt32() == 8
+                && row.GetProperty("entity_handle").GetUInt32() == 0xffffff && !row.GetProperty("cluster").GetBoolean(),
+                "creation fields differ from the unowned world profile");
+        var controls = instance.GetProperty("control_points").EnumerateArray().ToArray();
+        Require(controls.Length == end - birth + 1 && controls.All(c => Fields(c, "tick", "position", "rotation")
+            || Fields(c, "tick", "position", "rotation", "extra_control_points")),
             "world controls must be explicit literal snapshots only");
         return header.Clone();
     }
