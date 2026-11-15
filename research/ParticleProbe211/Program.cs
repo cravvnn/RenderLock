@@ -62,7 +62,16 @@ foreach (var instance in config.GetProperty("instances").EnumerateArray())
             || !float.IsFinite(rotation.Sum(v => v * v)) || rotation.Sum(v => v * v) < 1e-12f)
             throw new Exception($"{id}: invalid control-point transform at tick {tick}");
     }
-    if (modelCount > 0) throw new NotSupportedException("CP0 model_bones (bone-only CreateOnModel) is not ported to 21.1 yet: it needs the model identity in the request");
+    // Whole-body bone poses on one control point: the request names the model, each tick carries every bone's world pose.
+    string? poseModel = null; var poseControlPoint = 0;
+    if (modelCount > 0)
+    {
+        if (!config.TryGetProperty("model_provider", out var modelProvider) || modelProvider.GetProperty("resource").GetString() is not { Length: > 2 } providerModel
+            || !providerModel.EndsWith("_c", StringComparison.Ordinal))
+            throw new InvalidDataException("Recorded model bones need the model named by model_provider");
+        poseModel = providerModel;
+        poseControlPoint = modelProvider.TryGetProperty("control_point", out var providerPoint) ? providerPoint.GetInt32() : 0;
+    }
     replayEvents.ValidateControls(controls, birth, end);
     log.Prefix = id!;
     using var resource = loader.LoadFileCompiled(name) ?? throw new Exception("Missing " + name);
@@ -84,6 +93,7 @@ foreach (var instance in config.GetProperty("instances").EnumerateArray())
         models[cp] = adapter; sim.GetControlPoint(cp).ModelObject = adapter;
         return adapter;
     }
+    if (poseModel is not null) ModelAt(poseControlPoint, poseModel);
     if (snapshotInputs is not null)
         foreach (var bindingRow in snapshotInputs.Bindings.EnumerateArray())
             ModelAt(bindingRow.GetProperty("control_point").GetInt32(), bindingRow.GetProperty("model").GetString()!).RequireBone(bindingRow.GetProperty("bone").GetString()!);
@@ -159,6 +169,7 @@ foreach (var instance in config.GetProperty("instances").EnumerateArray())
                 }
             }
             foreach (var model in models.Values) model.BeginFrame();
+            if (poseModel is not null) models[poseControlPoint].SetWorldPose(cp.GetProperty("model_bones"));
             if (snapshotInputs is not null)
                 foreach (var (point, bone, binding) in snapshotInputs.ActiveRows()) models[point].SetSnapshotBone(bone, binding.Matrix.Rows);
             if (hitboxInputs is not null)

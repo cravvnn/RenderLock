@@ -37,6 +37,7 @@ sealed class ReplayModelObject(Model model, string modelPath) : IParticleModelOb
     private readonly Dictionary<int, Matrix4x4> snapshotFrames = [];
     private readonly Dictionary<int, Matrix4x4> hitboxPoses = [];
     private Matrix4x4[]? bind;
+    private Matrix4x4[]? worldPose;
     private float maxBoundsError;
     private int checkedBoxes, checkedFrames, poseReads;
 
@@ -89,9 +90,28 @@ sealed class ReplayModelObject(Model model, string modelPath) : IParticleModelOb
 
     public void BeginFrame() => hitboxPoses.Clear();
 
+    /// <summary>Recorded world pose of every bone in model order, one row of position, uniform scale and
+    /// rotation (x, y, z, scale, qx, qy, qz, qw) per bone. Replaces the whole pose for this frame.</summary>
+    public void SetWorldPose(System.Text.Json.JsonElement rows)
+    {
+        var count = Model.Skeleton.Bones.Length;
+        if (rows.GetArrayLength() != count) throw new InvalidDataException("Recorded bone count differs from the model skeleton");
+        worldPose ??= new Matrix4x4[count];
+        var index = 0;
+        foreach (var row in rows.EnumerateArray())
+        {
+            var v = row.EnumerateArray().Select(x => x.GetSingle()).ToArray();
+            if (v.Length != 8 || v.Any(x => !float.IsFinite(x)) || !(v[3] > 0)) throw new InvalidDataException("Invalid recorded bone pose");
+            worldPose[index++] = Matrix4x4.CreateScale(v[3])
+                * Matrix4x4.CreateFromQuaternion(Quaternion.Normalize(new Quaternion(v[4], v[5], v[6], v[7])))
+                * Matrix4x4.CreateTranslation(v[0], v[1], v[2]);
+        }
+    }
+
     public void GetBonePose(Span<Matrix4x4> bones)
     {
         poseReads++;
+        if (worldPose is not null) { worldPose.CopyTo(bones); return; }
         if (bind is null) { bind = new Matrix4x4[Model.Skeleton.Bones.Length]; BindPoseModelObject.GetBindPose(Model, bind); }
         bind.CopyTo(bones);
         foreach (var (index, frame) in snapshotFrames) bones[index] = bind[index] * frame;
