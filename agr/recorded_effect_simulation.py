@@ -306,8 +306,12 @@ def preflight_recorded_bindings(data, *, output_start=None):
     checked = len(instances)
     for instance in instances:
         try:
-            _, _, provider = recorded_binding_profile(instance)
-            provider(instance, start, end)
+            try:
+                _, _, provider = recorded_binding_profile(instance)
+                provider(instance, start, end)
+            except ValueError:
+                from .particle_owned_broad import broad_bindings
+                broad_bindings(instance, start, end)
             possible += 1
         except (ValueError, KeyError, OSError, RuntimeError, subprocess.SubprocessError) as exc:
             birth = instance.get('created_tick')
@@ -526,8 +530,15 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
                 if instance['created_tick'] < data['start_tick']:
                     report['pre_shot_rendered_instances'] += 1
                 continue
-            model_profile, root_profile, binding_provider = recorded_binding_profile(instance)
-            bindings=binding_provider(instance,motion_start,data['end_tick'])
+            broad=False
+            try:
+                model_profile, root_profile, binding_provider = recorded_binding_profile(instance)
+                bindings=binding_provider(instance,motion_start,data['end_tick'])
+            except ValueError:
+                # Broad path: simulate from the recorded bindings without a per-effect profile, labelled unverified.
+                from .particle_owned_broad import broad_bindings,POLICY as BROAD_POLICY,SCOPE as BROAD_SCOPE,validate_response as validate_broad_response
+                bindings=broad_bindings(instance,motion_start,data['end_tick'])
+                model_profile=root_profile=False;broad=True
             literal_provenance=None
             from .particle_owned_literal import RESOURCE as LITERAL_RESOURCE,collect as collect_literal,DEFINITIONS as LITERAL_DEFINITIONS,validate_definitions as validate_literal_definitions
             if instance.get('resource')==LITERAL_RESOURCE:
@@ -562,6 +573,9 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
                 if binding.get('provider') == 'literal_transform':
                     literal_bindings.append(binding)
                     continue
+                if binding.get('provider') == 'entity_origin':
+                    transforms.append((binding['control_point'],None,None))
+                    continue
                 definition=attachments[f"{instance['entity_id']}/{binding['attachment']}"]['definition']
                 if (definition['m_nInfluences']!=1 or abs(definition['m_influenceWeights'][0]-1)>1e-6
                         or definition.get('m_bIgnoreRotation') or definition['m_bInfluenceRootTransform'][0]):
@@ -580,7 +594,8 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
                 original = root_points.get(tick)
                 samples=[dict(index=0,position=original['position'],rotation=original['rotation'])] if original else []
                 for cp,bone,offset in transforms:
-                    matrix=rig.matrix_world@rig.pose.bones[bone].matrix@offset
+                    matrix=(entity_objects[instance['entity_id']]['root'].matrix_world.copy() if bone is None
+                            else rig.matrix_world@rig.pose.bones[bone].matrix@offset)
                     pos,rot,scale=matrix.decompose()
                     samples.append(dict(index=cp,position=[x/.0254 for x in pos],
                                         rotation=[rot.x,rot.y,rot.z,rot.w]))
@@ -597,6 +612,7 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
             plan={key:data[key] for key in ('start_tick','end_tick','tick_rate')}
             plan.update(gameinfo=str(Path(runtime['install_path'])/'game/citadel/gameinfo.gi'),
                         seed=substitute_seed(data,instance),instances=[dict(instance,control_points=points)])
+            if broad:plan['instances'][0]['owned_broad_provider']=dict(policy=BROAD_POLICY)
             if model_provenance:plan['model_provider']=model_provenance
             stem=f'instance-{number:06d}'
             plan_path=out/f'{stem}.plan.json';result_path=out/f'{stem}.simulation.json'
@@ -619,6 +635,7 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
             if root_profile:
                 validate_model_response(simulation,instance['id'],model_provenance['bone_count'],
                     [0] if model_profile else [binding['control_point'] for binding in bindings])
+            elif broad:validate_broad_response(simulation,instance['id'],bindings)
             else:validate_control_response(simulation,instance['id'],bindings)
             if simulation['warnings']:raise ValueError('Simulator diagnostics: '+'; '.join(simulation['warnings']))
             simulation['instances'][0]['entity_id']=instance['entity_id']
@@ -632,12 +649,16 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
                      'scene_identity':scene_identity(data,[instance['entity_id']]),'simulation':simulation,'assets':assets,
                      'simulation_request_sha256':request_sha256,
                      'coverage_scope':'One recorded instance; automatic isolated simulation, approximate rendering. Other instances have separate coverage.'}
+            if broad:package['coverage_scope']=BROAD_SCOPE
             if model_provenance:package['model_provider']=model_provenance
             if literal_provenance:package['owned_literal_provider']=literal_provenance
             package_path=out/f'{stem}.package.json';package_path.write_text(json.dumps(package),encoding='utf-8')
             result=build_package_effects(package,data,package_path,scene,camera)
             report['rendered_instances']+=1
             entry={'id':instance['id'],'resource':instance['resource'],'package':str(package_path),'rendering':result}
+            if broad:
+                entry['unverified']=BROAD_POLICY
+                report['unverified_owned_instances']=report.get('unverified_owned_instances',0)+1
             if model_provenance:entry['model_provider']=model_provenance
             report['instances'].append(entry)
             for key in ('objects','particle_tracks','point_lights'):report[key]+=result.get(key,0)

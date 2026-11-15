@@ -163,7 +163,8 @@ def validate_package(package, scene):
                     or not supplied or any(type(i) is not int or not 0 <= i <= 63 for i in supplied + observed)
                     or supplied != sorted(set(supplied))
                     or not ((silence_package and instance.get('resource')==SILENCE)
-                            or confirmed_materialized_points(instance, supplied))):
+                            or confirmed_materialized_points(instance, supplied)
+                            or _unverified_inputs(instance, supplied))):
                 raise ValueError('Prepared particles have unqualified control-point dependencies')
         birth = instance.get('birth', scene['start_tick'])
         if type(birth) is not int or not 0 <= birth <= scene['end_tick']:
@@ -283,3 +284,11 @@ def build_package_effects(package, data, manifest_file, scene, camera):
                   scene_identity=package['scene_identity'], entity_ids=package['entity_ids'],
                   coverage_scope=package['coverage_scope'])
     return report
+
+
+def _unverified_inputs(instance, supplied):
+    """Broad paths: the effect may rewrite a supplied point itself, but may not read an unsupplied one."""
+    from .particle_owned_broad import is_unverified
+    return (is_unverified(instance) and instance.get('unprovided_control_point_indices') in (None, [])
+            and isinstance(instance.get('control_point_indices'), list)
+            and set(supplied) <= set(instance['control_point_indices']))

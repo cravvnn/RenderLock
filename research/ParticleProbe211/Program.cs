@@ -235,6 +235,14 @@ foreach (var instance in config.GetProperty("instances").EnumerateArray())
     if (hitboxInputs is not null) { row["model_hitbox_input_policy"] = HitboxRuntimeInputs.Policy; row["model_hitbox_bindings"] = hitboxInputs.Bindings; }
     if (replayEvents.SilenceBirthProvider.HasValue) { row["silence_birth_provider"] = replayEvents.SilenceBirthProvider.Value; row["authored_root_position_indices"] = authoredRoot.ToArray(); }
     if (replayEvents.WorldOriginProvider is not null) row["world_origin_provider"] = replayEvents.WorldOriginProvider.Value;
+    if (instance.TryGetProperty("owned_broad_provider", out var ownedBroad))
+    {
+        if (ownedBroad.ValueKind != JsonValueKind.Object || ownedBroad.EnumerateObject().Count() != 1
+            || ownedBroad.GetProperty("policy").GetString() != "agr_owned_broad_unverified_v1"
+            || replayEvents.WorldOriginProvider is not null)
+            throw new InvalidDataException("Unknown or combined broad owned provider");
+        row["owned_broad_provider"] = ownedBroad.Clone();
+    }
     if (models.Count > 0 && models.Values.Any(m => ((dynamic)m.Report).pose_reads == 0)) throw new InvalidDataException("A bound replay model was never read by the simulation");
     output.Add(row);
     foreach (var modelResource in modelResources) modelResource.Dispose();

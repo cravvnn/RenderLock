@@ -162,9 +162,14 @@ sealed class ReplayEventTimeline
             var index = instance.GetProperty("index").GetInt32();
             var generation = instance.GetProperty("generation").GetInt32();
             var handle = instance.GetProperty("entity_handle").GetUInt32();
+            // Broad owned path: any creation mode, and an effect created on another entity but simulated for the
+            // exported one it involves. Simulated as recorded and labelled unverified.
+            var broad = instance.TryGetProperty("owned_broad_provider", out var broadProvider)
+                && broadProvider.GetProperty("policy").GetString() == "agr_owned_broad_unverified_v1";
             if (index < 0 || generation < 1 || handle == uint.MaxValue
                 || instance.GetProperty("id").GetString() != $"{index}:{generation}"
-                || instance.GetProperty("entity_id").GetString() != $"{handle & 0x3fff}:{handle >> 14}")
+                || (broad ? instance.GetProperty("entity_id").ValueKind != JsonValueKind.String
+                    : instance.GetProperty("entity_id").GetString() != $"{handle & 0x3fff}:{handle >> 14}"))
                 throw new Exception("Recorded control/lifecycle requires exact particle generation and full entity identity");
             // This local fact is derived from independently validated inputs;
             // do not reinterpret the original CREATE or store another mode flag.
@@ -177,7 +182,8 @@ sealed class ReplayEventTimeline
 #endif
             if (creation.ValueKind != JsonValueKind.Object
                 || creation.GetProperty("entity_handle").GetUInt32() != handle
-                || (observedModeThree ? creation.GetProperty("attach_type").GetInt32() != 3
+                || (broad ? creation.GetProperty("attach_type").GetInt32() is < 0 or > 15
+                    : observedModeThree ? creation.GetProperty("attach_type").GetInt32() != 3
                     : creation.GetProperty("attach_type").GetInt32() is not (2 or 5))
                 || (creation.TryGetProperty("cluster", out var cluster) && cluster.GetBoolean()))
                 throw new Exception("Recorded control/lifecycle requires a qualified entity-owned creation provider");

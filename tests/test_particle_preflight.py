@@ -32,7 +32,8 @@ def test_preflight_definitely_unavailable_includes_reasons_but_no_false_success(
     result = preflight_recorded_bindings(scene([row]))
     assert result['status'] == 'unavailable' and result['possible_instances'] == 0
     assert result['rejection_groups'][0]['resource'] == 'particles/example.vpcf'
-    assert 'exact-serial' in result['rejection_groups'][0]['reason']
+    # The broad path is tried after the strict one; its reason is the one reported.
+    assert 'not exported' in result['rejection_groups'][0]['reason']
     assert 'requires simulation and rendering' in result['scope']
 
 

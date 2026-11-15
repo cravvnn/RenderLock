@@ -45,7 +45,8 @@ def test_legacy_simulations_keep_literals_but_cannot_guess_missing_control_value
     lambda s: s['instances'][0]['frames'][0]['systems'][0]['control_points'].append(dict(index=5, position=[0, 0, 0])),
     lambda s: s['instances'][0]['frames'][0]['systems'][0]['control_points'][1].update(index=9),
     lambda s: s['instances'][0]['frames'][0]['systems'][0]['control_points'][1].update(position=[math.nan, 0, 0]),
-    lambda s: s['instances'][0]['frames'][0]['systems'][0].update(system_age=-1),
+    # A negative age is only valid for a delayed child that has no particles yet.
+    lambda s: s['instances'][0]['frames'][0]['systems'][0].update(system_age=-1, particles=[dict()]),
 ])
 def test_unqualified_or_incomplete_snapshots_cannot_render_as_success(change):
     source = snapshot()

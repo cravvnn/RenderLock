@@ -77,7 +77,10 @@ def render_contexts(simulation, *, silence_context=None):
                     points[cp] = [finite(value) for value in position]
                 age = finite(system.get('system_age'))
                 if age < 0:
-                    raise UnsupportedEffect('Invalid particle renderer system age')
+                    # A delayed child reports a negative age until it starts; it has no particles yet.
+                    if system.get('particles'):
+                        raise UnsupportedEffect('Invalid particle renderer system age')
+                    age = 0.0
                 result[key] = dict(points=points, age=age)
     return result
 
@@ -132,8 +135,8 @@ def _unverified_world(instance, supplied):
 
     Every point the simulation read must still have been supplied or written by the definition.
     """
-    header = instance.get('world_origin_provider')
+    from .particle_owned_broad import is_unverified
     declared, unprovided = instance.get('declared_control_point_inputs'), instance.get('unprovided_control_point_indices')
-    return (isinstance(header, dict) and header.get('policy') == 'agr_world_literal_unverified_v1'
+    return (is_unverified(instance)
             and isinstance(declared, list) and set(supplied) <= set(declared) and unprovided == []
             and isinstance(instance.get('materialized_control_point_indices'), list))
