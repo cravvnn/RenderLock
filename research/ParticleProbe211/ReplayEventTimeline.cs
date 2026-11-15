@@ -10,6 +10,7 @@ sealed class ReplayEventTimeline
     private bool destroyImmediately;
     public const string Policy = "agr_recorded_control_lifecycle_v1";
     public JsonElement? WorldOriginProvider { get; private init; }
+    public bool BackfillLiterals { get; private set; }
 #if AGR_SIMULATION_HITBOX
     public JsonElement? SilenceBirthProvider { get; private init; }
 #endif
@@ -166,6 +167,7 @@ sealed class ReplayEventTimeline
             // exported one it involves. Simulated as recorded and labelled unverified.
             var broad = instance.TryGetProperty("owned_broad_provider", out var broadProvider)
                 && broadProvider.GetProperty("policy").GetString() == "agr_owned_broad_unverified_v1";
+            result.BackfillLiterals = broad;
             if (index < 0 || generation < 1 || handle == uint.MaxValue
                 || instance.GetProperty("id").GetString() != $"{index}:{generation}"
                 || (broad ? instance.GetProperty("entity_id").ValueKind != JsonValueKind.String
@@ -199,10 +201,11 @@ sealed class ReplayEventTimeline
         foreach (var group in literals.GroupBy(row => row.Point))
         {
             var updates = group.ToArray();
-            if (updates[0].Tick != birth) throw new Exception("Literal control point lacks creation-time data");
+            // Broad owned path: a point first set after creation holds that first value from creation.
+            if (updates[0].Tick != birth && !BackfillLiterals) throw new Exception("Literal control point lacks creation-time data");
             for (var tick = birth; tick <= end; tick++)
             {
-                var expected = updates.Last(row => row.Tick <= tick);
+                var expected = updates.LastOrDefault(row => row.Tick <= tick) ?? updates[0];
                 var snapshot = controls[tick];
                 JsonElement position, rotation;
                 if (group.Key == 0)

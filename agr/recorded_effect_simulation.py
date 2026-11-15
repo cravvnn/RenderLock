@@ -575,7 +575,7 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
             except ValueError:
                 # Broad path: simulate from the recorded bindings without a per-effect profile, labelled unverified.
                 from .particle_owned_broad import broad_bindings,POLICY as BROAD_POLICY,SCOPE as BROAD_SCOPE,validate_response as validate_broad_response
-                bindings=broad_bindings(instance,motion_start,data['end_tick'])
+                bindings=broad_bindings(instance,motion_start,data['end_tick'],exported=set(entity_objects))
                 model_profile=root_profile=False;broad=True
             literal_provenance=None
             from .particle_owned_literal import RESOURCE as LITERAL_RESOURCE,collect as collect_literal,DEFINITIONS as LITERAL_DEFINITIONS,validate_definitions as validate_literal_definitions
@@ -611,19 +611,21 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
                 if binding.get('provider') == 'literal_transform':
                     literal_bindings.append(binding)
                     continue
+                target=binding.get('target_entity') or instance['entity_id']
                 if binding.get('provider') == 'entity_origin':
-                    transforms.append((binding['control_point'],None,None))
+                    transforms.append((binding['control_point'],None,None,target))
                     continue
-                definition=attachments[f"{instance['entity_id']}/{binding['attachment']}"]['definition']
+                definition=attachments[f"{target}/{binding['attachment']}"]['definition']
                 if (definition['m_nInfluences']!=1 or abs(definition['m_influenceWeights'][0]-1)>1e-6
                         or definition.get('m_bIgnoreRotation') or definition['m_bInfluenceRootTransform'][0]):
                     raise ValueError('Unsupported attachment influence/rotation mode')
                 bone=definition['m_influenceNames'][0]
-                if rig is None or bone not in rig.pose.bones:raise ValueError('Attachment bone absent from exported rig')
+                target_rig=entity_objects[target]['rig']
+                if target_rig is None or bone not in target_rig.pose.bones:raise ValueError('Attachment bone absent from exported rig')
                 q=definition['m_vInfluenceRotations'][0]
                 offset=Matrix.LocRotScale(Vector(definition['m_vInfluenceOffsets'][0])*.0254,
                                          Quaternion((q[3],*q[:3])),Vector((1,1,1)))
-                transforms.append((binding['control_point'],bone,offset))
+                transforms.append((binding['control_point'],bone,offset,target))
             root_points = {point['tick']: point for point in points} if root_profile else {}
             if not root_profile:points=[]
             for tick in ([] if model_profile else range(instance['created_tick'],data['end_tick']+1)):
@@ -631,9 +633,10 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
                 scene.frame_set(math.floor(frame),subframe=frame-math.floor(frame))
                 original = root_points.get(tick)
                 samples=[dict(index=0,position=original['position'],rotation=original['rotation'])] if original else []
-                for cp,bone,offset in transforms:
-                    matrix=(entity_objects[instance['entity_id']]['root'].matrix_world.copy() if bone is None
-                            else rig.matrix_world@rig.pose.bones[bone].matrix@offset)
+                for cp,bone,offset,target in transforms:
+                    target_rig=entity_objects[target]['rig']
+                    matrix=(entity_objects[target]['root'].matrix_world.copy() if bone is None
+                            else target_rig.matrix_world@target_rig.pose.bones[bone].matrix@offset)
                     pos,rot,scale=matrix.decompose()
                     samples.append(dict(index=cp,position=[x/.0254 for x in pos],
                                         rotation=[rot.x,rot.y,rot.z,rot.w]))

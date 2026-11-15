@@ -3,9 +3,11 @@
 Used only after the strict providers have refused an instance. Nothing here is checked against the game and every
 package built this way says so. Covered: creation in any attach mode on the owner itself, control points bound at
 creation to the owner's origin or to one of its attachment points, literal transforms, release and destruction.
-A control point bound to an entity other than the exported owner uses its recorded fallback position, held still.
-Still refused: such a binding without a fallback position, a binding made or changed after creation, and non-zero
-attachment offsets.
+A control point bound to another exported character follows that character. One bound to an entity that is not
+exported uses its recorded fallback position, held still. A literal control point first set after creation holds
+its first recorded value from creation.
+Still refused: a binding to an unexported entity without a fallback position, a binding made or changed after
+creation, and non-zero attachment offsets.
 """
 import math
 from .particle_control_events import compile_control_events
@@ -33,8 +35,11 @@ def _zero_offsets(binding):
                 'attachment offsets are not supported')
 
 
-def broad_bindings(instance, start, end):
-    """Return one binding per control point: entity origin, attachment point or literal transform."""
+def broad_bindings(instance, start, end, exported=()):
+    """Return one binding per control point: entity origin, attachment point or literal transform.
+
+    exported: identities of every character in the scene; a binding to one of them carries 'target_entity'.
+    """
     controls = compile_control_events(instance, start, end)
     birth = instance['created_tick']
     index, generation, handle = (instance.get(field) for field in ('index', 'generation', 'entity_handle'))
@@ -59,7 +64,9 @@ def broad_bindings(instance, start, end):
         mode, attachment = binding.get('attach_type'), binding.get('attachment')
         require(type(mode) is int and type(attachment) is int, 'invalid entity binding mode')
         _zero_offsets(binding)
-        if not own(binding.get('entity_handle')):
+        bound = binding.get('entity_handle')
+        target = f'{bound & 0x3fff}:{bound >> 14}' if type(bound) is int else None
+        if not own(bound) and target not in exported:
             fallback = binding.get('fallback_position')
             require(isinstance(fallback, dict) and set(fallback) <= set('xyz')
                     and all(type(v) in (int, float) and math.isfinite(v) and abs(v) <= 131072 for v in fallback.values()),
@@ -70,9 +77,9 @@ def broad_bindings(instance, start, end):
                                               interpolation_interval=0)])
             continue
         if mode in (0, 1) and attachment == 0:
-            bindings[cp] = dict(control_point=cp, provider='entity_origin')
+            bindings[cp] = dict(control_point=cp, provider='entity_origin', target_entity=target)
         elif mode in (4, 5) and attachment > 0:
-            bindings[cp] = dict(binding)
+            bindings[cp] = dict(binding, target_entity=target)
         else:
             raise ValueError(f'Owned particles: binding mode {mode} with attachment {attachment} is not supported')
     for update in controls['literal_transforms']:
@@ -81,13 +88,15 @@ def broad_bindings(instance, start, end):
                                or bindings[cp].get('other_entity_fallback')):
             raise ValueError('Owned particles: a literal transform replacing an entity binding is not supported')
         if cp not in bindings:
-            require(update['tick'] == birth, 'a literal control point needs its creation-time value')
             bindings[cp] = dict(control_point=cp, provider='literal_transform', updates=[])
+            if update['tick'] != birth:
+                # First set after creation: hold that first value from creation (the game's own default is unknown).
+                bindings[cp]['updates'].append(dict(update, tick=birth, backfilled=True))
         bindings[cp]['updates'].append(update)
     if 0 not in bindings:
         require(creation['attach_type'] in ORIGIN_CREATION_MODES and own(handle),
                 'no control point 0 binding is recorded')
-        bindings[0] = dict(control_point=0, provider='entity_origin')
+        bindings[0] = dict(control_point=0, provider='entity_origin', target_entity=owner)
     return [bindings[cp] for cp in sorted(bindings)]
 
 

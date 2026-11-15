@@ -31,7 +31,7 @@ def bind(order, point, handle, mode, attachment, **extra):
 def test_follow_creation_without_bindings_uses_the_owner_origin():
     rows = broad_bindings(instance([event('DESTROY', 1, tick=120, destroy_particle=dict(destroy_immediately=False))]),
                           90, 130)
-    assert rows == [dict(control_point=0, provider='entity_origin')]
+    assert rows == [dict(control_point=0, provider='entity_origin', target_entity='56:895')]
 
 
 def test_origin_attachment_and_literal_points_are_each_bound():
@@ -109,3 +109,17 @@ def test_broad_asset_collection_leaves_out_unbuildable_layers_instead_of_refusin
     omitted = assets['omitted_layers']['particles/example.vpcf']
     assert sorted(omitted) == ['0', '1', '2']
     assert 'no texture' in omitted['0'] and 'model layer left out' in omitted['1'] and 'not supported' in omitted['2']
+
+
+def test_point_on_another_exported_character_follows_that_character():
+    rows = broad_bindings(instance([bind(1, 0, OWNER, 5, 3), bind(2, 1, OTHER, 1, 0)], mode=2), 90, 130,
+                          exported={'56:895', '58:283'})
+    assert rows[1] == dict(control_point=1, provider='entity_origin', target_entity='58:283')
+
+
+def test_literal_first_set_after_creation_is_held_from_creation():
+    late = event('UPDATE_TRANSFORM', 3, tick=104, update_particle_transform=dict(control_point=1, position=dict(x=9, y=8, z=7)))
+    rows = broad_bindings(instance([late]), 90, 130)
+    updates = rows[1]['updates']
+    assert [u['tick'] for u in updates] == [100, 104] and updates[0]['backfilled'] is True
+    assert updates[0]['position'] == updates[1]['position'] == [9.0, 8.0, 7.0]
