@@ -64,7 +64,8 @@ def prepare_world_literal_package(data, instance, runtime, provider, decoder, ad
     sim['instances'][0]['entity_id'] = None
     # The same asset collection as owned effects: sprite sheets, texture defaults, light and rope inputs, models.
     from .particle_render_assets import prepare_render_assets
-    assets = prepare_render_assets(set(definitions), decoder, adapter, provider, runtime, definitions=definitions)
+    assets = prepare_render_assets(set(definitions), decoder, adapter, provider, runtime, definitions=definitions,
+                                   omit_unsupported_layers=True)
     assets.setdefault('models', {})
     package = dict(schema_version=1, backend=BACKEND, entity_ids=[], scene_identity=world_identity(data, instance),
                    world_origin_provider=header, simulation_request_sha256=request_sha, simulation=sim, assets=assets,

@@ -289,7 +289,8 @@ def validate_renderer_classes(tracks, assets, simulation=None, *, scene=None):
         from .particle_standard_light import validate_native_inputs
         validate_native_inputs(assets['provenance']['native_standard_light'])
     for resource in sorted({key[2] for key in tracks}):
-        for renderer in assets['definitions'][resource].get('m_Renderers',[]):
+        for layer_index,renderer in enumerate(assets['definitions'][resource].get('m_Renderers',[])):
+            if str(layer_index) in assets.get('omitted_layers',{}).get(resource,{}):continue
             kind=renderer.get('_class')
             if kind in ('C_OP_RenderSprites','C_OP_RenderTrails'):
                 from .particle_texture_layers import enabled_texture_layers
@@ -614,6 +615,9 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254,
                     particles=particles,camera_position=[float(v/unit_scale) for v in evaluated.matrix_world.translation],
                     camera_projection=parameters))
             for index,renderer in renderers:
+                if str(index) in assets.get('omitted_layers',{}).get(resource,{}):
+                    omissions.append(resource+': '+assets['omitted_layers'][resource][str(index)])
+                    continue
                 if renderer.get('m_bOnlyRenderInEffectsBloomPass'):
                     omissions.append(resource+': source bloom-only pass omitted; use scene compositor glare')
                     continue
@@ -665,6 +669,9 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254,
             raise UnsupportedEffect('Changing sprite sequences are not implemented: '+resource)
         definition=assets['definitions'][resource]
         for index,renderer in enumerate(definition.get('m_Renderers',[])):
+            if str(index) in assets.get('omitted_layers',{}).get(resource,{}):
+                omissions.append(resource+': '+assets['omitted_layers'][resource][str(index)])
+                continue
             if renderer['_class']=='C_OP_RenderModels':
                 from .blender_particle_models import build_model_particle
                 name=f'AGR FX model | {instance} | {system_path} | {particle_id}.{index}'

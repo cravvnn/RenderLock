@@ -644,7 +644,7 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
                 raise ValueError('Simulator regeneration system tree differs from qualified definitions')
             from .particle_render_assets import prepare_render_assets
             assets=prepare_render_assets(names,decoder,adapter,provider,runtime,
-                definitions=definitions,textures=textures)
+                definitions=definitions,textures=textures,omit_unsupported_layers=broad)
             package={'schema_version':1,'backend':'simulated_states_v1','entity_ids':[instance['entity_id']],
                      'scene_identity':scene_identity(data,[instance['entity_id']]),'simulation':simulation,'assets':assets,
                      'simulation_request_sha256':request_sha256,

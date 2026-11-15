@@ -87,3 +87,25 @@ def test_delayed_child_with_no_particles_is_not_an_error():
     simulation = dict(control_point_snapshot_policy=controls.SNAPSHOT_POLICY, instances=[row])
     contexts = render_contexts(simulation)
     assert contexts[('7:1', 'root/6', 100)]['age'] == 0.0
+
+
+def test_broad_asset_collection_leaves_out_unbuildable_layers_instead_of_refusing():
+    from agr.particle_render_assets import prepare_render_assets
+
+    class Decoder:
+        identity = 'decoder'
+
+    class Provider:
+        def resolve(self, name):
+            import types
+            return types.SimpleNamespace(sha256='ab' * 32)
+    definitions = {'particles/example.vpcf': {'m_Renderers': [
+        {'_class': 'C_OP_RenderSprites', 'm_vecTexturesInput': []},
+        {'_class': 'C_OP_RenderModels', 'm_ModelList': [{'m_model': 'a.vmdl'}], 'm_unknown': 1},
+        {'_class': 'C_OP_RenderDeferredLight'},
+    ]}}
+    assets = prepare_render_assets({'particles/example.vpcf'}, Decoder(), None, Provider(), {},
+                                   definitions=definitions, omit_unsupported_layers=True)
+    omitted = assets['omitted_layers']['particles/example.vpcf']
+    assert sorted(omitted) == ['0', '1', '2']
+    assert 'no texture' in omitted['0'] and 'model layer left out' in omitted['1'] and 'not supported' in omitted['2']

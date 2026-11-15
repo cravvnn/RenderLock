@@ -5,7 +5,10 @@ from .particle_model_assets import prepare_model, model_resource
 from .particle_texture_layers import enabled_texture_layers
 
 
-def prepare_render_assets(names, decoder, adapter, provider, runtime, *, definitions=None, textures=None, allow_authored_models=False):
+def prepare_render_assets(names, decoder, adapter, provider, runtime, *, definitions=None, textures=None, allow_authored_models=False,
+                          omit_unsupported_layers=False):
+    """omit_unsupported_layers (broad, unverified paths only): a model layer or renderer class the importer cannot
+    build is recorded under 'omitted_layers' and left out, instead of refusing the whole effect."""
     definitions = {} if definitions is None else definitions
     textures = {} if textures is None else textures
     for name in names:
@@ -28,10 +31,29 @@ def prepare_render_assets(names, decoder, adapter, provider, runtime, *, definit
                 raise UnsupportedEffect('Conflicting original particle sheet for the same texture')
             descriptor['source_sheet'] = sheet
     models = {}
+    omitted = {}
+    known = {'C_OP_RenderSprites', 'C_OP_RenderTrails', 'C_OP_RenderStandardLight', 'C_OP_RenderRopes',
+             'C_OP_RenderModels', 'C_OP_RenderProjected'}
     for name in sorted(names):
-        for renderer in definitions[name].get('m_Renderers', []):
+        for index, renderer in enumerate(definitions[name].get('m_Renderers', [])):
+            if omit_unsupported_layers and renderer.get('_class') not in known:
+                omitted.setdefault(name, {})[str(index)] = 'renderer ' + str(renderer.get('_class')) + ' is not supported'
+                continue
+            if omit_unsupported_layers and renderer.get('_class') in ('C_OP_RenderSprites', 'C_OP_RenderTrails'):
+                layers = enabled_texture_layers(renderer.get('m_vecTexturesInput', []))
+                if (not layers or any(not layer.get('m_bReplaceTextureWithGradient')
+                        and (not isinstance(layer.get('m_hTexture'), str) or not layer['m_hTexture'])
+                        for _, layer in layers)):
+                    omitted.setdefault(name, {})[str(index)] = 'sprite layer left out: it names no texture'
+                continue
             if renderer.get('_class') != 'C_OP_RenderModels':
                 continue
+            if omit_unsupported_layers:
+                try:
+                    model_resource(renderer)
+                except UnsupportedEffect as reason:
+                    omitted.setdefault(name, {})[str(index)] = 'model layer left out: ' + str(reason)
+                    continue
             from .particle_authored_model import is_authored_renderer, prepare_authored_model, MODEL
             if allow_authored_models and is_authored_renderer(renderer):
                 from .particle_model_assets import geometry_runtime
@@ -61,6 +83,8 @@ def prepare_render_assets(names, decoder, adapter, provider, runtime, *, definit
             input_sha256={n: provider.resolve(compiled(n)).sha256 for n in names | texture_names}))
     if models:
         result['models'] = models
+    if omitted:
+        result['omitted_layers'] = omitted
     from .particle_projected_material import collect_projected_materials
     projected_materials = collect_projected_materials(result['definitions'], decoder, adapter, provider)
     if projected_materials:
