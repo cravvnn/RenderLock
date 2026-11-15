@@ -61,9 +61,60 @@ def override_profile(material):
                 emissive=additive or ints.get('F_SELF_ILLUM') == 1 or 'unlit' in shader or 'pbr' not in shader)
 
 
+def convert_effect_model(decoder, resource, provider):
+    """Geometry and materials of one model as GLB. Kept apart from the hero conversion so its cache is untouched."""
+    import json
+    import shutil
+    import subprocess
+    from pathlib import Path
+    from .asset_converter import ConversionError, read_glb
+    visual = {'.vmdl_c', '.vmesh_c', '.vmat_c', '.vtex_c', '.vnmskel_c'}
+    queue, records = [compiled(resource)], {}
+    while queue:
+        path = queue.pop()
+        if path in records:
+            continue
+        if len(records) >= 512:
+            raise ConversionError('Effect model dependency bound exceeded')
+        records[path] = provider.resolve(path)
+        queue.extend(dep for dep in map(compiled, records[path].dependencies) if Path(dep).suffix.lower() in visual)
+    # Material texture channels are discovered from compiled shader files, as for hero models.
+    for path in sorted(p for p in provider.resources if p.endswith('.vcs')):
+        resolved = provider.resolve(path)
+        records[resolved.resource_path] = resolved
+    inputs = {name: record.sha256 for name, record in sorted(records.items())}
+
+    def build(temp):
+        tree = temp / 'input'
+        tree.mkdir()
+        for name, record in records.items():
+            target = tree / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(record.local_path, target)
+        gameinfo = tree / 'gameinfo.gi'
+        gameinfo.write_text('"GameInfo" { "FileSystem" { "SearchPaths" { "Game" '
+                            + json.dumps(tree.resolve().as_posix(), ensure_ascii=False) + ' } } }\n', encoding='utf-8')
+        out = temp / 'model.glb'
+        proc = subprocess.run([str(decoder.executable), '-i', str(tree / compiled(resource)), '-o', str(out), '-d',
+                               '--game', str(gameinfo), '--gltf_export_format', 'glb', '--gltf_export_materials',
+                               '--gltf_export_animations', '--gltf_animation_list', '__agr_no_source_actions__',
+                               '--gltf_textures_adapt'],
+                              capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=600)
+        (temp / 'converter.log').write_text(proc.stdout + '\n' + proc.stderr, encoding='utf-8')
+        if proc.returncode or not out.is_file():
+            raise ConversionError(f'Effect model conversion failed for {resource}: {(proc.stdout + proc.stderr)[-1500:]}')
+        if not read_glb(out).get('meshes'):
+            raise ConversionError(f'Converted effect model has no geometry: {resource}')
+        shutil.rmtree(tree)
+        for physics in temp.glob('model_physics.*'):
+            physics.unlink()
+    settings = dict(format='glb', materials=True, textures_adapt=True, policy=POLICY)
+    return decoder._entry('effect_model_glb', inputs, settings, build) / 'model.glb'
+
+
 def prepare_generic_model(decoder, adapter, renderer, provider):
     resource, override = fixed_model(renderer)
-    glb, _ = decoder.model(resource, provider, require_skin=False)
+    glb = convert_effect_model(decoder, resource, provider)
     descriptor = dict(policy=POLICY, resource=resource, glb=str(glb), glb_sha256=sha(glb),
                       source_sha256=provider.resolve(compiled(resource)).sha256)
     textures = {}

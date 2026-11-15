@@ -89,15 +89,15 @@ def test_delayed_child_with_no_particles_is_not_an_error():
     assert contexts[('7:1', 'root/6', 100)]['age'] == 0.0
 
 
-def test_broad_asset_collection_leaves_out_unbuildable_layers_instead_of_refusing():
+def test_broad_asset_collection_leaves_out_unbuildable_layers_instead_of_refusing(monkeypatch):
+    def no_model(decoder, resource, provider):
+        raise ValueError('no such model')
+    monkeypatch.setattr('agr.particle_generic_model.convert_effect_model', no_model)
     from agr.particle_render_assets import prepare_render_assets
 
     class Decoder:
         identity = 'decoder'
 
-        def model(self, resource, provider, require_skin=True):
-            from agr.asset_converter import ConversionError
-            raise ConversionError('no such model')
 
     class Provider:
         def resolve(self, name):
@@ -165,7 +165,7 @@ def test_unsupported_configurations_stay_refused(definition, message):
         broad_bindings(configured_instance(), 90, 130, definition=definition)
 
 
-def test_broad_asset_collection_builds_a_fixed_model_by_the_general_path(tmp_path):
+def test_broad_asset_collection_builds_a_fixed_model_by_the_general_path(tmp_path, monkeypatch):
     from agr.particle_generic_model import POLICY as MODEL_POLICY, key
     from agr.particle_render_assets import prepare_render_assets
     import types
@@ -175,15 +175,13 @@ def test_broad_asset_collection_builds_a_fixed_model_by_the_general_path(tmp_pat
     class Decoder:
         identity = 'decoder'
 
-        def model(self, resource, provider, require_skin=True):
-            assert require_skin is False
-            return glb, {}
 
     class Provider:
         def resolve(self, name):
             return types.SimpleNamespace(sha256='ab' * 32)
     renderer = {'_class': 'C_OP_RenderModels', 'm_ModelList': [{'m_model': 'models/a.vmdl'}], 'm_bOrientZ': True,
                 'm_bEnableClothSimulation': True}
+    monkeypatch.setattr('agr.particle_generic_model.convert_effect_model', lambda decoder, resource, provider: glb)
     assets = prepare_render_assets({'particles/example.vpcf'}, Decoder(), None, Provider(), {},
                                    definitions={'particles/example.vpcf': {'m_Renderers': [renderer]}},
                                    omit_unsupported_layers=True)
