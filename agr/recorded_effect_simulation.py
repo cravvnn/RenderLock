@@ -472,7 +472,20 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
     world_finished={}
     report['finished_before_clip']={'world_by_simulation':0,'world_older_than_finished_instance':0,'owned_destroyed_before_history':0}
     DESTROY_TAIL_TICKS=5*data['tick_rate']
+    # Every frame change evaluates all animated objects in the view layer. Effects that are already built are
+    # taken out of the view layer while later ones are built, and put back before the scene is saved.
+    parked=set()
+    def park_built_effects():
+        for layer in scene.view_layers:
+            for child in layer.layer_collection.children:
+                if child.collection.name.startswith('AGR Simulated Effects') and not child.exclude:
+                    child.exclude=True;parked.add(child.collection.name)
+    def restore_built_effects():
+        for layer in scene.view_layers:
+            for child in layer.layer_collection.children:
+                if child.collection.name in parked:child.exclude=False
     for number,instance in enumerate(instances):
+        park_built_effects()
         try:
             if instance.get('selection_scope') == WORLD_CUSTOM_ORIGIN_SCOPE:
                 if not is_world_custom_origin_candidate(instance):
@@ -693,6 +706,7 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
             reject(instance,str(exc))
     report['unsupported']=list(grouped.values())
     report['unsupported_by_birth_scope'] = dict(rejected_scopes)
+    park_built_effects()
     if 'network_projectiles' in data:
         from .recorded_projectile_effects import build_projectile_effects,merge_projectile_report
         projectiles=build_projectile_effects(data,scene,camera,runtime,provider,decoder,adapter)
@@ -719,6 +733,7 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
             json.dump(runtime['captured_ambient_inputs'], stream, allow_nan=False)
         ambient = build_captured_ambient(runtime['captured_ambient_inputs'], data, ambient_path, scene, camera)
         merge_captured_ambient_report(report, ambient)
+    restore_built_effects()
     report['unsupported_occurrences']=sum(r['occurrences'] for r in report['unsupported'])
     if not report['objects']:report.update(status='unavailable',reason='No recorded instance completed simulation and rendering')
     (out/'coverage.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
