@@ -114,12 +114,13 @@ def isolated_helpers(tmp_path, packager, monkeypatch):
     for folder, dll in [(simulation, 'ParticleSimulationProbe'), (geometry, 'ParticleGeometryProbe')]:
         folder.mkdir()
         for name in [dll+'.dll', dll+'.deps.json', dll+'.runtimeconfig.json',
-                     'ValveResourceFormat.dll', 'libSkiaSharp.dll', 'spirv-cross.dll']:
+                     'ValveResourceFormat.dll', 'libSkiaSharp.dll', 'spirv-cross.dll',
+                     *(['Tests.dll'] if folder is simulation else [])]:
             (folder / name).write_bytes(b'typed fixture')
     real_digest = packager.digest
     def digest(path):
         if path.name == 'ValveResourceFormat.dll':
-            return ('2fa0d37b732c457cc839dde6f3db7736fd3d3e76fb4ded287c90fad98927f608'
+            return ('2fc589d3ca6c78eaa6245a29ee7cffeaf2e54e840fc39a6cd77a827b1794ba71'
                     if path.parent == simulation else
                     '5c37d80d5962445ff9754897e695b50b0873b24dda7bca02c4e8868466a5e90e')
         return real_digest(path)
@@ -138,7 +139,7 @@ def test_geometry_without_rest_inventory_refuses(packager, isolated_helpers, mon
         packager.verify_isolated_particle_helpers(*isolated_helpers)
 
 
-@pytest.mark.parametrize('missing', ['libSkiaSharp.dll', 'spirv-cross.dll', 'ParticleSimulationProbe.deps.json'])
+@pytest.mark.parametrize('missing', ['libSkiaSharp.dll', 'spirv-cross.dll', 'ParticleSimulationProbe.deps.json', 'Tests.dll'])
 def test_isolated_runtime_requires_complete_dependencies(packager, isolated_helpers, missing):
     (isolated_helpers[0] / missing).unlink()
     with pytest.raises(ValueError, match='Incomplete simulation helper'):

@@ -95,8 +95,10 @@ def verify_isolated_particle_helpers(simulation, geometry, runtime):
         raise ValueError("Separate simulation, geometry and .NET runtimes are required")
     result = {}
     profiles = (
+        # Source 2 Viewer 21.1, unmodified, built locally; simulation and hitbox inventory are all the app asks of it.
         ('simulation', simulation, 'ParticleSimulationProbe.dll', '--capabilities-v1',
-         '2fa0d37b732c457cc839dde6f3db7736fd3d3e76fb4ded287c90fad98927f608', PARTICLE_COMMANDS),
+         '2fc589d3ca6c78eaa6245a29ee7cffeaf2e54e840fc39a6cd77a827b1794ba71',
+         {'simulate-world-origin-v1', 'inventory-model-hitboxes'}),
         ('geometry', geometry, 'ParticleGeometryProbe.dll', '--capabilities',
          '5c37d80d5962445ff9754897e695b50b0873b24dda7bca02c4e8868466a5e90e',
          {'particle-model-v1', 'particle-authored-model-v1', 'particle-static-model-v1',
@@ -106,7 +108,8 @@ def verify_isolated_particle_helpers(simulation, geometry, runtime):
     for name, folder, dll, flag, parser_sha, required in profiles:
         folder, runtime = folder.resolve(), runtime.resolve()
         for member in (dll, 'ValveResourceFormat.dll', 'libSkiaSharp.dll', 'spirv-cross.dll',
-                       Path(dll).stem + '.deps.json', Path(dll).stem + '.runtimeconfig.json'):
+                       Path(dll).stem + '.deps.json', Path(dll).stem + '.runtimeconfig.json',
+                       *(('Tests.dll',) if name == 'simulation' else ())):
             if not (folder / member).is_file():
                 raise ValueError(f"Incomplete {name} helper: {member}")
         if digest(folder / 'ValveResourceFormat.dll') != parser_sha:
@@ -130,6 +133,7 @@ def stage_source(root, output):
     excluded_tests = []
     for folder in ("agr", "native", "tests", "tools", "artwork", "docs",
                    "research/ParticleProbe", "research/ParticleSimulationProbe", "research/ParticleGeometryProbe",
+                   "research/ParticleProbe211", "research/ParticleSimulationProbe211",
                    "research/patches"):
         for path in sorted((root / folder).rglob("*")):
             relative = path.relative_to(root)
@@ -321,8 +325,9 @@ def stage_dotnet(portable, directory):
         copy_file(directory / name, target / name)
     shutil.copytree(directory / "host", target / "host")
     shared = directory / "shared" / "Microsoft.NETCore.App"
-    runtime = sorted(path for path in shared.iterdir() if path.is_dir())[-1]
-    shutil.copytree(runtime, target / "shared" / "Microsoft.NETCore.App" / runtime.name)
+    # Every runtime version present is bundled: the 21.1 simulator needs .NET 11, the other helpers .NET 10.
+    for runtime in sorted(path for path in shared.iterdir() if path.is_dir()):
+        shutil.copytree(runtime, target / "shared" / "Microsoft.NETCore.App" / runtime.name)
 
 
 def package(root, output, native_helper, source2viewer_dir=None, lighting_kit=None,

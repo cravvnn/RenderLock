@@ -13,7 +13,7 @@ using ValveResourceFormat.ResourceTypes;
 
 if (args.Length == 1 && args[0] == "--capabilities-v1")
 {
-    Console.WriteLine(JsonSerializer.Serialize(new { schema_version = 1, commands = new[] { "simulate-world-origin-v1" } }));
+    Console.WriteLine(JsonSerializer.Serialize(new { schema_version = 1, commands = new[] { "simulate-world-origin-v1", "inventory-model-hitboxes" } }));
     return;
 }
 // Authored hitbox metadata only (unchanged b30 command); no simulation.

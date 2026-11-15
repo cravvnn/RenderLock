@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The shipped particle simulator: a small host with the name RenderLock looks for, running ../ParticleProbe211. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFramework>net11.0</TargetFramework><AssemblyName>ParticleSimulationProbe</AssemblyName>
+    <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup><Compile Include="Program.cs" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="../ParticleProbe211/Tests.csproj" /></ItemGroup>
+</Project>
