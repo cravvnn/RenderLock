@@ -17,6 +17,11 @@ SCOPE=('Native default point/FX light color, intensity and finite falloff rules;
 LOOKUP_ABSOLUTE_ERROR=4e-7
 FALLOFF_EPSILON=2**-23
 PROFILE_KEY='native_standard_light'
+# Review calibration. A Blender point light of P watts has radiant intensity P/(4 pi^2) and a diffuse surface
+# returns albedo/pi of its irradiance, so matching albedo * rgb / d^2 needs P = 4 pi^3 * rgb. The earlier 4 pi
+# left the Flashbang light about ten times too weak against one game frame (pi^2 was the closest of 1, pi, pi^2).
+# Assumes the game's diffuse term has no 1/pi; judged by eye and five frame patches on one effect only.
+BLENDER_POINT_WATTS_PER_SOURCE_INTENSITY=4.*math.pi**3
 PROFILE_POLICY='agr_native_default_point_fx_profile_v1'
 PARTICLES_SHA='46ae70beaef7935e27794d2148406407605994b59fa5ff19f9a37c8ba68c129f'
 
@@ -112,6 +117,6 @@ def parameters(renderer,particle,unit_scale,*,context=None):
     offset=_f32(1./_f32(power_distance+FALLOFF_EPSILON))if power_distance>0 else 0.
     peak=max(rgb);chroma=rgb if peak else linear;chroma_peak=max(chroma)
     return dict(color=[v/chroma_peak for v in chroma]if chroma_peak else[0.,0.,0.],
-                energy=4.*math.pi*peak*unit_scale**2,range=effective*unit_scale,
+                energy=BLENDER_POINT_WATTS_PER_SOURCE_INTENSITY*peak*unit_scale**2,range=effective*unit_scale,
                 source_rgb=rgb,source_range=effective,falloff_offset=offset,unit_scale=unit_scale,
                 attenuation=config['attenuation'],casts_shadows=config['casts_shadows'],policy=POLICY)

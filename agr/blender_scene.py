@@ -800,7 +800,8 @@ def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime
     scene = bpy.context.scene
     # Engine-dependent lights/materials must be built for the engine that the
     # saved scene will use, rather than factory startup's current engine.
-    scene.render.engine = 'BLENDER_EEVEE' if character_shader is not None else 'CYCLES'
+    from agr.scene_engine import scene_render_engine
+    scene.render.engine = scene_render_engine(character_shader, external_map, pending_world_receivers)
     scene.name = "RenderLock | replay segment"
     if pending_world_receivers or external_map is not None:
         scene["agr_pending_world_receivers"] = True
