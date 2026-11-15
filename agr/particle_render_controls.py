@@ -51,7 +51,7 @@ def render_contexts(simulation, *, silence_context=None):
         if (not isinstance(supplied, list) or not supplied
                 or any(type(cp) is not int or not 0 <= cp <= 63 for cp in supplied)
                 or supplied != sorted(set(supplied))
-                or not (confirmed_materialized_points(instance, supplied)
+                or not (confirmed_materialized_points(instance, supplied) or _unverified_world(instance, supplied)
                         or qualified_silence is not None and instance['id'] == qualified_silence)):
             raise UnsupportedEffect('Renderer control points lack qualified input provenance')
         allowed = set(instance['materialized_control_point_indices'])
@@ -125,3 +125,15 @@ def render_scalar(value, *, context=None, default=0, age=None):
     elif mode != 'PF_MAP_TYPE_DIRECT':
         raise UnsupportedEffect('Scalar mapping ' + str(mode))
     return finite(result)
+
+
+def _unverified_world(instance, supplied):
+    """Broad world path: the effect may itself rewrite a supplied control point (as it does in the game).
+
+    Every point the simulation read must still have been supplied or written by the definition.
+    """
+    header = instance.get('world_origin_provider')
+    declared, unprovided = instance.get('declared_control_point_inputs'), instance.get('unprovided_control_point_indices')
+    return (isinstance(header, dict) and header.get('policy') == 'agr_world_literal_unverified_v1'
+            and isinstance(declared, list) and set(supplied) <= set(declared) and unprovided == []
+            and isinstance(instance.get('materialized_control_point_indices'), list))

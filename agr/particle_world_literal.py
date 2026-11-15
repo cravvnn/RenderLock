@@ -45,7 +45,8 @@ def literal_controls(scene, instance):
     require(all(type(e.get('order')) is int for e in events), 'recorded event order is required')
     creation = events[0].get('data', {}).get('create_particle')
     require(creation == instance.get('create') and isinstance(creation, dict)
-            and set(creation) == {'particle_name_index', 'attach_type', 'entity_handle', 'cluster'}
+            and {'particle_name_index', 'attach_type', 'entity_handle', 'cluster'} <= set(creation)
+            <= {'particle_name_index', 'attach_type', 'entity_handle', 'cluster', 'aggregation_position'}
             and creation.get('cluster') is False
             and instance.get('resource_hash') == creation.get('particle_name_index'),
             'creation fields or resource identity differ')

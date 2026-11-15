@@ -30,7 +30,6 @@ def definition_tree(resource, decoder, provider):
 def prepare_world_literal_package(data, instance, runtime, provider, decoder, adapter, directory):
     from .particle_runtime import particle_command, particle_environment
     from .recorded_effect_simulation import substitute_seed, validate_request_response, validate_seed_response
-    from .asset_converter import compiled
     header = request_header(data, instance)
     definitions = definition_tree(instance['resource'], decoder, provider)
     out = Path(directory)
@@ -63,19 +62,10 @@ def prepare_world_literal_package(data, instance, runtime, provider, decoder, ad
     if not names or not names <= set(definitions):
         raise ValueError('World simulation system tree differs from the decoded effect tree')
     sim['instances'][0]['entity_id'] = None
-    texture_names = {layer['m_hTexture'] for name in names for renderer in definitions[name].get('m_Renderers', [])
-                     for layer in renderer.get('m_vecTexturesInput', []) if layer.get('m_hTexture')}
-    textures = {}
-    for name in sorted(texture_names):
-        folder, descriptor = adapter.texture(name, provider)
-        textures[name] = {**descriptor, 'directory': str(folder)}
-    inputs = {name: provider.resolve(compiled(name)).sha256 for name in set(definitions) | texture_names}
-    assets = dict(models={}, definitions=definitions, textures=textures,
-                  provenance=dict(converter=decoder.identity, input_sha256=inputs))
-    from .particle_projected_material import collect_projected_materials
-    projected_materials = collect_projected_materials(definitions, decoder, adapter, provider)
-    if projected_materials:
-        assets['projected_materials'] = projected_materials
+    # The same asset collection as owned effects: sprite sheets, texture defaults, light and rope inputs, models.
+    from .particle_render_assets import prepare_render_assets
+    assets = prepare_render_assets(set(definitions), decoder, adapter, provider, runtime, definitions=definitions)
+    assets.setdefault('models', {})
     package = dict(schema_version=1, backend=BACKEND, entity_ids=[], scene_identity=world_identity(data, instance),
                    world_origin_provider=header, simulation_request_sha256=request_sha, simulation=sim, assets=assets,
                    coverage_scope=SCOPE)

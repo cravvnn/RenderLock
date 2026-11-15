@@ -119,7 +119,8 @@ static class WorldOriginInputs
         var summary = instance.GetProperty("create");
         var hash = instance.GetProperty("resource_hash").GetString();
         foreach (var row in new[] { creation, summary })
-            Require(Fields(row, "particle_name_index", "attach_type", "entity_handle", "cluster")
+            Require((Fields(row, "particle_name_index", "attach_type", "entity_handle", "cluster")
+                    || Fields(row, "particle_name_index", "attach_type", "entity_handle", "cluster", "aggregation_position"))
                 && row.GetProperty("particle_name_index").GetString() == hash && row.GetProperty("attach_type").GetInt32() == 8
                 && row.GetProperty("entity_handle").GetUInt32() == 0xffffff && !row.GetProperty("cluster").GetBoolean(),
                 "creation fields differ from the unowned world profile");
