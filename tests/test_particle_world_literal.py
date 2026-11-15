@@ -47,7 +47,7 @@ def test_every_tick_carries_the_latest_recorded_value_of_each_point():
     (lambda s, i: i['events'].append(dict(type='DESTROY', tick=103, order=15, data={})), 'only literal transforms'),
     (lambda s, i: i['events'].pop(1), 'no recorded origin'),
     (lambda s, i: i['events'].__setitem__(2, transform(101, 12, 2, (4, 5, 6))), 'creation-time value'),
-    (lambda s, i: i.update(created_tick=80), 'in-range birth'),
+    (lambda s, i: s.update(end_tick=100 + 5000), 'more than 64 s'),
     (lambda s, i: i.update(entity_handle=5), 'unattached creation'),
 ])
 def test_shapes_outside_the_literal_profile_stay_refused(change, message):
@@ -56,3 +56,10 @@ def test_shapes_outside_the_literal_profile_stay_refused(change, message):
     change(scene, instance)
     with pytest.raises(ValueError, match=message):
         literal_controls(scene, instance)
+
+
+def test_effect_born_before_the_clip_is_simulated_from_its_true_birth():
+    scene, instance = scene_and_instance()
+    scene.update(start_tick=102, end_tick=110)
+    rows = control_points(scene, instance)
+    assert rows[0]['tick'] == 100 and rows[-1]['tick'] == 110

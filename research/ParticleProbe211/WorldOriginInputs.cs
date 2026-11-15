@@ -31,8 +31,11 @@ static class WorldOriginInputs
     public static JsonElement? Qualify(JsonElement instance, int birth, int end, int? start, int? rate)
     {
         if (!instance.TryGetProperty("world_origin_provider", out var header)) return null;
-        Require(start.HasValue && rate == 64 && start >= 0 && start <= birth && birth <= end && end - birth <= 4095,
-            "bounded in-range birth and actual 64Hz output are required");
+        // The unverified literal profile may start before the output range: its inputs do not depend on history.
+        var early = header.ValueKind == JsonValueKind.Object && header.TryGetProperty("policy", out var early_policy)
+            && early_policy.GetString() == UnverifiedPolicy;
+        Require(start.HasValue && rate == 64 && start >= 0 && (early ? birth >= 0 : start <= birth) && birth <= end
+            && end - birth <= 4095, "bounded in-range birth and actual 64Hz output are required");
         Require(Fields(header, "policy", "client_sha256", "instance_id", "resource", "created_tick", "start_tick",
             "end_tick", "tick_rate", "demo_sha256", "events_sha256"), "unknown or incomplete provider fields");
         var unverified = header.GetProperty("policy").GetString() == UnverifiedPolicy;

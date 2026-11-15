@@ -465,11 +465,22 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
         row.setdefault('by_birth_scope', {})[scope] = row.get('by_birth_scope', {}).get(scope, 0) + 1
         if len(row['instance_examples'])<3:row['instance_examples'].append(instance['id'])
 
+    # Newest world effects first: once one instance of an effect is found to have no particles left in the clip,
+    # every older instance of the same effect is taken as finished too (unverified assumption, counted separately).
+    instances=sorted(instances,key=lambda i:(1,-i['created_tick']) if i.get('selection_scope') == WORLD_CUSTOM_ORIGIN_SCOPE
+                     and type(i.get('created_tick')) is int else (0,0))
+    world_finished={}
+    report['finished_before_clip']={'world_by_simulation':0,'world_older_than_finished_instance':0,'owned_destroyed_before_history':0}
+    DESTROY_TAIL_TICKS=5*data['tick_rate']
     for number,instance in enumerate(instances):
         try:
             if instance.get('selection_scope') == WORLD_CUSTOM_ORIGIN_SCOPE:
                 if not is_world_custom_origin_candidate(instance):
                     raise ValueError('World-effect selection differs from its explicit unattached creation')
+                if (type(instance.get('created_tick')) is int
+                        and instance['created_tick']<=world_finished.get(instance.get('resource'),-1)):
+                    report['finished_before_clip']['world_older_than_finished_instance']+=1
+                    continue
                 from .particle_world_origin import request_header,POLICY as WORLD_POLICY,RESOURCE as WORLD_RESOURCE
                 from .recorded_world_effects import prepare_world_package
                 if instance.get('resource')!=WORLD_RESOURCE:
@@ -482,6 +493,14 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
                 report['attempted_instances']+=1
                 package,package_path=prepare_world_package(data,instance,runtime,provider,decoder,adapter,
                     out/f'world-{number:06d}')
+                if (instance['created_tick']<data['start_tick'] and instance.get('resource')!=WORLD_RESOURCE
+                        and not any(system.get('particles') for frame in package['simulation']['instances'][0]['frames']
+                                    for system in frame['systems'])):
+                    # Simulated from its true birth and nothing is left by the time the clip starts.
+                    world_finished[instance['resource']]=max(world_finished.get(instance['resource'],-1),instance['created_tick'])
+                    report['finished_before_clip']['world_by_simulation']+=1
+                    report['attempted_instances']-=1
+                    continue
                 result=build_package_effects(package,data,package_path,scene,camera)
                 if result.get('objects',0)<=0:
                     raise ValueError('World particle package produced no rendered geometry or lights')
@@ -529,6 +548,12 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
                     report[key] += result.get(key, 0)
                 if instance['created_tick'] < data['start_tick']:
                     report['pre_shot_rendered_instances'] += 1
+                continue
+            if (type(instance.get('destroy_tick')) is int and type(instance.get('created_tick')) is int
+                    and instance['created_tick']<motion_start and instance['destroy_tick']+DESTROY_TAIL_TICKS<motion_start):
+                # Destroyed well before the recovered history: finished, not unsupported. The 5 s allowance for a
+                # fading tail is an assumption, not a measured bound.
+                report['finished_before_clip']['owned_destroyed_before_history']+=1
                 continue
             broad=False
             try:

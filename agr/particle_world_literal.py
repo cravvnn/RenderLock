@@ -4,6 +4,8 @@ This is the broad path: any resource, no per-effect profile, no client or defini
 against the game, and every package says so. The narrow bat-explosion profile in particle_world_origin stays as is.
 Accepted shape: one CREATE (unattached, mode 8), literal UPDATE_TRANSFORM events and optional RELEASE. A destroyed
 effect, an entity binding or an interpolated transform is refused and stays visible as unsupported.
+Because every input is a recorded literal, an effect born before the clip is simulated from its true birth, up to
+MAX_TICKS before the clip end.
 """
 import math
 from .particle_events import WORLD_CUSTOM_ORIGIN_SCOPE, is_world_custom_origin_candidate
@@ -31,8 +33,8 @@ def literal_controls(scene, instance):
     start, end, birth, rate = (scene.get('start_tick'), scene.get('end_tick'), instance.get('created_tick'),
                                scene.get('tick_rate'))
     require(all(type(v) is int for v in (start, end, birth, rate)) and rate == 64
-            and 0 <= start <= birth <= end < 2**31 - 1 and end - birth <= MAX_TICKS,
-            'requires an in-range birth and bounded inclusive 64Hz output')
+            and 0 <= start <= end < 2**31 - 1 and 0 <= birth <= end, 'requires a birth before the clip end at 64Hz')
+    require(end - birth <= MAX_TICKS, 'born more than 64 s before the clip end; not simulated')
     require(_sha(scene.get('metadata', {}).get('demo_sha256')), 'replay SHA256 is required')
     index, generation = instance.get('index'), instance.get('generation')
     require(type(index) is int and 0 <= index < 2**31 and type(generation) is int and 1 <= generation < 2**31
