@@ -275,6 +275,13 @@ def collect_system_samples(simulation):
     return systems
 
 
+def generic_model_key(renderer):
+    """Key of the general static model prepared for this layer, or None when the layer names no fixed model."""
+    from .particle_generic_model import key
+    try:return key(renderer)
+    except ValueError:return None
+
+
 def leave_out_layers(simulation):
     """True when every instance was simulated by an unverified broad path: a layer the importer cannot build is
     then left out and reported instead of refusing the whole effect."""
@@ -329,6 +336,8 @@ def _validate_renderer_classes(tracks, assets, simulation=None, *, scene=None, o
                 motion_pair = motion_vector_pair(renderer.get('m_vecTexturesInput', []), assets.get('textures', {}), renderer)
                 if motion_pair is not None and kind != 'C_OP_RenderSprites':
                     raise UnsupportedEffect('Paired motion-vector sheets are qualified only for sprite renderers')
+            if kind=='C_OP_RenderModels' and generic_model_key(renderer) in assets.get('generic_models',{}):
+                continue
             if kind=='C_OP_RenderModels':
                 from .particle_model_assets import validate_model
                 from .blender_particle_models import validate_model_samples
@@ -372,6 +381,7 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254,
     contexts=render_contexts(simulation,silence_context=silence_context)
     native_lights='native_standard_light' in assets.get('provenance',{})
     leave_out=leave_out_layers(simulation) or 'omitted_layers' in assets
+    generic_model_cache={}
     if leave_out:assets=dict(assets,omitted_layers={name:dict(rows) for name,rows in assets.get('omitted_layers',{}).items()})
     projected=validate_renderer_classes(tracks,assets,simulation,scene=scene,leave_out=leave_out)
     collection=bpy.data.collections.new('AGR Simulated Effects')
@@ -717,6 +727,15 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254,
         for index,renderer in enumerate(definition.get('m_Renderers',[])):
             if str(index) in assets.get('omitted_layers',{}).get(resource,{}):
                 omissions.append(resource+': '+assets['omitted_layers'][resource][str(index)])
+                continue
+            if renderer['_class']=='C_OP_RenderModels' and generic_model_key(renderer) in assets.get('generic_models',{}):
+                from .blender_particle_generic_model import build_generic_model_particle
+                name=f'AGR FX model | {instance} | {system_path} | {particle_id}.{index}'
+                built,notes=build_generic_model_particle(name,renderer,assets,samples,simulation,collection,texture,unit_scale,generic_model_cache)
+                for obj in built:
+                    obj['agr_particle_resource']=resource;obj['agr_particle_instance']=instance
+                    obj['agr_particle_system_path']=system_path;obj['agr_simulation_backend']=simulation['backend']
+                objects.extend(built);omissions.extend(resource+': '+note for note in notes)
                 continue
             if renderer['_class']=='C_OP_RenderModels':
                 from .blender_particle_models import build_model_particle

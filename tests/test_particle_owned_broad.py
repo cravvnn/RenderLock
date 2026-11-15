@@ -95,6 +95,10 @@ def test_broad_asset_collection_leaves_out_unbuildable_layers_instead_of_refusin
     class Decoder:
         identity = 'decoder'
 
+        def model(self, resource, provider, require_skin=True):
+            from agr.asset_converter import ConversionError
+            raise ConversionError('no such model')
+
     class Provider:
         def resolve(self, name):
             import types
@@ -108,7 +112,7 @@ def test_broad_asset_collection_leaves_out_unbuildable_layers_instead_of_refusin
                                    definitions=definitions, omit_unsupported_layers=True)
     omitted = assets['omitted_layers']['particles/example.vpcf']
     assert sorted(omitted) == ['0', '1', '2']
-    assert 'no texture' in omitted['0'] and 'model layer left out' in omitted['1'] and 'not supported' in omitted['2']
+    assert 'no texture' in omitted['0'] and 'model layer left out: no such model' in omitted['1'] and 'not supported' in omitted['2']
 
 
 def test_point_on_another_exported_character_follows_that_character():
@@ -159,3 +163,46 @@ def test_named_configuration_without_its_definition_is_checked_at_binding_level_
 def test_unsupported_configurations_stay_refused(definition, message):
     with pytest.raises(ValueError, match=message):
         broad_bindings(configured_instance(), 90, 130, definition=definition)
+
+
+def test_broad_asset_collection_builds_a_fixed_model_by_the_general_path(tmp_path):
+    from agr.particle_generic_model import POLICY as MODEL_POLICY, key
+    from agr.particle_render_assets import prepare_render_assets
+    import types
+    glb = tmp_path / 'model.glb'
+    glb.write_bytes(b'glb')
+
+    class Decoder:
+        identity = 'decoder'
+
+        def model(self, resource, provider, require_skin=True):
+            assert require_skin is False
+            return glb, {}
+
+    class Provider:
+        def resolve(self, name):
+            return types.SimpleNamespace(sha256='ab' * 32)
+    renderer = {'_class': 'C_OP_RenderModels', 'm_ModelList': [{'m_model': 'models/a.vmdl'}], 'm_bOrientZ': True,
+                'm_bEnableClothSimulation': True}
+    assets = prepare_render_assets({'particles/example.vpcf'}, Decoder(), None, Provider(), {},
+                                   definitions={'particles/example.vpcf': {'m_Renderers': [renderer]}},
+                                   omit_unsupported_layers=True)
+    assert 'omitted_layers' not in assets
+    assert assets['generic_models'][key(renderer)]['policy'] == MODEL_POLICY
+
+
+def test_general_model_placement_keeps_literal_settings_and_notes_run_time_ones():
+    from agr.particle_generic_model import fixed_model, particle_matrix, placement
+    driven = {'m_nType': 'PVEC_TYPE_FLOAT_COMPONENTS', 'm_vLiteralValue': [1, 1, 2]}
+    reduced, rotation, notes = placement({'m_bOrientZ': True, 'm_vecComponentScale': driven,
+                                          'm_vecLocalRotation': {'m_nType': 'PVEC_TYPE_LITERAL', 'm_vLiteralValue': [0, 180, 0]}})
+    assert reduced == {'m_bOrientZ': True} and rotation == [0.0, 180.0, 0.0] and len(notes) == 1
+    particle = dict(position=[1, 2, 3], rotation=[0, 0, 0], normal=[0, 0, 1], radius=2)
+    matrix = particle_matrix(particle, {}, [0, 180, 0])
+    assert [round(v, 6) for v in matrix[:3, 3]] == [1, 2, 3]
+    import numpy as np
+    turn = np.linalg.inv(particle_matrix(particle, {}, None)[:3, :3]) @ matrix[:3, :3]
+    assert np.allclose(turn, np.diag([-1, -1, 1]), atol=1e-9)
+    with pytest.raises(ValueError, match='run time'):
+        fixed_model({'_class': 'C_OP_RenderModels', 'm_ModelList': [{'m_model': 'models/null.vmdl'}],
+                     'm_modelInput': {'m_nType': 'PM_TYPE_CONTROL_POINT'}})

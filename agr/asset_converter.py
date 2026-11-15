@@ -169,8 +169,10 @@ class AssetConverter:
                                           compiled(data['m_skeleton']): skeleton.sha256}, {}, build)
         return data, dest / 'poses.npz'
 
-    def model(self, resource_path, provider):
-        """Convert geometry, rig and materials; sampled animations are decoded separately."""
+    def model(self, resource_path, provider, *, require_skin=True):
+        """Convert geometry, rig and materials; sampled animations are decoded separately.
+
+        require_skin=False admits a model without a skeleton (effect models) under its own cache entry."""
         visual = {'.vmdl_c', '.vmesh_c', '.vmat_c', '.vtex_c', '.vnmskel_c'}
         queue = [compiled(resource_path)]
         records, skipped = {}, set()
@@ -232,11 +234,11 @@ class AssetConverter:
             if missing_visual:
                 raise ConversionError('Converter could not resolve visual dependencies: ' + ', '.join(sorted(set(missing_visual))))
             document = read_glb(out)
-            if not document.get('meshes') or not document.get('skins'):
+            if not document.get('meshes') or (require_skin and not document.get('skins')):
                 raise ConversionError(f'Converted hero has no usable geometry or skin: {resource_path}')
             nodes = document.get('nodes', [])
             skinned = [n for n in nodes if 'mesh' in n and 'skin' in n]
-            if not skinned:
+            if require_skin and not skinned:
                 raise ConversionError('Converted hero has no mesh node bound to its skeleton')
             for node in skinned:
                 if not (isinstance(node['skin'], int) and 0 <= node['skin'] < len(document['skins'])
@@ -258,12 +260,12 @@ class AssetConverter:
             _json(temp / 'model_report.json', {'resource': compiled(resource_path),
                   'inputs': inputs, 'skipped_nonvisual_dependencies': sorted(skipped),
                   'compiled_shader_resources': len(shaders),
-                  'meshes': len(document['meshes']), 'skins': len(document['skins']),
+                  'meshes': len(document['meshes']), 'skins': len(document.get('skins', [])),
                   'images': len(document.get('images', [])), 'source_actions': 0,
                   'remaining_converter_missing': [p for p in missing if p not in missing_visual]})
             shutil.rmtree(tree)
             # Physics export is not a simulation implementation; retain no extra scene.
             for physics in temp.glob('model_physics.*'):
                 physics.unlink()
-        dest = self._entry('hero_glb', inputs, settings, build)
+        dest = self._entry('hero_glb' if require_skin else 'effect_model_glb', inputs, settings, build)
         return dest / 'model.glb', json.loads((dest / 'model_report.json').read_text())

@@ -21,8 +21,8 @@ MATERIAL_VARIABLES = [
 def animation_rate(renderer):
     value = renderer.get('m_flAnimationRate', 30)
     if isinstance(value, dict):
-        if (set(value) - {'m_nType', 'm_nMapType', 'm_flLiteralValue'}
-                or value.get('m_nType', 'PF_TYPE_LITERAL') != 'PF_TYPE_LITERAL'
+        # The decoder writes every default field of the provider; only the literal direct form is read.
+        if (value.get('m_nType', 'PF_TYPE_LITERAL') != 'PF_TYPE_LITERAL'
                 or value.get('m_nMapType', 'PF_MAP_TYPE_DIRECT') != 'PF_MAP_TYPE_DIRECT'):
             raise UnsupportedEffect('Model animation rate requires a literal provider')
         value = value.get('m_flLiteralValue', 30)

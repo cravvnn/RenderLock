@@ -31,6 +31,7 @@ def prepare_render_assets(names, decoder, adapter, provider, runtime, *, definit
                 raise UnsupportedEffect('Conflicting original particle sheet for the same texture')
             descriptor['source_sheet'] = sheet
     models = {}
+    generic_models = {}
     omitted = {}
     known = {'C_OP_RenderSprites', 'C_OP_RenderTrails', 'C_OP_RenderStandardLight', 'C_OP_RenderRopes',
              'C_OP_RenderModels', 'C_OP_RenderProjected'}
@@ -48,13 +49,27 @@ def prepare_render_assets(names, decoder, adapter, provider, runtime, *, definit
                 continue
             if renderer.get('_class') != 'C_OP_RenderModels':
                 continue
-            if omit_unsupported_layers:
-                try:
-                    model_resource(renderer)
-                except UnsupportedEffect as reason:
-                    omitted.setdefault(name, {})[str(index)] = 'model layer left out: ' + str(reason)
-                    continue
             from .particle_authored_model import is_authored_renderer, prepare_authored_model, MODEL
+            if omit_unsupported_layers and not (allow_authored_models and is_authored_renderer(renderer)):
+                # A model no per-effect profile covers is built by the general static path, or left out.
+                import subprocess
+                try:
+                    resource = model_resource(renderer)
+                    model, model_textures = prepare_model(adapter, renderer, provider, runtime)
+                    if resource in models and models[resource] != model:
+                        raise UnsupportedEffect('Conflicting model material/profile for the same model resource')
+                    models[resource] = model
+                except (ValueError, OSError, subprocess.SubprocessError):
+                    from .particle_generic_model import key, prepare_generic_model
+                    try:
+                        model, model_textures = prepare_generic_model(decoder, adapter, renderer, provider)
+                        generic_models[key(renderer)] = model
+                    except (ValueError, OSError, subprocess.SubprocessError) as reason:
+                        omitted.setdefault(name, {})[str(index)] = 'model layer left out: ' + str(reason)[:200]
+                        continue
+                textures.update(model_textures)
+                texture_names.update(model_textures)
+                continue
             if allow_authored_models and is_authored_renderer(renderer):
                 from .particle_model_assets import geometry_runtime
                 from .particle_runtime import particle_command, particle_environment
@@ -83,6 +98,8 @@ def prepare_render_assets(names, decoder, adapter, provider, runtime, *, definit
             input_sha256={n: provider.resolve(compiled(n)).sha256 for n in names | texture_names}))
     if models:
         result['models'] = models
+    if generic_models:
+        result['generic_models'] = generic_models
     if omitted:
         result['omitted_layers'] = omitted
     from .particle_projected_material import collect_projected_materials
