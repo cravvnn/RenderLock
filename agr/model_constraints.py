@@ -12,6 +12,10 @@ from .model_constraint_math import (aim_single, orient_single, orient_two_target
 from .vendor.pose_math import inv, rotate
 
 
+# Authored constraint types that are recognised but not evaluated.
+NOT_EVALUATED = ('CBoneConstraintPoseSpaceBone',)
+
+
 class ModelConstraints:
     def __init__(self, names, parents, definitions, *, attachments=None, binding_policy='strict'):
         if binding_policy not in ('strict','native_disabled_missing_slave_v1'):
@@ -95,6 +99,12 @@ class ModelConstraints:
             return lookup[token]
         for definition_index,definition in enumerate(self._definitions):
             kind = definition['_class']
+            if kind in NOT_EVALUATED:
+                # Corrective helper bones only: leave them at their animated pose instead of losing the whole model.
+                disabled.append(dict(index=definition_index,kind=kind,reason_code='not_evaluated',
+                    reason='This constraint type is not evaluated; the bones it drives keep their animated pose.'))
+                self._bindings.append(None)
+                continue
             if kind not in ('CAimConstraint', 'COrientConstraint', 'CTiltTwistConstraint', 'CPointConstraint', 'CParentConstraint'):
                 raise ValueError('Unsupported model constraint '+kind)
             slaves, targets = definition['m_slaves'], definition['m_targets']

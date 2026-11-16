@@ -110,6 +110,7 @@ def capture_model_bones(rig, model, scene, *, entity_id, start_tick, end_tick,
             or any(name not in solver.names for name in selected)):
         raise ValueError('Particle capture requires exact selected model bones')
     indices=[solver.names.index(name)for name in selected]
+    approximated=set()
     # Unselected rows stay explicitly unavailable; they are never rigidized.
     values=np.full((len(ticks),len(solver.names),8),np.nan,dtype=np.float32)
     fps=scene.render.fps/scene.render.fps_base
@@ -122,11 +123,14 @@ def capture_model_bones(rig, model, scene, *, entity_id, start_tick, end_tick,
             for index,name in zip(indices,selected):
                 matrix=rig.matrix_world@rig.pose.bones[name].matrix
                 position,rotation,scale=matrix.decompose()
-                if min(scale)<=0 or max(scale)-min(scale)>1e-5:
-                    raise ValueError('Particle model requires positive uniform bone scale: '+name)
+                if min(scale)<=0:
+                    raise ValueError('Particle model requires positive bone scale: '+name)
                 linear=np.asarray(matrix,dtype=float)[:3,:3]
-                if np.max(abs(linear.T@linear-np.eye(3)*(sum(scale)/3)**2))>1e-5:
-                    raise ValueError('Particle model cannot capture sheared bone: '+name)
+                if (max(scale)-min(scale)>1e-5
+                        or np.max(abs(linear.T@linear-np.eye(3)*(sum(scale)/3)**2))>1e-5):
+                    # Cloth and piston bones can be stretched or sheared. The simulator takes position, one scale
+                    # and a rotation per bone, so such a bone is passed as its nearest rigid pose and named below.
+                    approximated.add(name)
                 values[row,index]=[*(position/unit_scale),sum(scale)/3,
                                    rotation.x,rotation.y,rotation.z,rotation.w]
         if not np.isfinite(values[:,indices]).all():
@@ -138,5 +142,6 @@ def capture_model_bones(rig, model, scene, *, entity_id, start_tick, end_tick,
             'entity_id':entity_id,'resource':model['resource'],
             'resource_sha256':model['resource_sha256'],
             'rig_fingerprint':snapshot_rig_fingerprint(rig),
+            'bones_passed_as_nearest_rigid_pose':sorted(approximated),
             'scope':'Evaluated Blender model-order world poses; Source-unit XYZ, uniform scale, XYZW. '
                     'No assertion of complete native procedural/cloth pose parity.'}

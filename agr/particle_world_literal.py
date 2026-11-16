@@ -42,8 +42,8 @@ def literal_controls(scene, instance):
             'exact generation and the unowned handle are required')
     events = instance.get('events')
     require(isinstance(events, list) and 2 <= len(events) <= 4096 and all(isinstance(e, dict) for e in events)
-            and {e.get('type') for e in events} <= {'CREATE', 'UPDATE_TRANSFORM', 'RELEASE'},
-            'only literal transforms and release are supported; destruction and entity bindings are not')
+            and {e.get('type') for e in events} <= {'CREATE', 'UPDATE_TRANSFORM', 'RELEASE', 'DESTROY'},
+            'only literal transforms, release and destruction are supported; entity bindings are not')
     require(all(type(e.get('order')) is int for e in events), 'recorded event order is required')
     creation = events[0].get('data', {}).get('create_particle')
     require(creation == instance.get('create') and isinstance(creation, dict)
@@ -53,7 +53,7 @@ def literal_controls(scene, instance):
             and instance.get('resource_hash') == creation.get('particle_name_index'),
             'creation fields or resource identity differ')
     controls = compile_control_events(instance, birth, end)
-    require(controls['destroy'] is None and not controls['entity_binding_events'], 'world controls or lifetime differ')
+    require(not controls['entity_binding_events'], 'world controls differ')
     points = {}
     for literal in controls['literal_transforms']:
         require(all(math.isfinite(v) and abs(v) <= 131072 for v in literal['position']),

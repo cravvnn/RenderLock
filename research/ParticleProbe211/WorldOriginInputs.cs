@@ -109,7 +109,7 @@ static class WorldOriginInputs
         foreach (var item in events)
         {
             var kind = item.GetProperty("type").GetString();
-            Require(kind is "CREATE" or "UPDATE_TRANSFORM" or "RELEASE", "only literal transforms and release are supported");
+            Require(kind is "CREATE" or "UPDATE_TRANSFORM" or "RELEASE" or "DESTROY", "only literal transforms, release and destruction are supported");
             var tick = item.GetProperty("tick").GetInt32(); long order = item.GetProperty("order").GetInt32();
             Require(tick >= birth && tick <= end && order > previous, "event time or order is outside the request");
             previous = order;

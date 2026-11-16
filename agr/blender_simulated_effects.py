@@ -412,7 +412,8 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254,
         key=(instance,system_path,particle_id,resource,index,sequence)
         if key in materials:return materials[key]
         blend=renderer.get('m_nOutputBlendMode','PARTICLE_OUTPUT_BLEND_MODE_ALPHA')
-        if blend not in ('PARTICLE_OUTPUT_BLEND_MODE_ADD','PARTICLE_OUTPUT_BLEND_MODE_ALPHA'):
+        half_add=blend=='PARTICLE_OUTPUT_BLEND_MODE_HALF_BLEND_ADD'
+        if not half_add and blend not in ('PARTICLE_OUTPUT_BLEND_MODE_ADD','PARTICLE_OUTPUT_BLEND_MODE_ALPHA'):
             raise UnsupportedEffect('Unsupported simulated sprite blend '+blend)
         mat=bpy.data.materials.new('AGR simulated | '+Path(resource).stem);mat.use_nodes=True
         if hasattr(mat,'surface_render_method'):mat.surface_render_method='BLENDED'
@@ -607,7 +608,13 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254,
         if blend=='PARTICLE_OUTPUT_BLEND_MODE_ADD':
             add=nodes.new('ShaderNodeAddShader');links.new(transparent.outputs[0],add.inputs[0]);links.new(emit.outputs[0],add.inputs[1])
         else:
-            add=nodes.new('ShaderNodeMixShader');links.new(alpha,add.inputs[0]);links.new(transparent.outputs[0],add.inputs[1]);links.new(emit.outputs[0],add.inputs[2])
+            factor=alpha
+            if half_add:
+                # Half-coverage mix with doubled emission, as in blender_particle_blend.build_output_shader.
+                coverage=nodes.new('ShaderNodeMath');coverage.operation='MULTIPLY';links.new(alpha,coverage.inputs[0]);coverage.inputs[1].default_value=.5
+                double=nodes.new('ShaderNodeMath');double.operation='MULTIPLY';links.new(power.outputs[0],double.inputs[0]);double.inputs[1].default_value=2.
+                links.new(double.outputs[0],emit.inputs['Strength']);factor=coverage.outputs[0]
+            add=nodes.new('ShaderNodeMixShader');links.new(factor,add.inputs[0]);links.new(transparent.outputs[0],add.inputs[1]);links.new(emit.outputs[0],add.inputs[2])
         output=nodes.new('ShaderNodeOutputMaterial');links.new(add.outputs[0],output.inputs['Surface'])
         _linear(mat.node_tree)
         if mat.node_tree.animation_data and mat.node_tree.animation_data.action:

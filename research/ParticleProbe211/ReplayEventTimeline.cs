@@ -149,8 +149,8 @@ sealed class ReplayEventTimeline
         if (WorldOriginInputs.IsUnverified(result.WorldOriginProvider))
         {
             // Recorded literal points only; every one must exist from creation (checked again in ValidateControls).
-            if (result.destroyTick.HasValue || !result.literals.Any(row => row.Point == 0 && row.Tick == birth))
-                throw new Exception("World-origin particles: a recorded origin at creation and no destruction are required");
+            if (!result.literals.Any(row => row.Point == 0 && row.Tick == birth))
+                throw new Exception("World-origin particles: a recorded origin at creation is required");
         }
         else if (result.WorldOriginProvider.HasValue)
         {

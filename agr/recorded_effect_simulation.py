@@ -714,7 +714,15 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
             if model_provenance:package['model_provider']=model_provenance
             if literal_provenance:package['owned_literal_provider']=literal_provenance
             package_path=out/f'{stem}.package.json';package_path.write_text(json.dumps(package),encoding='utf-8')
-            result=build_package_effects(package,data,package_path,scene,camera)
+            try:
+                result=build_package_effects(package,data,package_path,scene,camera)
+            except ValueError:
+                # A layer failed while building: build again with failing layers left out and reported.
+                if broad or model_profile or layers_left_out:raise
+                assets.setdefault('omitted_layers',{});layers_left_out=True
+                package['coverage_scope']='One recorded instance built with unsupported layers left out; the result is not compared with the game.'
+                package_path.write_text(json.dumps(package),encoding='utf-8')
+                result=build_package_effects(package,data,package_path,scene,camera)
             report['rendered_instances']+=1
             entry={'id':instance['id'],'resource':instance['resource'],'package':str(package_path),'rendering':result}
             if layers_left_out:entry['unverified']='layers_left_out'

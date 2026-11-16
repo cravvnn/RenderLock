@@ -72,3 +72,9 @@ def test_disabled_policy_does_not_hide_nonfinite_weights_or_unknown_operations()
         ModelConstraints(['target'],[-1],[missing('UnknownConstraint')],binding_policy=POLICY)
     with pytest.raises(ValueError,match='policy'):
         ModelConstraints(['target'],[-1],[],binding_policy='guess')
+
+
+def test_pose_space_bone_constraints_are_left_unevaluated_instead_of_refusing_the_model():
+    solver=ModelConstraints(['target'],[-1],[missing('CBoneConstraintPoseSpaceBone')])
+    assert solver.active_constraint_count==0
+    assert [row['reason_code'] for row in solver.disabled_constraints]==['not_evaluated']
