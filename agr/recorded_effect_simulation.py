@@ -536,7 +536,9 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
                     package=str(package_path),rendering=result,selection_scope=WORLD_CUSTOM_ORIGIN_SCOPE))
                 for key in ('objects','particle_tracks','point_lights'):report[key]+=result.get(key,0)
                 continue
-            if entities[instance['entity_id']].get('model_tracks'):
+            # A character that changes model has one root and no single rig. The broad retry may still follow that
+            # root; anything needing a bone is refused further down.
+            if entities[instance['entity_id']].get('model_tracks') and not without_profile:
                 raise ValueError('Particle model/attachment providers across recorded model changes are not yet qualified')
             from .particle_silence_inputs import SILENCE
             if instance.get('resource') == SILENCE and not without_profile:
@@ -639,7 +641,10 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
                     named=[row for row in adapter.attachments(model,provider) if row.get('m_name')==binding['attachment_name']]
                     if len(named)!=1:raise ValueError('Configured attachment '+binding['attachment_name']+' is absent from the character model')
                     definition=named[0]
-                else:definition=attachments[f"{target}/{binding['attachment']}"]['definition']
+                else:
+                    recorded=f"{target}/{binding['attachment']}"
+                    if recorded not in attachments:raise ValueError('Attachment point is not in the exported effect manifest')
+                    definition=attachments[recorded]['definition']
                 if (definition['m_nInfluences']!=1 or abs(definition['m_influenceWeights'][0]-1)>1e-6
                         or definition.get('m_bIgnoreRotation') or definition['m_bInfluenceRootTransform'][0]):
                     raise ValueError('Unsupported attachment influence/rotation mode')
