@@ -737,8 +737,13 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
         merge_projectile_report(report,projectiles)
     if 'client_modifier_writes' in data or 'client_effect_owner_states' in data:
         from .modifier_mask_effects import build_modifier_mask_effects,merge_modifier_mask_report
-        derived=build_modifier_mask_effects(data,scene,camera,entity_objects,runtime,provider,decoder,adapter)
-        merge_modifier_mask_report(report,derived)
+        try:
+            derived=build_modifier_mask_effects(data,scene,camera,entity_objects,runtime,provider,decoder,adapter)
+            merge_modifier_mask_report(report,derived)
+        except ValueError as reason:
+            # Modifier history can be unavailable (a long match exceeds its row budget). Only the modifier-driven
+            # effects depend on it; every other effect already built is kept.
+            report['modifier_effects_unavailable']=str(reason)
     if runtime.get('captured_slide_cohort') is not None:
         from .captured_slide_render import build_captured_slide_cohort, merge_captured_slide_report
         # Preserve the accepted raw input/binding alongside the effect audit.

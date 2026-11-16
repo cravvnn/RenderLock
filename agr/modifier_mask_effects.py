@@ -9,8 +9,8 @@ from .modifier_mask_model import BACKEND, prepare_package, constant_track
 def merge_modifier_mask_report(report, derived):
     """Keep recorded-instance counts/birth scopes unchanged; add real geometry."""
     report['modifier_model_effects'] = derived
-    if derived.get('status') == 'unavailable':
-        report.update(status='unavailable', reason=derived.get('reason', 'Modifier-derived model coverage is unavailable'))
+    # An unavailable modifier stage (for example a long match that exceeds the modifier-history budget) is reported
+    # on its own below; it does not withdraw the recorded effects that were built.
     for key in ('objects', 'particle_tracks', 'point_lights'):
         report[key] = report.get(key, 0)+derived.get(key, 0)
     report.setdefault('unsupported', []).extend(derived.get('unsupported', []))
