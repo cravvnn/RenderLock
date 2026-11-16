@@ -484,7 +484,11 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
         for layer in scene.view_layers:
             for child in layer.layer_collection.children:
                 if child.collection.name in parked:child.exclude=False
-    for number,instance in enumerate(instances):
+    # An owned instance whose per-effect profile fails at any stage is tried once more by the broad, unverified path.
+    queue=[(number,instance,False) for number,instance in enumerate(instances)]
+    profile_errors={}
+    for number,instance,without_profile in queue:
+        attempted_before=report['attempted_instances'];broad=False
         park_built_effects()
         try:
             if instance.get('selection_scope') == WORLD_CUSTOM_ORIGIN_SCOPE:
@@ -535,7 +539,7 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
             if entities[instance['entity_id']].get('model_tracks'):
                 raise ValueError('Particle model/attachment providers across recorded model changes are not yet qualified')
             from .particle_silence_inputs import SILENCE
-            if instance.get('resource') == SILENCE:
+            if instance.get('resource') == SILENCE and not without_profile:
                 from .recorded_silence_effects import prepare_package as prepare_silence_package
                 package, package_path = prepare_silence_package(data, instance, entities[instance['entity_id']],
                     entity_objects[instance['entity_id']], scene, manifest_dir, attachments,
@@ -553,7 +557,7 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
                     report['pre_shot_rendered_instances'] += 1
                 continue
             from .particle_snapshot_provider import RESOURCE as CROSSBOW_RESOURCE
-            if instance.get('resource') == CROSSBOW_RESOURCE:
+            if instance.get('resource') == CROSSBOW_RESOURCE and not without_profile:
                 from .recorded_crossbow_effects import prepare_package as prepare_crossbow_package
                 package, package_path = prepare_crossbow_package(data, instance, entities[instance['entity_id']],
                     entity_objects[instance['entity_id']], scene, manifest_dir, attachments,
@@ -578,6 +582,7 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
                 continue
             broad=False
             try:
+                if without_profile:raise ValueError('profile already failed')
                 model_profile, root_profile, binding_provider = recorded_binding_profile(instance)
                 bindings=binding_provider(instance,motion_start,data['end_tick'])
             except ValueError:
@@ -589,7 +594,7 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
                 model_profile=root_profile=False;broad=True
             literal_provenance=None
             from .particle_owned_literal import RESOURCE as LITERAL_RESOURCE,collect as collect_literal,DEFINITIONS as LITERAL_DEFINITIONS,validate_definitions as validate_literal_definitions
-            if instance.get('resource')==LITERAL_RESOURCE:
+            if instance.get('resource')==LITERAL_RESOURCE and not broad:
                 literal_provenance=collect_literal(data,instance,provider)
                 for name in LITERAL_DEFINITIONS:
                     if name not in definitions:definitions[name]=decoder.dump(name,provider)
@@ -743,7 +748,16 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
             if instance['created_tick'] < data['start_tick']:
                 report['pre_shot_rendered_instances']+=1
         except (ValueError,KeyError,OSError,RuntimeError,subprocess.SubprocessError) as exc:
-            reject(instance,str(exc))
+            owned=instance.get('selection_scope')!=WORLD_CUSTOM_ORIGIN_SCOPE and instance.get('entity_id') in entity_objects
+            if owned and not without_profile and isinstance(exc,ValueError) and not broad:
+                profile_errors[instance['id']]=str(exc)
+                report['attempted_instances']=attempted_before
+                queue.append((number,instance,True))
+                continue
+            reason=str(exc)
+            if instance.get('id') in profile_errors:
+                reason=profile_errors[instance['id']]+' | without a profile: '+reason
+            reject(instance,reason)
     report['unsupported']=list(grouped.values())
     report['unsupported_by_birth_scope'] = dict(rejected_scopes)
     park_built_effects()
