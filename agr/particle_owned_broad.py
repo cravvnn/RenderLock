@@ -24,6 +24,7 @@ CONFIGURATION_MODE = -1
 DRIVER_ORIGIN = ('PATTACH_ABSORIGIN', 'PATTACH_ABSORIGIN_FOLLOW')
 DRIVER_ATTACHMENT = ('PATTACH_POINT', 'PATTACH_POINT_FOLLOW')
 DRIVER_WORLD = 'PATTACH_WORLDORIGIN'
+FAR_FROM_WORLD_ORIGIN, NEAR_WORLD_ORIGIN = 1024.0, 128.0  # game units
 
 
 def require(ok, message):
@@ -146,8 +147,13 @@ def broad_bindings(instance, start, end, exported=(), definition=None):
     return [bindings[cp] for cp in sorted(bindings)]
 
 
-def validate_response(simulation, instance_id, bindings):
-    """The simulator must acknowledge the broad provider and every supplied point, and read nothing unsupplied."""
+def validate_response(simulation, instance_id, bindings, anchors=()):
+    """The simulator must acknowledge the broad provider and every supplied point.
+
+    Returns the control points the effect reads that the game never set. The simulator leaves those at the world
+    origin, which is assumed to match the game. anchors: control point 0 positions over the clip; when all of them
+    are far from the world origin, a particle found at the world origin shows the assumption drew something wrong.
+    """
     rows = simulation.get('instances', [])
     require(isinstance(rows, list) and len(rows) == 1 and rows[0].get('id') == instance_id
             and rows[0].get('owned_broad_provider') == dict(policy=POLICY),
@@ -157,7 +163,16 @@ def validate_response(simulation, instance_id, bindings):
     require(isinstance(confirmed, list) and set(supplied) <= set(confirmed),
             'simulator did not confirm every supplied control point')
     unprovided = rows[0].get('unprovided_control_point_indices')
-    require(unprovided in (None, []), f'the effect reads control points that were not recorded: {unprovided}')
+    require(unprovided is None or isinstance(unprovided, list), 'invalid unprovided control point list')
+    if not unprovided:
+        return []
+    distances = [math.hypot(*anchor) for anchor in anchors]
+    if distances and min(distances) > FAR_FROM_WORLD_ORIGIN:
+        require(not any(math.hypot(*particle['position']) < NEAR_WORLD_ORIGIN
+                        for frame in rows[0].get('frames', []) for system in frame['systems']
+                        for particle in system.get('particles') or []),
+                f'unset control points {unprovided} place particles at the world origin')
+    return list(unprovided)
 
 
 def is_unverified(row):

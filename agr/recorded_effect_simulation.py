@@ -705,7 +705,7 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
             if root_profile:
                 validate_model_response(simulation,instance['id'],model_provenance['bone_count'],
                     [0] if model_profile else [binding['control_point'] for binding in bindings])
-            elif broad:validate_broad_response(simulation,instance['id'],bindings)
+            elif broad:unset_points=validate_broad_response(simulation,instance['id'],bindings,[point['position'] for point in points])
             else:validate_control_response(simulation,instance['id'],bindings)
             if simulation['warnings']:raise ValueError('Simulator diagnostics: '+'; '.join(simulation['warnings']))
             simulation['instances'][0]['entity_id']=instance['entity_id']
@@ -746,6 +746,7 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
             if layers_left_out:entry['unverified']='layers_left_out'
             if broad:
                 entry['unverified']=BROAD_POLICY
+                if unset_points:entry['control_points_assumed_at_world_origin']=unset_points
                 report['unverified_owned_instances']=report.get('unverified_owned_instances',0)+1
             if model_provenance:entry['model_provider']=model_provenance
             report['instances'].append(entry)

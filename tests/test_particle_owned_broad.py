@@ -71,8 +71,14 @@ def test_response_must_acknowledge_the_provider_and_read_nothing_unsupplied():
                unprovided_control_point_indices=[])
     validate_response(dict(instances=[row]), '7:1', bindings)
     assert is_unverified(row)
-    with pytest.raises(ValueError, match='not recorded'):
-        validate_response(dict(instances=[dict(row, unprovided_control_point_indices=[5])]), '7:1', bindings)
+    assert validate_response(dict(instances=[row]), '7:1', bindings) == []
+    unset = dict(row, unprovided_control_point_indices=[5], frames=[dict(systems=[dict(particles=[
+        dict(position=[3000.0, 10.0, 5.0])])])])
+    assert validate_response(dict(instances=[unset]), '7:1', bindings, [[3000.0, 0.0, 0.0]]) == [5]
+    unset['frames'][0]['systems'][0]['particles'].append(dict(position=[1.0, 2.0, 3.0]))
+    assert validate_response(dict(instances=[unset]), '7:1', bindings, [[100.0, 0.0, 0.0]]) == [5]
+    with pytest.raises(ValueError, match='at the world origin'):
+        validate_response(dict(instances=[unset]), '7:1', bindings, [[3000.0, 0.0, 0.0]])
     with pytest.raises(ValueError, match='too old'):
         validate_response(dict(instances=[{k: v for k, v in row.items() if k != 'owned_broad_provider'}]), '7:1', bindings)
 
