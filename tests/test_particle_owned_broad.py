@@ -149,6 +149,15 @@ def test_named_configuration_supplies_the_bindings():
     assert rows[2]['provider'] == 'entity_origin' and rows[2]['configuration'] == 'preview'
 
 
+def test_world_origin_driver_holds_the_point_at_the_world_origin():
+    definition = {'m_controlPointConfigurations': [{'m_name': 'preview', 'm_drivers': [
+        {'m_iControlPoint': 3, 'm_iAttachType': 'PATTACH_WORLDORIGIN'}]}]}
+    rows = broad_bindings(configured_instance(), 90, 130, definition=definition)
+    assert rows[0]['provider'] == 'entity_origin' and rows[1]['control_point'] == 3
+    assert rows[1]['provider'] == 'literal_transform' and rows[1]['updates'] == [dict(
+        tick=100, control_point=3, position=[0.0, 0.0, 0.0], rotation=[0, 0, 0, 1], interpolation_interval=0)]
+
+
 def test_named_configuration_without_its_definition_is_checked_at_binding_level_only():
     assert [row['control_point'] for row in broad_bindings(configured_instance(), 90, 130)] == [0]
 
@@ -158,7 +167,7 @@ def test_named_configuration_without_its_definition_is_checked_at_binding_level_
     ({'m_controlPointConfigurations': [{'m_name': 'preview', 'm_drivers': [
         {'m_iAttachType': 'PATTACH_POINT_FOLLOW', 'm_attachmentName': 'a', 'm_vecOffset': [1.0, 0, 0]}]}]}, 'offset'),
     ({'m_controlPointConfigurations': [{'m_name': 'preview', 'm_drivers': [
-        {'m_iAttachType': 'PATTACH_WORLDORIGIN'}]}]}, 'driver mode PATTACH_WORLDORIGIN'),
+        {'m_iAttachType': 'PATTACH_CUSTOMORIGIN'}]}]}, 'driver mode PATTACH_CUSTOMORIGIN'),
 ])
 def test_unsupported_configurations_stay_refused(definition, message):
     with pytest.raises(ValueError, match=message):

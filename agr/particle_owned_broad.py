@@ -23,6 +23,7 @@ ORIGIN_CREATION_MODES = (0, 1, 3)
 CONFIGURATION_MODE = -1
 DRIVER_ORIGIN = ('PATTACH_ABSORIGIN', 'PATTACH_ABSORIGIN_FOLLOW')
 DRIVER_ATTACHMENT = ('PATTACH_POINT', 'PATTACH_POINT_FOLLOW')
+DRIVER_WORLD = 'PATTACH_WORLDORIGIN'
 
 
 def require(ok, message):
@@ -40,7 +41,7 @@ def _zero_offsets(binding):
                 'attachment offsets are not supported')
 
 
-def configuration_drivers(creation, definition, owner):
+def configuration_drivers(creation, definition, owner, birth=0):
     """Bindings set by the named control point configuration of the effect's own definition, by control point."""
     name = creation.get('control_point_configuration')
     require(isinstance(name, str) and name, 'creation names no control point configuration')
@@ -62,6 +63,11 @@ def configuration_drivers(creation, definition, owner):
         elif mode in DRIVER_ATTACHMENT and isinstance(attachment, str) and attachment:
             result[cp] = dict(control_point=cp, provider='named_attachment', attachment_name=attachment,
                               target_entity=owner, configuration=name)
+        elif mode == DRIVER_WORLD:
+            # The driver places the point at the origin of the world, not on the entity.
+            result[cp] = dict(control_point=cp, provider='literal_transform', configuration=name,
+                              updates=[dict(tick=birth, control_point=cp, position=[0.0, 0.0, 0.0],
+                                            rotation=[0, 0, 0, 1], interpolation_interval=0)])
         else:
             raise ValueError(f'Owned particles: configuration driver mode {mode} is not supported')
     return result
@@ -129,7 +135,7 @@ def broad_bindings(instance, start, end, exported=(), definition=None):
         bindings[cp]['updates'].append(update)
     if creation['attach_type'] == CONFIGURATION_MODE:
         require(own(handle), 'a configured effect on another entity is not supported')
-        for cp, row in configuration_drivers(creation, definition, owner).items():
+        for cp, row in configuration_drivers(creation, definition, owner, birth).items():
             bindings.setdefault(cp, row)
         # The configuration may leave control point 0 unset; the game's default for it is not known.
         bindings.setdefault(0, dict(control_point=0, provider='entity_origin', target_entity=owner, assumed=True))
