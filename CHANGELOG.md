@@ -1,3 +1,12 @@
+# 0.3.0b31 - Broad particle coverage and 3D effect models
+
+- Simulate recorded effects with the Source 2 Viewer 21.1 particle simulator. Any unowned world effect or character-owned effect with recorded inputs is built without a per-effect profile and labelled unverified in the coverage report.
+- Leave out a layer the importer cannot build (light, model, rope, projection, depth offset) and name it in the report instead of refusing the whole effect.
+- Place fixed 3D models inside effects as static meshes with approximated effect materials. Animated bat models keep their existing path.
+- Take bindings from a named control point configuration for animation-driven effects, follow a second exported character, and hold late literal points from creation.
+- Save scenes with a map for EEVEE, raise effect point-light power, skip screen-refraction layers, and accept a `.crav` shot package for the export cameras.
+- Unverified effects are not compared with the game. Heavy melee charge, crossbow buff and laser sight remain unbuilt.
+
 # 0.3.0b30 - More particle families in normal exports
 
 - Connect shared animated model particles and outward Mina bats to ordinary exports, preserving history, exact owner binding, morph timing and whole-instance rollback.
