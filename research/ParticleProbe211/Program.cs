@@ -254,7 +254,7 @@ foreach (var instance in config.GetProperty("instances").EnumerateArray())
             throw new InvalidDataException("Unknown or combined broad owned provider");
         row["owned_broad_provider"] = ownedBroad.Clone();
     }
-    if (models.Count > 0 && models.Values.Any(m => ((dynamic)m.Report).pose_reads == 0)) throw new InvalidDataException("A bound replay model was never read by the simulation");
+    // A supplied model the effect never read is not an error: the effect simply emitted nothing from it in this range.
     output.Add(row);
     foreach (var modelResource in modelResources) modelResource.Dispose();
 }

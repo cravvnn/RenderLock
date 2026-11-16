@@ -516,7 +516,15 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
                     continue
                 result=build_package_effects(package,data,package_path,scene,camera)
                 if result.get('objects',0)<=0:
-                    raise ValueError('World particle package produced no rendered geometry or lights')
+                    if instance.get('resource')==WORLD_RESOURCE:
+                        raise ValueError('World particle package produced no rendered geometry or lights')
+                    # Simulated, and nothing it draws in this clip can be built (or it draws nothing): counted apart
+                    # from unsupported effects, with the layers that were left out.
+                    empty=report.setdefault('nothing_to_draw',{}).setdefault(instance['resource'],dict(instances=0,omissions=[]))
+                    empty['instances']+=1
+                    empty['omissions']=sorted(set(empty['omissions'])|set(result.get('omissions',[])))[:12]
+                    report['attempted_instances']-=1
+                    continue
                 report['rendered_instances']+=1
                 if instance.get('resource')==WORLD_RESOURCE:report['world_attachment_provider']=WORLD_POLICY
                 else:report['unverified_world_instances']=report.get('unverified_world_instances',0)+1
