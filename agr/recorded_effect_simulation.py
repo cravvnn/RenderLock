@@ -645,12 +645,17 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
                     recorded=f"{target}/{binding['attachment']}"
                     if recorded not in attachments:raise ValueError('Attachment point is not in the exported effect manifest')
                     definition=attachments[recorded]['definition']
+                on_root=bool(definition['m_bInfluenceRootTransform'][0]);keep_upright=bool(definition.get('m_bIgnoreRotation'))
                 if (definition['m_nInfluences']!=1 or abs(definition['m_influenceWeights'][0]-1)>1e-6
-                        or definition.get('m_bIgnoreRotation') or definition['m_bInfluenceRootTransform'][0]):
+                        or (on_root or keep_upright) and not broad):
                     raise ValueError('Unsupported attachment influence/rotation mode')
                 bone=definition['m_influenceNames'][0]
                 target_rig=entity_objects[target]['rig']
-                if target_rig is None or bone not in target_rig.pose.bones:raise ValueError('Attachment bone absent from exported rig')
+                if target_rig is None or not on_root and bone not in target_rig.pose.bones:raise ValueError('Attachment bone absent from exported rig')
+                # Unverified reading of the two special kinds: one sits on the model itself, not on a bone; the other
+                # follows its bone's position and keeps the model's rotation.
+                if on_root:bone=('model',)
+                elif keep_upright:bone=('upright',bone)
                 q=definition['m_vInfluenceRotations'][0]
                 offset=Matrix.LocRotScale(Vector(definition['m_vInfluenceOffsets'][0])*.0254,
                                          Quaternion((q[3],*q[:3])),Vector((1,1,1)))
@@ -664,8 +669,12 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
                 samples=[dict(index=0,position=original['position'],rotation=original['rotation'])] if original else []
                 for cp,bone,offset,target in transforms:
                     target_rig=entity_objects[target]['rig']
-                    matrix=(entity_objects[target]['root'].matrix_world.copy() if bone is None
-                            else target_rig.matrix_world@target_rig.pose.bones[bone].matrix@offset)
+                    if bone is None:matrix=entity_objects[target]['root'].matrix_world.copy()
+                    elif bone==('model',):matrix=target_rig.matrix_world@offset
+                    elif type(bone) is tuple:
+                        placed=target_rig.matrix_world@target_rig.pose.bones[bone[1]].matrix@offset
+                        matrix=Matrix.Translation(placed.translation)@(target_rig.matrix_world.to_quaternion()@offset.to_quaternion()).to_matrix().to_4x4()
+                    else:matrix=target_rig.matrix_world@target_rig.pose.bones[bone].matrix@offset
                     pos,rot,scale=matrix.decompose()
                     samples.append(dict(index=cp,position=[x/.0254 for x in pos],
                                         rotation=[rot.x,rot.y,rot.z,rot.w]))

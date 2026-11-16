@@ -145,6 +145,8 @@ def build_effects(data, manifest_dir, scene, camera, entity_objects, fps):
             if rig is None:
                 raise UnsupportedEffect('Target entity has no imported rig')
             entry = attachment['definition']
+            if entry.get('m_bIgnoreRotation') or any(entry.get('m_bInfluenceRootTransform', [])):
+                raise UnsupportedEffect('Special attachment root/rotation behavior')
             source_bone = entry['m_influenceNames'][0]
             matches = [b for b in rig.pose.bones if b.name.casefold() == source_bone.casefold()]
             if len(matches) != 1:

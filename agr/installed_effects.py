@@ -411,8 +411,8 @@ def prepare_installed_effects(segment_path, pack_dir, provider, decoder, log=pri
         entry = table[index-1]
         if entry.get('m_nInfluences', 1) != 1 or entry.get('m_influenceWeights', [1])[0] != 1:
             raise UnsupportedEffect('Weighted attachment blending is not implemented')
-        if entry.get('m_bIgnoreRotation') or any(entry.get('m_bInfluenceRootTransform', [])):
-            raise UnsupportedEffect('Special attachment root/rotation behavior')
+        # Attachments that ignore the bone's rotation or sit on the model root are inventoried too. Each consumer
+        # decides whether it can place them; only the unverified simulation path does.
         attachment_key = f'{entity_id}/{index}'
         report['attachments'][attachment_key] = {'entity_id': entity_id, 'index': index,
                                                    'source_model': model, 'definition': entry}
