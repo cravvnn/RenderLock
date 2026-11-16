@@ -33,7 +33,7 @@ TASKS = {
     'CNmTwoBoneIKTask': 4, 'CNmBlendTask': 6,
     'CNmAdditiveBlendTask': 7, 'CNmOverlayBlendTask': 8,
     'CNmModelSpaceBlendTask': 9, 'CNmFollowBoneTask': 11,
-    'CNmZeroPoseTask': 12,
+    'CNmZeroPoseTask': 12, 'CNmReferencePoseTask': 3,
 }
 
 
@@ -373,7 +373,7 @@ def _bind(raw: dict, tick: int, recorded: dict, registry: list[str],
                 'graph_resource':graph, 'unavailable_pose':details,
                 'context':[_field(raw,'m_nServerGraphInstanceIteration'),
                            _field(raw,'m_nServerSerializationContextIteration')]}
-    dependency_counts = {0: 1, 1: 0, 4: 1, 5: 0, 6: 2, 7: 2, 8: 2, 9: 2, 11: 1, 12: 0}
+    dependency_counts = {0: 1, 1: 0, 3: 0, 4: 1, 5: 0, 6: 2, 7: 2, 8: 2, 9: 2, 11: 1, 12: 0}
     header = recipe_header(raw, tick, task_type_bits=len(registry).bit_length(),
                            topology_dependency_counts={i: dependency_counts[TASKS[name]]
                                for i, name in enumerate(registry)

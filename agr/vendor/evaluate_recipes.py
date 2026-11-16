@@ -72,6 +72,10 @@ class Evaluator:
                 mode='effector' if task.get('extension_mode_bit',1) else 'pose'
                 out=solve_ik(outputs[deps[0]],self.parents,self.reference,task['effector_bone_index'],task['target_bone_index'],weight,mode)
             elif typ==11:out=follow_bone(outputs[deps[0]],self.parents,task['bone_index'],task['follow_bone_index'],task['mode'])
+            elif typ==3:
+                if deps:raise ValueError('Reference pose task cannot have dependencies')
+                # The skeleton's own reference pose, as a full (non-additive) pose.
+                out=Pose(self.reference.q.copy(),self.reference.t.copy(),self.reference.s.copy(),False)
             elif typ==12:
                 if deps:raise ValueError('Zero pose task cannot have dependencies')
                 # Installed 6779 zero-pose reset: zero translation and additive

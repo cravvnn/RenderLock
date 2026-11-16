@@ -59,6 +59,12 @@ def parse(row,resource_bits=8,mask_bits=5,bone_bits=None):
                             follow_bone_index=b.read(bone_bits),mode=b.read(2))
             elif t==1:
                 task.update(resource_index=b.read(resource_bits),phase_u16=b.read(16))
+            elif t==3:
+                # Named CNmReferencePoseTask: taken to have no dependencies or dynamic values, like the zero pose
+                # task. Not measured against the game; a wrong layout would misplace every later task's bits.
+                if topology is None or topology[i]['dependencies']:
+                    raise ValueError('Reference pose task cannot have dependencies')
+                task['dependencies']=[]
             elif t==12:
                 # Named CNmZeroPoseTask has no dependencies or dynamic values.
                 if topology is not None and topology[i]['dependencies']:
