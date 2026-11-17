@@ -1,3 +1,12 @@
+# 0.3.0b32 - Long matches, new heroes and more effect placements
+
+- Keep built effects when modifier history is unavailable on a long match; only the affected mask effects are reported.
+- Decode the reference pose animation operation, so Baba and other characters using it are animated instead of left in rest pose.
+- Retry a character-owned effect by the unverified path when its dedicated profile fails at any stage, and retry with unsupported layers left out.
+- Place effects on attachments that ignore their bone's rotation or sit on the model, follow the root of a character that changes model, hold world-origin configuration points, and build effects that read a control point the game never set (left at the world origin, refused if particles land there).
+- Build half-add sprites and destroyed world effects, pass stretched bones as their nearest rigid pose, and count world effects with nothing to draw apart from unsupported ones.
+- Unverified effects are not compared with the game. Bone-attached effects on a character that changes model, effects with no recorded origin and normal-map sprites remain unbuilt.
+
 # 0.3.0b31 - Broad particle coverage and 3D effect models
 
 - Simulate recorded effects with the Source 2 Viewer 21.1 particle simulator. Any unowned world effect or character-owned effect with recorded inputs is built without a per-effect profile and labelled unverified in the coverage report.
