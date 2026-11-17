@@ -217,7 +217,7 @@ def test_neutral_point_inventory_does_not_qualify_custom_origin_creation(root_ef
     ('index', 'Recorded attachment index absent from installed model'),
     ('serial', 'Attachment target is not an exported exact-serial hero'),
     ('model', 'Attachment model resource ID unresolved'),
-    ('model_change', 'Particle attachments across recorded model changes are not yet qualified'),
+    ('model_change', 'No recorded model at the effect creation tick'),
 ])
 def test_point_inventory_retains_actual_type5_preparation_failures(effect_case, monkeypatch, change, reason):
     case = effect_case

@@ -628,9 +628,9 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
                 if binding.get('provider') == 'literal_transform':
                     literal_bindings.append(binding)
                     continue
-                target=binding.get('target_entity') or instance['entity_id']
+                target=binding.get('target_entity') or instance['entity_id'];form=None
                 if binding.get('provider') == 'entity_origin':
-                    transforms.append((binding['control_point'],None,None,target))
+                    transforms.append((binding['control_point'],None,None,target,None))
                     continue
                 if binding.get('provider') == 'named_attachment':
                     # Named by the effect's own configuration, so look it up in the character's installed model.
@@ -643,6 +643,14 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
                     definition=named[0]
                 else:
                     recorded=f"{target}/{binding['attachment']}"
+                    if entities[target].get('model_tracks'):
+                        # The index belongs to the model the character had at creation. Outside that form's ticks
+                        # the point follows the character's root instead (unverified).
+                        form=next((e for e in data['entities'] if e.get('model_track')
+                            and e['model_track']['source_entity_id']==target
+                            and e['model_track']['start_tick']<=instance['created_tick']<e['model_track']['end_tick_exclusive']),None)
+                        if form is None:raise ValueError('No recorded model at the effect creation tick')
+                        recorded+='@'+str(form['model_handle'])
                     if recorded not in attachments:raise ValueError('Attachment point is not in the exported effect manifest')
                     definition=attachments[recorded]['definition']
                 on_root=bool(definition['m_bInfluenceRootTransform'][0]);keep_upright=bool(definition.get('m_bIgnoreRotation'))
@@ -650,7 +658,10 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
                         or (on_root or keep_upright) and not broad):
                     raise ValueError('Unsupported attachment influence/rotation mode')
                 bone=definition['m_influenceNames'][0]
-                target_rig=entity_objects[target]['rig']
+                target_rig=entity_objects[target]['rig'];window=None
+                if form is not None:
+                    target_rig=entity_objects[target].get('forms',{}).get(form['id'],{}).get('rig')
+                    window=(target_rig,form['model_track']['start_tick'],form['model_track']['end_tick_exclusive'])
                 if target_rig is None or not on_root and bone not in target_rig.pose.bones:raise ValueError('Attachment bone absent from exported rig')
                 # Unverified reading of the two special kinds: one sits on the model itself, not on a bone; the other
                 # follows its bone's position and keeps the model's rotation.
@@ -659,7 +670,7 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
                 q=definition['m_vInfluenceRotations'][0]
                 offset=Matrix.LocRotScale(Vector(definition['m_vInfluenceOffsets'][0])*.0254,
                                          Quaternion((q[3],*q[:3])),Vector((1,1,1)))
-                transforms.append((binding['control_point'],bone,offset,target))
+                transforms.append((binding['control_point'],bone,offset,target,window))
             root_points = {point['tick']: point for point in points} if root_profile else {}
             if not root_profile:points=[]
             for tick in ([] if model_profile else range(instance['created_tick'],data['end_tick']+1)):
@@ -667,9 +678,10 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
                 scene.frame_set(math.floor(frame),subframe=frame-math.floor(frame))
                 original = root_points.get(tick)
                 samples=[dict(index=0,position=original['position'],rotation=original['rotation'])] if original else []
-                for cp,bone,offset,target in transforms:
+                for cp,bone,offset,target,window in transforms:
                     target_rig=entity_objects[target]['rig']
-                    if bone is None:matrix=entity_objects[target]['root'].matrix_world.copy()
+                    if window is not None:target_rig=window[0] if window[1]<=tick<window[2] else None
+                    if bone is None or target_rig is None:matrix=entity_objects[target]['root'].matrix_world.copy()
                     elif bone==('model',):matrix=target_rig.matrix_world@offset
                     elif type(bone) is tuple:
                         placed=target_rig.matrix_world@target_rig.pose.bones[bone[1]].matrix@offset

@@ -394,12 +394,21 @@ def prepare_installed_effects(segment_path, pack_dir, provider, decoder, log=pri
                 raise UnsupportedEffect('Attachment target is not an exported exact-serial hero')
         if entity_id not in models:
             raise UnsupportedEffect('Particle target is not an exported exact-serial hero')
+        model_handle, form = str(models[entity_id].get('model_handle')), ''
         if models[entity_id].get('model_tracks'):
-            raise UnsupportedEffect('Particle attachments across recorded model changes are not yet qualified')
+            if not attachments_only:
+                raise UnsupportedEffect('Particle attachments across recorded model changes are not yet qualified')
+            # Inventory only: the attachment index belongs to the model the character had when the effect was created.
+            track = next((e for e in segment['entities'] if e.get('model_track')
+                          and e['model_track']['source_entity_id'] == entity_id
+                          and e['model_track']['start_tick'] <= instance['created_tick'] < e['model_track']['end_tick_exclusive']), None)
+            if track is None:
+                raise UnsupportedEffect('No recorded model at the effect creation tick')
+            model_handle = str(track['model_handle']); form = '@' + model_handle
         root_resource = instance.get('resource')
         if not root_resource:
             raise UnsupportedEffect('Particle resource ID unresolved')
-        model = source_models.get(str(models[entity_id].get('model_handle')))
+        model = source_models.get(model_handle)
         if not model:
             raise UnsupportedEffect('Attachment model resource ID unresolved')
         if model not in table_cache:
@@ -413,7 +422,7 @@ def prepare_installed_effects(segment_path, pack_dir, provider, decoder, log=pri
             raise UnsupportedEffect('Weighted attachment blending is not implemented')
         # Attachments that ignore the bone's rotation or sit on the model root are inventoried too. Each consumer
         # decides whether it can place them; only the unverified simulation path does.
-        attachment_key = f'{entity_id}/{index}'
+        attachment_key = f'{entity_id}/{index}{form}'
         report['attachments'][attachment_key] = {'entity_id': entity_id, 'index': index,
                                                    'source_model': model, 'definition': entry}
         return entity_id, attachment_key

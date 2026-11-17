@@ -944,7 +944,8 @@ def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime
             # A single rig is not a valid attachment provider for the whole
             # transformation. Preserve its one root; affected effects report
             # their unqualified per-form binding rather than using form one.
-            entity_objects[identity] = {'root':shared_roots[identity], 'rig':None,
+            forms = {track: entity_objects[track] for track in actor['model_tracks'] if track in entity_objects}
+            entity_objects[identity] = {'root':shared_roots[identity], 'rig':None, 'forms':forms,
                                         'model_root':None, 'model_tracks':actor['model_tracks']}
         elif identity not in entity_objects:
             track = next(e for e in data['entities'] if actor_id(e) == identity)
