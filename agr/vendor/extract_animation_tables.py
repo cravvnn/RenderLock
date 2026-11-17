@@ -165,9 +165,20 @@ def extract(path,end_tick):
                                  'live_name':live.get(r['index'],{}).get('name'),
                                  'data_same':r['data_hex']==live.get(r['index'],{}).get('data_hex')}
                                 for r in rows if r!=live.get(r['index'])]
+                    adopted=0
+                    if (not same and command==13 and all(r['index'] not in live for r in mismatches)
+                            and all(live[k]==rows[k] for k in live if k<len(rows)) and all(k<len(rows) for k in live)):
+                        # The full snapshot holds entries the sequential updates never delivered (seen for neutral
+                        # NPC graphs added mid-match). Nothing recorded contradicts them, so they are taken from
+                        # the snapshot at its tick; their true arrival tick is unknown.
+                        target=state.setdefault(name,{})
+                        for r in (rows[m['index']] for m in mismatches):
+                            target[r['index']]=dict(r);changes.append({'tick':tick,'table':name,**r,'from_snapshot':True})
+                        adopted=len(mismatches);same=True
                     snapshots.append({'tick':tick,'command':command,'name':name,
                                       'entries':len(rows),'live_entries':len(live),
-                                      'matches_sequential_stream':same,'mismatches':mismatches})
+                                      'matches_sequential_stream':same,'mismatches':mismatches,
+                                      'adopted_from_snapshot':adopted})
                     if not same:raise ValueError(f'animation snapshot differs: {name} at {tick}: {mismatches[:3]}')
                 if command==6 and initial is None:
                     initial={n:[dict(v) for _,v in sorted(rows.items())] for n,rows in state.items()}
