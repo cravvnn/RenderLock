@@ -726,7 +726,12 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
             if root_profile:
                 validate_model_response(simulation,instance['id'],model_provenance['bone_count'],
                     [0] if model_profile else [binding['control_point'] for binding in bindings])
-            elif broad:unset_points=validate_broad_response(simulation,instance['id'],bindings,[point['position'] for point in points])
+            elif broad:
+                anchors=[point['position'] for point in points]
+                if bindings[0].get('assumed_world_origin'):
+                    # Point 0 is only assumed; measure from the first recorded point instead.
+                    anchors=[point['extra_control_points'][0]['position'] for point in points if point.get('extra_control_points')]
+                unset_points=validate_broad_response(simulation,instance['id'],bindings,anchors)
             else:validate_control_response(simulation,instance['id'],bindings)
             if simulation['warnings']:raise ValueError('Simulator diagnostics: '+'; '.join(simulation['warnings']))
             simulation['instances'][0]['entity_id']=instance['entity_id']

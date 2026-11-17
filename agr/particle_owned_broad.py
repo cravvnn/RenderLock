@@ -140,10 +140,15 @@ def broad_bindings(instance, start, end, exported=(), definition=None):
             bindings.setdefault(cp, row)
         # The configuration may leave control point 0 unset; the game's default for it is not known.
         bindings.setdefault(0, dict(control_point=0, provider='entity_origin', target_entity=owner, assumed=True))
-    if 0 not in bindings:
-        require(creation['attach_type'] in ORIGIN_CREATION_MODES and own(handle),
-                'no control point 0 binding is recorded')
+    if 0 not in bindings and creation['attach_type'] in ORIGIN_CREATION_MODES and own(handle):
         bindings[0] = dict(control_point=0, provider='entity_origin', target_entity=owner)
+    if 0 not in bindings:
+        # The game set other points and never set point 0, which then stays at the world origin. The response
+        # check refuses the effect if particles land there.
+        require(bindings and own(handle), 'no control point 0 binding is recorded')
+        bindings[0] = dict(control_point=0, provider='literal_transform', assumed_world_origin=True,
+                           updates=[dict(tick=birth, control_point=0, position=[0.0, 0.0, 0.0], rotation=[0, 0, 0, 1],
+                                         interpolation_interval=0)])
     return [bindings[cp] for cp in sorted(bindings)]
 
 
@@ -164,6 +169,8 @@ def validate_response(simulation, instance_id, bindings, anchors=()):
             'simulator did not confirm every supplied control point')
     unprovided = rows[0].get('unprovided_control_point_indices')
     require(unprovided is None or isinstance(unprovided, list), 'invalid unprovided control point list')
+    unprovided = sorted(set(unprovided or []) | {binding['control_point'] for binding in bindings
+                                                 if binding.get('assumed_world_origin')})
     if not unprovided:
         return []
     distances = [math.hypot(*anchor) for anchor in anchors]
