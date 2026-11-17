@@ -423,6 +423,14 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254,
         color=info.outputs['Color'];alpha=info.outputs['Alpha']
         from .particle_texture_layers import needs_extended_sprite_layers,build_layer_stack,gradient_pixels
         authored_layers=renderer.get('m_vecTexturesInput',[])
+        if leave_out:
+            # A normal map is lighting detail only: the sprite is drawn from its other layers.
+            kept=[layer for layer in authored_layers
+                  if not (isinstance(layer,dict) and layer.get('m_nTextureType')=='SPRITECARD_TEXTURE_NORMALMAP')]
+            if kept and len(kept)<len(authored_layers):
+                note=resource+': sprite normal map left out'
+                if note not in omissions:omissions.append(note)
+                authored_layers=kept
         animated=any('source_sheet' in assets['textures'].get(layer.get('m_hTexture'),{}) for layer in authored_layers)
         extended=needs_extended_sprite_layers(authored_layers) or animated
         curve_age=any(isinstance(value,dict)and value.get('m_nType')=='PF_TYPE_COLLECTION_AGE'
