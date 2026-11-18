@@ -1,3 +1,11 @@
+# 0.3.0b33 - Snapshot-only animation entries and effects across model changes
+
+- Take animation table entries that appear only in a replay's periodic full snapshot from that snapshot, instead of stopping the export.
+- Attach bone-attached effects to the model a character had when the effect started, and follow the character's root outside that model's ticks.
+- Draw a sprite that has a normal-map layer without that layer and name it in the report.
+- Build effects whose main control point the game never set, including the heavy melee charge, with that point left at the world origin and the effect refused if particles land there.
+- Unverified effects are not compared with the game. Model-bound effects other than bone attachments on a character that changes model remain unbuilt.
+
 # 0.3.0b32 - Long matches, new heroes and more effect placements
 
 - Keep built effects when modifier history is unavailable on a long match; only the affected mask effects are reported.
