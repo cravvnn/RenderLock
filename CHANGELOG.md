@@ -1,3 +1,10 @@
+# 0.3.0b34 - Effects after a game update
+
+- Build rope effects, particle lights and extended sprite layers on any installed game build. When the game's particle module is not a verified build, the values measured on an earlier build are used and each affected effect is labelled in the coverage report.
+- Add Deadlock client 6864 to the verified particle modules after rerunning the native checks against it.
+- Report the installed particle module and whether it is verified in `agr compat`.
+- Dedicated effect profiles measured on clients 6860 and 6861 are not rechecked on other builds; those effects use the general unverified path.
+
 # 0.3.0b33 - Snapshot-only animation entries and effects across model changes
 
 - Take animation table entries that appear only in a replay's periodic full snapshot from that snapshot, instead of stopping the export.
