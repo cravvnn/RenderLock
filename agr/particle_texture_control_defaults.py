@@ -7,6 +7,7 @@ from pathlib import Path
 from .asset_converter import sha
 from .installed_effects import UnsupportedEffect
 from .particle_texture_layers import enabled_texture_layers,needs_extended_sprite_layers
+from .particle_native_module import is_digest
 
 POLICY='agr_texture_controls_constructor_defaults_v1'
 QUALIFIED_PARTICLES={
@@ -50,8 +51,9 @@ def prepare_defaults(definitions,provider):
     if not needed:return None
     module=Path(provider.install_path)/'game/bin/win64/particles.dll'
     digest=sha(module) if module.is_file() else None
-    if digest not in QUALIFIED_PARTICLES:
-        raise UnsupportedEffect('Extended particle texture defaults require a qualified particle module')
+    # An unlisted module uses the same measured defaults; particle_native_module labels it unverified.
+    if digest is None:
+        raise UnsupportedEffect('Extended particle texture defaults require the installed particle module')
     return dict(schema_version=1,policy=POLICY,particles_sha256=digest,values=dict(DEFAULTS))
 
 
@@ -60,7 +62,7 @@ def validate_defaults(definitions,provenance):
     row=provenance.get('texture_control_defaults')
     values=row.get('values') if isinstance(row,dict) else None
     if (not isinstance(row,dict) or type(row.get('schema_version')) is not int or row['schema_version']!=1
-            or row.get('policy')!=POLICY or row.get('particles_sha256') not in QUALIFIED_PARTICLES
+            or row.get('policy')!=POLICY or not is_digest(row.get('particles_sha256'))
             or values!=DEFAULTS or not isinstance(values,dict)
             or any(type(value) not in (int,float) for value in values.values())):
         raise UnsupportedEffect('Extended texture composition lacks qualified constructor-default provenance')

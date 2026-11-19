@@ -27,7 +27,10 @@ PARTICLES_SHA='46ae70beaef7935e27794d2148406407605994b59fa5ff19f9a37c8ba68c129f'
 
 
 def validate_native_inputs(proof):
-    if proof!={'policy':PROFILE_POLICY,'particles_sha256':PARTICLES_SHA}:
+    from .particle_native_module import is_digest
+    # Any installed module digest is accepted; particle_native_module labels an unverified one.
+    if (not isinstance(proof,dict) or set(proof)!={'policy','particles_sha256'} or proof['policy']!=PROFILE_POLICY
+            or not is_digest(proof['particles_sha256'])):
         raise UnsupportedEffect('Particle light: unqualified native default point/FX profile')
     return proof
 

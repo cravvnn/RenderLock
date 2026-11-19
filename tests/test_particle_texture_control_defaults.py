@@ -32,11 +32,15 @@ def test_explicit_zero_is_preserved_and_does_not_inherit_one():
         defaults.required_defaults(definition({'m_flDistortion':None}))
 
 
-def test_constructor_provenance_is_required_and_cannot_be_replaced_by_an_unknown_module(tmp_path,monkeypatch):
+def test_constructor_provenance_is_required_and_an_unknown_module_is_labelled(tmp_path,monkeypatch):
+    from agr.particle_native_module import unverified_digests
     provider=SimpleNamespace(install_path=tmp_path)
-    module=tmp_path/'game/bin/win64/particles.dll';module.parent.mkdir(parents=True);module.write_bytes(b'fixture')
-    with pytest.raises(UnsupportedEffect,match='qualified particle module'):
+    with pytest.raises(UnsupportedEffect,match='installed particle module'):
         defaults.prepare_defaults(definition(),provider)
+    module=tmp_path/'game/bin/win64/particles.dll';module.parent.mkdir(parents=True);module.write_bytes(b'fixture')
+    other=defaults.prepare_defaults(definition(),provider)
+    defaults.validate_defaults(definition(),{'texture_control_defaults':other})
+    assert unverified_digests({'texture_control_defaults':other})=={other['particles_sha256']}
     measured=next(iter(defaults.QUALIFIED_PARTICLES))
     monkeypatch.setattr(defaults,'sha',lambda _:measured)
     row=defaults.prepare_defaults(definition(),provider)
@@ -49,7 +53,7 @@ def test_constructor_provenance_is_required_and_cannot_be_replaced_by_an_unknown
 
 
 @pytest.mark.parametrize('change',[
-    {'particles_sha256':'0'*64},{'schema_version':True},{'policy':'unknown'},
+    {'particles_sha256':'not a digest'},{'schema_version':True},{'policy':'unknown'},
     {'values':{}},{'values':{'m_flZoomScale':1.,'m_flDistortion':0.}}
 ])
 def test_changed_defaults_header_refuses(change):

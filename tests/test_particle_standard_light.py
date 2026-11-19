@@ -76,7 +76,7 @@ def test_invalid_sample_does_not_fall_back_to_calibrated_light(key,value):
     with pytest.raises(UnsupportedEffect):parameters(dict(_class='C_OP_RenderStandardLight'),p,.0254)
 
 
-@pytest.mark.parametrize('proof',[None,{},dict(policy=PROFILE_POLICY,particles_sha256='a'*64),
+@pytest.mark.parametrize('proof',[None,{},dict(policy=PROFILE_POLICY,particles_sha256='not a digest'),dict(policy=PROFILE_POLICY,particles_sha256='a'*64,extra=1),
     dict(policy='unknown',particles_sha256=PARTICLES_SHA)])
 def test_changed_declared_native_profile_is_refused_before_package_dispatch(proof):
     from agr.simulated_effect_package import validate_package
@@ -104,7 +104,10 @@ def test_new_asset_preparation_requires_the_actual_qualified_module(tmp_path,mon
     provider=SimpleNamespace(install_path=tmp_path)
     with pytest.raises(UnsupportedEffect,match='unavailable'):collect_native_inputs(provider)
     module=tmp_path/'game/bin/win64/particles.dll';module.parent.mkdir(parents=True);module.write_bytes(b'changed module')
-    with pytest.raises(UnsupportedEffect,match='unqualified'):collect_native_inputs(provider)
+    # A module from another game build is accepted under its own digest and labelled unverified in the report.
+    from agr.particle_native_module import unverified_digests
+    other=collect_native_inputs(provider)
+    assert other['policy']==PROFILE_POLICY and unverified_digests({PROFILE_KEY:other})=={other['particles_sha256']}
     seen=[]
     def qualified(path):seen.append(path);return PARTICLES_SHA
     monkeypatch.setattr(converter,'sha',qualified)

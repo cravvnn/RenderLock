@@ -16,6 +16,7 @@ from .particle_texture_layers import enabled_texture_layers
 POLICY='agr_rope_zero_seed_shader_inputs_v1'
 PROFILE_KEY='native_rope_shader'
 PARTICLES_SHA='46ae70beaef7935e27794d2148406407605994b59fa5ff19f9a37c8ba68c129f'
+from .particle_native_module import installed_digest,is_digest
 
 
 def needs_inputs(renderer):
@@ -31,7 +32,9 @@ def needs_inputs(renderer):
 
 
 def validate_inputs(proof):
-    expected=dict(policy=POLICY,particles_sha256=PARTICLES_SHA,shader_sha256=SHADERS,segment_seed=0,
+    # Any installed module digest is accepted; particle_native_module labels an unverified one.
+    module=proof.get('particles_sha256') if isinstance(proof,dict) else None
+    expected=dict(policy=POLICY,particles_sha256=module if is_digest(module) else PARTICLES_SHA,shader_sha256=SHADERS,segment_seed=0,
         blend_alpha_parameters={'ALPHA':1.,'ADD':0.,'BLEND_ADD':-1.})
     if (not isinstance(proof,dict) or proof!=expected or type(proof.get('segment_seed'))is not int
         or any(type(v)is not float for v in proof.get('blend_alpha_parameters',{}).values())):
@@ -40,9 +43,9 @@ def validate_inputs(proof):
 
 
 def collect_inputs(provider):
-    module=Path(provider.install_path)/'game/bin/win64/particles.dll'
-    if not module.is_file() or sha(module)!=PARTICLES_SHA:
-        raise UnsupportedEffect('Rope inputs require the qualified installed particle module')
-    return validate_inputs(dict(policy=POLICY,particles_sha256=PARTICLES_SHA,
+    digest=installed_digest(provider)
+    if digest is None:
+        raise UnsupportedEffect('Rope inputs require the installed particle module')
+    return validate_inputs(dict(policy=POLICY,particles_sha256=digest,
         shader_sha256={name:provider.resolve(name).sha256 for name in SHADERS},segment_seed=0,
         blend_alpha_parameters={'ALPHA':1.,'ADD':0.,'BLEND_ADD':-1.}))

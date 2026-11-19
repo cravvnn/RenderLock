@@ -387,6 +387,8 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254,
     collection=bpy.data.collections.new('AGR Simulated Effects')
     scene.collection.children.link(collection)
     materials={};images={};omissions=[];sheet_uv_bypasses=set()
+    from .particle_native_module import unverified_digests,NOTE as NATIVE_MODULE_NOTE
+    if unverified_digests(assets.get('provenance',{})):omissions.append(NATIVE_MODULE_NOTE)
     from .particle_refraction import is_screen_refraction,NOTE as REFRACTION_NOTE
     resource_paths={}
     for instance,path,resource,_ in tracks:

@@ -99,6 +99,8 @@ def installed_compatibility(provider):
             report['resources'][label] = {'resource': resource, 'error': str(exc)}
             return False, label + ': ' + str(exc)
 
+    from .particle_native_module import status as particle_module_status
+    report['particle_module'] = particle_module_status(provider)
     npr_ok, npr_reason = shader(NPR_SHADER, QUALIFIED_SHADER_SHA256, 'npr_pbr_shader')
     evaluator=expression_module_status(provider)
     report['material_expression_evaluator']=evaluator
