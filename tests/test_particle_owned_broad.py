@@ -219,3 +219,43 @@ def test_general_model_placement_keeps_literal_settings_and_notes_run_time_ones(
     with pytest.raises(ValueError, match='run time'):
         fixed_model({'_class': 'C_OP_RenderModels', 'm_ModelList': [{'m_model': 'models/null.vmdl'}],
                      'm_modelInput': {'m_nType': 'PM_TYPE_CONTROL_POINT'}})
+
+
+def test_effect_created_on_no_entity_but_bound_to_the_owner_is_the_owners():
+    rows = broad_bindings(instance([bind(1, 0, OWNER, 1, 0), bind(2, 1, OWNER, 5, 38)], handle=0xffffff, mode=2),
+                          90, 130)
+    assert [row['control_point'] for row in rows] == [0, 1]
+    assert rows[0] == dict(control_point=0, provider='entity_origin', target_entity='56:895')
+    with pytest.raises(ValueError, match='no control point 0'):
+        broad_bindings(instance([bind(1, 1, OWNER, 5, 38)], handle=0xffffff, mode=2), 90, 130)
+
+
+def test_systems_at_the_world_origin_are_left_out_and_the_rest_is_kept():
+    from agr.particle_owned_broad import leave_out_world_origin_systems, unset_points_allowed
+    def frame(tick):
+        return dict(tick=tick, systems=[
+            dict(system_path='root/0', particles=[dict(position=[3000.0, 5.0, 0.0])]),
+            dict(system_path='root/1', particles=[dict(position=[3010.0, 0.0, 0.0]), dict(position=[2.0, 1.0, 0.0])]),
+            dict(system_path='root/2', particles=[])])
+    row = dict(frames=[frame(100), frame(101)])
+    assert leave_out_world_origin_systems(row, [[3000.0, 0.0, 0.0]]) == ['root/1']
+    assert row['systems_left_at_world_origin'] == ['root/1']
+    assert all(f['systems'][1]['particles'] == [] and len(f['systems'][0]['particles']) == 1 for f in row['frames'])
+    # An effect that really is at the world origin keeps everything.
+    near = dict(frames=[frame(100)])
+    assert leave_out_world_origin_systems(near, [[200.0, 0.0, 0.0]]) == [] and 'systems_left_at_world_origin' not in near
+    assert unset_points_allowed(dict(unprovided_control_point_indices=[5, 7]), [0, 1])
+    assert unset_points_allowed(dict(), [0])
+    assert not unset_points_allowed(dict(unprovided_control_point_indices=[1]), [0, 1])
+    assert not unset_points_allowed(dict(unprovided_control_point_indices='5'), [0])
+
+
+def test_configuration_driver_without_an_attach_type_is_taken_as_the_owner_origin():
+    from agr.particle_owned_broad import configuration_drivers
+    definition = {'m_controlPointConfigurations': [{'m_name': 'game', 'm_drivers': [
+        {'m_entityName': 'self'},
+        {'m_iControlPoint': 10, 'm_iAttachType': 'PATTACH_POINT_FOLLOW', 'm_attachmentName': 'gun_ring_fx'}]}]}
+    rows = configuration_drivers(dict(control_point_configuration='game'), definition, '56:895')
+    assert rows[0] == dict(control_point=0, provider='entity_origin', target_entity='56:895', configuration='game',
+                           assumed=True)
+    assert rows[10]['provider'] == 'named_attachment'

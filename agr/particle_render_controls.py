@@ -133,10 +133,11 @@ def render_scalar(value, *, context=None, default=0, age=None):
 def _unverified_world(instance, supplied):
     """Broad world path: the effect may itself rewrite a supplied control point (as it does in the game).
 
-    Every point the simulation read must still have been supplied or written by the definition.
+    A point the game never set is read as zero, as the simulator left it.
     """
-    from .particle_owned_broad import is_unverified
-    declared, unprovided = instance.get('declared_control_point_inputs'), instance.get('unprovided_control_point_indices')
+    from .particle_owned_broad import is_unverified, unset_points_allowed
+    declared = instance.get('declared_control_point_inputs')
     return (is_unverified(instance)
-            and isinstance(declared, list) and set(supplied) <= set(declared) and unprovided == []
+            and isinstance(declared, list) and set(supplied) <= set(declared)
+            and unset_points_allowed(instance, supplied)
             and isinstance(instance.get('materialized_control_point_indices'), list))

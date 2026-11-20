@@ -287,8 +287,8 @@ def build_package_effects(package, data, manifest_file, scene, camera):
 
 
 def _unverified_inputs(instance, supplied):
-    """Broad paths: the effect may rewrite a supplied point itself, but may not read an unsupplied one."""
-    from .particle_owned_broad import is_unverified
-    return (is_unverified(instance) and instance.get('unprovided_control_point_indices') in (None, [])
+    """Broad paths: the effect may rewrite a supplied point itself; a point the game never set is read as zero."""
+    from .particle_owned_broad import is_unverified, unset_points_allowed
+    return (is_unverified(instance) and unset_points_allowed(instance, supplied)
             and isinstance(instance.get('control_point_indices'), list)
             and set(supplied) <= set(instance['control_point_indices']))

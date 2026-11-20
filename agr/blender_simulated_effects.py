@@ -439,6 +439,17 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254,
             and value.get('m_nMapType')=='PF_MAP_TYPE_CURVE'
             for layer in authored_layers for value in layer.get('m_TextureControls',{}).values())
         layers=authored_layers if extended else [t for t in authored_layers if t.get('m_hTexture')]
+        if extended:
+            # The layer stack reads distortion and zoom straight from the layer: settle random controls first.
+            from .particle_texture_inputs import resolve_texture_random_inputs as settle_random
+            settled=[]
+            for layer_index,layer in enumerate(layers):
+                controls,notes=settle_random(layer.get('m_TextureControls',{}),
+                    f'{instance}/{system_path}/{index}/{layer_index}',simulation.get('seed'),simulation.get('seed_policy'))
+                for note in notes:
+                    if resource+': '+note not in omissions:omissions.append(resource+': '+note)
+                settled.append(dict(layer,m_TextureControls=controls) if notes else layer)
+            layers=settled
         from .particle_motion_vectors import motion_vector_pair,build_motion_offsets,POLICY as MOTION_POLICY
         motion_pair=motion_vector_pair(authored_layers,assets['textures'],renderer)
         motion_offsets=None
@@ -779,6 +790,12 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254,
                 omissions.append(resource+': '+REFRACTION_NOTE)
                 continue
             kind=renderer['_class'];light=kind=='C_OP_RenderStandardLight';trail=kind=='C_OP_RenderTrails'
+            if kind in ('C_OP_RenderSprites','C_OP_RenderTrails'):
+                from .particle_texture_inputs import resolve_renderer_random_inputs
+                renderer,notes=resolve_renderer_random_inputs(renderer,f'{instance}/{system_path}/{index}',
+                    simulation.get('seed'),simulation.get('seed_policy'))
+                for note in notes:
+                    if resource+': '+note not in omissions:omissions.append(resource+': '+note)
             if kind not in ('C_OP_RenderSprites','C_OP_RenderTrails','C_OP_RenderStandardLight'):
                 raise UnsupportedEffect('Simulated renderer '+kind)
             name=f'AGR FX | {instance} | {Path(resource).stem} | {system_path} | {particle_id}.{index}'
@@ -799,7 +816,17 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254,
                 data.from_pydata(vertices,[],[(0,1,2,3)]);uv=data.uv_layers.new()
                 coords=[(0,0),(0,1),(1,1),(1,0)] if trail else [(0,0),(1,0),(1,1),(0,1)]
                 for item,value in zip(uv.data,coords):item.uv=value
-                data.materials.append(material(instance,system_path,particle_id,resource,index,renderer,samples[0][2]['sequence'],samples))
+                try:
+                    built_material=material(instance,system_path,particle_id,resource,index,renderer,samples[0][2]['sequence'],samples)
+                except UnsupportedEffect as reason:
+                    # Found only while building the material: leave this layer out where that is allowed.
+                    if not leave_out:raise
+                    bpy.data.meshes.remove(data)
+                    note='layer left out: '+str(reason)
+                    assets.setdefault('omitted_layers',{}).setdefault(resource,{})[str(index)]=note
+                    omissions.append(resource+': '+note)
+                    continue
+                data.materials.append(built_material)
             obj=bpy.data.objects.new(name,data);collection.objects.link(obj);objects.append(obj);obj.rotation_mode='QUATERNION'
             obj['agr_particle_resource']=resource;obj['agr_particle_instance']=instance;obj['agr_simulation_backend']=simulation['backend']
             obj['agr_particle_system_path']=system_path

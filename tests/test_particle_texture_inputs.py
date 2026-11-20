@@ -51,3 +51,20 @@ def test_source_scale_uses_captured_particle_factor_and_never_drops_invalid_inpu
     assert texture_uv_corners({},0,scale_factor=2)==[(.25,.25),(.75,.25),(.25,.75),(.75,.75)]
     for value in (0,True,float('nan'),float('inf'),1e300):
         with pytest.raises(UnsupportedEffect):texture_uv_parameters(controls,0,scale_factor=value)
+
+
+def test_renderer_random_scalars_get_one_stable_bounded_value_and_leave_layers_alone():
+    from agr.particle_texture_inputs import resolve_renderer_random_inputs
+    random=dict(m_nType='PF_TYPE_RANDOM_UNIFORM',m_flRandomMin=1.0,m_flRandomMax=1.5,m_nRandomMode='PF_RANDOM_MODE_CONSTANT')
+    renderer=dict(_class='C_OP_RenderTrails',m_flRadiusScale=dict(random),m_flAlphaScale=2.0,
+        m_flOverbrightFactor=dict(random,m_bHasRandomSignFlip=True),m_vecTexturesInput=[dict(m_TextureControls=dict(m_flDistortion=dict(random)))])
+    before=copy.deepcopy(renderer)
+    resolved,notes=resolve_renderer_random_inputs(renderer,'7:1/root/0/3',12345,'agr_substitute_sha256_v1')
+    assert renderer==before and len(notes)==1 and 'm_flRadiusScale' in notes[0]
+    value=resolved['m_flRadiusScale']
+    assert value['m_nType']=='PF_TYPE_LITERAL' and 1.0<=value['m_flLiteralValue']<=1.5
+    assert resolved['m_flOverbrightFactor']==before['m_flOverbrightFactor']
+    assert resolved['m_vecTexturesInput']==before['m_vecTexturesInput'] and resolved['m_flAlphaScale']==2.0
+    assert resolve_renderer_random_inputs(renderer,'7:1/root/0/3',12345,'agr_substitute_sha256_v1')[0]==resolved
+    assert resolve_renderer_random_inputs(renderer,'7:1/root/0/4',12345,'agr_substitute_sha256_v1')[0]!=resolved
+    assert resolve_renderer_random_inputs(renderer,'7:1/root/0/3',None,None)==(before,[])

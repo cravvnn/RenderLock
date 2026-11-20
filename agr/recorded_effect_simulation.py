@@ -773,6 +773,8 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
             if broad:
                 entry['unverified']=BROAD_POLICY
                 if unset_points:entry['control_points_assumed_at_world_origin']=unset_points
+                if simulation['instances'][0].get('systems_left_at_world_origin'):
+                    entry['systems_left_at_world_origin']=simulation['instances'][0]['systems_left_at_world_origin']
                 report['unverified_owned_instances']=report.get('unverified_owned_instances',0)+1
             if model_provenance:entry['model_provider']=model_provenance
             report['instances'].append(entry)

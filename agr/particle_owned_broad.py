@@ -8,6 +8,9 @@ exported uses its recorded fallback position, held still. A literal control poin
 its first recorded value from creation. An effect created with a named control point configuration (creation mode
 -1, used by animation-driven effects) takes its bindings from that configuration in the effect's own definition;
 control point 0 then defaults to the owner's origin when the configuration does not set it.
+An effect created on no entity but bound at creation to an exported character is that character's effect.
+A control point the game never set stays at the world origin; a system whose particles land there, far from the
+effect, is left out and the rest is built.
 Still refused: a binding to an unexported entity without a fallback position, a binding made or changed after
 creation, and non-zero attachment offsets.
 """
@@ -24,7 +27,8 @@ CONFIGURATION_MODE = -1
 DRIVER_ORIGIN = ('PATTACH_ABSORIGIN', 'PATTACH_ABSORIGIN_FOLLOW')
 DRIVER_ATTACHMENT = ('PATTACH_POINT', 'PATTACH_POINT_FOLLOW')
 DRIVER_WORLD = 'PATTACH_WORLDORIGIN'
-FAR_FROM_WORLD_ORIGIN, NEAR_WORLD_ORIGIN = 1024.0, 128.0  # game units
+FAR_FROM_EFFECT, NEAR_WORLD_ORIGIN = 512.0, 128.0  # game units
+NO_ENTITY = 0xffffff
 
 
 def require(ok, message):
@@ -61,6 +65,10 @@ def configuration_drivers(creation, definition, owner, birth=0):
                 'configuration driver with an offset or another entity is not supported')
         if mode in DRIVER_ORIGIN:
             result[cp] = dict(control_point=cp, provider='entity_origin', target_entity=owner, configuration=name)
+        elif mode is None:
+            # The definition leaves the attach type at its default, which is not known: taken as the entity's origin.
+            result[cp] = dict(control_point=cp, provider='entity_origin', target_entity=owner, configuration=name,
+                              assumed=True)
         elif mode in DRIVER_ATTACHMENT and isinstance(attachment, str) and attachment:
             result[cp] = dict(control_point=cp, provider='named_attachment', attachment_name=attachment,
                               target_entity=owner, configuration=name)
@@ -86,7 +94,7 @@ def broad_bindings(instance, start, end, exported=(), definition=None):
     index, generation, handle = (instance.get(field) for field in ('index', 'generation', 'entity_handle'))
     owner = instance.get('entity_id')
     require(type(index) is int and 0 <= index < 2**31 and type(generation) is int and generation >= 1
-            and instance.get('id') == f'{index}:{generation}' and type(handle) is int and 0 <= handle < 0xffffff
+            and instance.get('id') == f'{index}:{generation}' and type(handle) is int and 0 <= handle <= NO_ENTITY
             and isinstance(owner, str) and owner, 'exact particle generation and an exported owner are required')
 
     def own(value):
@@ -152,12 +160,45 @@ def broad_bindings(instance, start, end, exported=(), definition=None):
     return [bindings[cp] for cp in sorted(bindings)]
 
 
+def leave_out_world_origin_systems(row, anchors):
+    """Empty every system that has a particle at the world origin while the effect is elsewhere.
+
+    anchors: positions of the effect over the clip. A particle counts when it is near the world origin and far from
+    every anchor. Returns the emptied system paths, recorded on the row as 'systems_left_at_world_origin'. Refuses
+    when nothing else of the effect would remain.
+    """
+    anchors = [anchor for anchor in anchors if len(anchor) == 3]
+    if not anchors:
+        return []
+
+    def stray(position):
+        return (math.hypot(*position) < NEAR_WORLD_ORIGIN
+                and min(math.dist(position, anchor) for anchor in anchors) > FAR_FROM_EFFECT)
+    live, lost = set(), set()
+    for frame in row.get('frames', []):
+        for system in frame['systems']:
+            particles = system.get('particles') or []
+            if particles:
+                live.add(system.get('system_path'))
+                if any(stray(particle['position']) for particle in particles):
+                    lost.add(system.get('system_path'))
+    if not lost:
+        return []
+    require(None not in lost and lost != live, 'unset control points place every particle at the world origin')
+    for frame in row['frames']:
+        for system in frame['systems']:
+            if system.get('system_path') in lost:
+                system['particles'] = []
+    row['systems_left_at_world_origin'] = sorted(lost)
+    return sorted(lost)
+
+
 def validate_response(simulation, instance_id, bindings, anchors=()):
     """The simulator must acknowledge the broad provider and every supplied point.
 
     Returns the control points the effect reads that the game never set. The simulator leaves those at the world
-    origin, which is assumed to match the game. anchors: control point 0 positions over the clip; when all of them
-    are far from the world origin, a particle found at the world origin shows the assumption drew something wrong.
+    origin, which is assumed to match the game. anchors: control point 0 positions over the clip; systems whose
+    particles land at the world origin far from all of them are emptied (see leave_out_world_origin_systems).
     """
     rows = simulation.get('instances', [])
     require(isinstance(rows, list) and len(rows) == 1 and rows[0].get('id') == instance_id
@@ -173,13 +214,16 @@ def validate_response(simulation, instance_id, bindings, anchors=()):
                                                  if binding.get('assumed_world_origin')})
     if not unprovided:
         return []
-    distances = [math.hypot(*anchor) for anchor in anchors]
-    if distances and min(distances) > FAR_FROM_WORLD_ORIGIN:
-        require(not any(math.hypot(*particle['position']) < NEAR_WORLD_ORIGIN
-                        for frame in rows[0].get('frames', []) for system in frame['systems']
-                        for particle in system.get('particles') or []),
-                f'unset control points {unprovided} place particles at the world origin')
+    leave_out_world_origin_systems(rows[0], anchors)
     return list(unprovided)
+
+
+def unset_points_allowed(row, supplied):
+    """An unverified instance may read points the game never set: a list of other control points."""
+    unprovided = row.get('unprovided_control_point_indices')
+    return unprovided is None or (isinstance(unprovided, list)
+                                  and all(type(cp) is int and 0 <= cp <= 63 for cp in unprovided)
+                                  and not set(unprovided) & set(supplied))
 
 
 def is_unverified(row):

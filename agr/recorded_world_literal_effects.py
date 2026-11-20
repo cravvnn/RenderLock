@@ -62,6 +62,11 @@ def prepare_world_literal_package(data, instance, runtime, provider, decoder, ad
     if not names or not names <= set(definitions):
         raise ValueError('World simulation system tree differs from the decoded effect tree')
     sim['instances'][0]['entity_id'] = None
+    if sim['instances'][0].get('unprovided_control_point_indices'):
+        from .particle_owned_broad import leave_out_world_origin_systems
+        leave_out_world_origin_systems(sim['instances'][0], [
+            row['position'] for row in sim['instances'][0].get('literal_transforms_applied') or []
+            if row.get('control_point') == 0])
     # The same asset collection as owned effects: sprite sheets, texture defaults, light and rope inputs, models.
     from .particle_render_assets import prepare_render_assets
     assets = prepare_render_assets(set(definitions), decoder, adapter, provider, runtime, definitions=definitions,
