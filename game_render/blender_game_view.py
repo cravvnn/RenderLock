@@ -101,6 +101,8 @@ class Session:
         self.image = None
         self.received = 0
         self.last_pose = None
+        self.position_error = None
+        self.held_frame = None
 
     # ---- lifecycle
     def start(self, game, demo, width, height, hide_hud):
@@ -111,6 +113,24 @@ class Session:
                          name="renderlock-game-start", daemon=True).start()
 
     def _start(self, game, demo, width, height, hide_hud):
+        for attempt in range(2):
+            error = self._start_once(game, demo, width, height, hide_hud)
+            if error is None:
+                return
+            if attempt:
+                self.state, self.message = "failed", f"Could not start: {error}"
+                return
+            self.state, self.message = "starting", "The game stalled while starting; restarting it once…"
+            try:
+                if self.controller:
+                    self.controller.close()
+            except Exception:
+                traceback.print_exc()
+            self.controller = None
+            _close_game()
+            time.sleep(10)
+
+    def _start_once(self, game, demo, width, height, hide_hud):
         try:
             from dolly.controller import Controller
             self.controller = Controller(log_callback=self._log)
@@ -123,9 +143,10 @@ class Session:
             if hide_hud:
                 self.set_hud(False)
             self.state, self.message = "ready", "Connected. The viewport shows the game."
+            return None
         except Exception as error:
             traceback.print_exc()
-            self.state, self.message = "failed", f"Could not start: {error}"
+            return str(error)
 
     def _log(self, *parts, **_):
         text = " ".join(str(p) for p in parts)
@@ -152,6 +173,11 @@ class Session:
         """Floating health bars and the replay HUD (best effort)."""
         if not self.controller:
             return
+        try:  # Dolly's floating health bar switch stays in effect across shots
+            if bool(self.controller._healthbars_hidden) == bool(visible):
+                self.controller.toggle_healthbars()
+        except Exception:
+            traceback.print_exc()
         value = 1 if visible else 0
         for command in (f"citadel_hud_visible {value}", f"citadel_hide_replay_hud {1 - value}"):
             try:
@@ -178,6 +204,7 @@ class Session:
                           standard_aspect=pose[7])
         project.validate()
         self.stream.set_camera(None)
+        self.held_frame = None
         self.controller.prepare_native_recording(project)
         self.stream.set_camera(pose)
         self.current_tick = int(tick)
@@ -193,15 +220,41 @@ class Session:
             while self.state == "ready" and self.wanted_tick is not None and self.wanted_tick != self.current_tick:
                 target = self.wanted_tick
                 self.message = f"Moving the replay to tick {target}…"
-                try:
-                    self.position(max(0, target), self.last_pose)
-                    self.message = f"Replay tick {target}"
-                except Exception as error:
-                    traceback.print_exc()
-                    self.message = f"Seek failed: {error}"
-                    self.current_tick = target
+                for attempt in range(3):  # a seek right after a replay reload can miss once
+                    try:
+                        self.position(max(0, target), self.last_pose)
+                        self.message = f"Replay tick {target}"
+                        self.position_error = None
+                        break
+                    except Exception as error:
+                        traceback.print_exc()
+                        self.message = f"Seek failed: {error}"
+                        self.position_error = str(error)
+                else:
+                    # Some ticks cannot be reached by a direct jump; play a short
+                    # run-up into them instead and hold the last frame.
+                    self.message = f"Playing into tick {target}…"
+                    try:
+                        self.run_up(max(0, target), self.last_pose)
+                        self.position_error = None
+                        self.message = f"Replay tick {target}"
+                    except Exception as error:
+                        traceback.print_exc()
+                        self.position_error = str(error)
+                        self.current_tick = None
+                        self.wanted_tick = None
+                        return
         finally:
             self.seeking = False
+
+    def run_up(self, tick, pose, frames=30, fps=60):
+        """Reach `tick` by playing `frames` fixed steps from just before it."""
+        lead = int(round(frames / fps * TICK_RATE))
+        captured = self.capture_range(tick - lead, fps, [pose] * (frames + 1))
+        if frames not in captured:
+            raise RuntimeError(f"The run-up into tick {tick} did not deliver its last frame.")
+        self.held_frame = captured[frames]
+        self.current_tick = int(tick)
 
     def capture_range(self, start_tick, fps, poses, cancelled=lambda: False, timeout=600.0):
         """Play the camera animation once, fixed-step, and keep each frame's game image.
@@ -401,7 +454,11 @@ class RenderLockGameEngine(bpy.types.RenderEngine):
                     if self.test_break():
                         return
                     time.sleep(0.02)
-                got = SESSION.wait_frame(pose)
+                if SESSION.current_tick != tick:
+                    self.report({'ERROR'}, f"The replay could not be settled on tick {tick}: {SESSION.position_error}")
+                    return
+                got = SESSION.held_frame or SESSION.wait_frame(pose)
+                SESSION.held_frame = None
             if got is None:
                 self.report({'ERROR'}, "No frame arrived from the game.")
                 return
