@@ -20,6 +20,7 @@ HEADER = struct.Struct("<8sIIQIIQQQII160s")
 SLOT = struct.Struct("<QIIIIQQiId7dIIq")
 ENABLED_OFFSET = 24
 LATEST_OFFSET = 32
+CAMERA_OFFSET = 1024
 
 # DXGI formats the native side publishes (4 bytes per pixel).
 BGRA8 = {87, 91}          # B8G8R8A8_UNORM(_SRGB)
@@ -49,6 +50,17 @@ class FrameStream:
 
     def enable(self, on: bool = True):
         struct.pack_into("<I", self._map, ENABLED_OFFSET, 1 if on else 0)
+
+    def set_camera(self, pose=None):
+        """Stream the game camera: (x, y, z, pitch, yaw, roll, hfov_deg, aspect) or None to release."""
+        seq = struct.unpack_from("<Q", self._map, CAMERA_OFFSET)[0]
+        struct.pack_into("<Q", self._map, CAMERA_OFFSET, seq + 1 if seq % 2 == 0 else seq + 2)
+        if pose is None:
+            struct.pack_into("<I", self._map, CAMERA_OFFSET + 8, 0)
+        else:
+            struct.pack_into("<II8d", self._map, CAMERA_OFFSET + 8, 1, 0, *map(float, pose))
+        seq = struct.unpack_from("<Q", self._map, CAMERA_OFFSET)[0]
+        struct.pack_into("<Q", self._map, CAMERA_OFFSET, seq + 1)
 
     def header(self) -> dict:
         (magic, version, slots, slot_bytes, enabled, _r0, latest, presents, dropped, error, _r1,

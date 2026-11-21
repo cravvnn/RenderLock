@@ -5,6 +5,7 @@
 #include <dxgi.h>
 
 #include <array>
+#include <cmath>
 #include <atomic>
 #include <cstdio>
 #include <cstring>
@@ -285,6 +286,30 @@ void capture(IDXGISwapChain* chain, ID3D11Device* device, ID3D11DeviceContext* c
     QueryPerformanceCounter(&now);
     tag.qpc = now.QuadPart;
     pending[target] = Pending{true, tag};
+}
+
+bool camera(double out[8]) noexcept {
+    std::lock_guard<std::mutex> lock(map_lock);
+    if (!memory)
+        return false;
+    const auto* block = reinterpret_cast<const volatile CameraBlock*>(memory + kCameraOffset);
+    for (int attempt = 0; attempt < 4; ++attempt) {
+        const std::uint64_t before = block->seq;
+        if (before & 1)
+            continue;
+        if (!block->enabled)
+            return false;
+        for (int i = 0; i < 8; ++i)
+            out[i] = block->pose[i];
+        MemoryBarrier();
+        if (block->seq == before && before) {
+            for (int i = 0; i < 8; ++i)
+                if (!std::isfinite(out[i]))
+                    return false;
+            return out[6] > 1 && out[6] < 179 && out[7] > 0.1 && out[7] < 10;
+        }
+    }
+    return false;
 }
 
 bool active() noexcept {

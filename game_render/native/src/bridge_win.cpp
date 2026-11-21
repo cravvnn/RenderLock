@@ -1322,6 +1322,13 @@ static void on_view(void* self, std::uintptr_t caller) noexcept {
             editor_apply_level_view(manual_pose);
             editor_integrate_flight(manual_pose, real_delta);
         }
+        double streamed[8]{};
+        const bool stream_camera = dolly::stream::camera(streamed);
+        if (stream_camera) {
+            for (int i = 0; i < 6; ++i)
+                manual_pose[i] = streamed[i];
+            manual_pose[6] = streamed[7];
+        }
         if (!pose_valid(manual_pose)) {
             fault = 16;
             finish(State::Fault, fault,
@@ -1340,6 +1347,8 @@ static void on_view(void* self, std::uintptr_t caller) noexcept {
                 2 * 180 / pi *
                 std::atan(std::tan(double(pinned_fov) * pi / 360) * manual_pose[6] / pinned_aspect);
         }
+        if (stream_camera)
+            fov = streamed[6];
         if (!std::isfinite(fov) || fov <= 1 || fov >= 179) {
             fault = 17;
             finish(State::Fault, fault, "Native flight aspect is unsupported; camera released.");
@@ -1359,7 +1368,7 @@ static void on_view(void* self, std::uintptr_t caller) noexcept {
             angles[i] = float(std::remainder(manual_pose[i + 3], 360.0));
         }
         camera_view::apply(gCameraCache, view, xyz, angles);
-        if (c.flags & kAspect) {
+        if ((c.flags & kAspect) || stream_camera) {
             float value = float(fov), aspect = float(manual_pose[6]);
             std::memcpy(reinterpret_cast<void*>(view + 0x498), &value, 4);
             std::memcpy(reinterpret_cast<void*>(view + gCameraCache.view_layout.aspect), &aspect,
