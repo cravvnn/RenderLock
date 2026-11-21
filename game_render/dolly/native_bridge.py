@@ -119,7 +119,15 @@ def _load_atomic_library():
     try:
         # An absolute path and restricted dependency search avoid selecting
         # an unrelated DLL from the editor's working directory or PATH.
-        library = ctypes.WinDLL(str(dll.resolve()), use_last_error=True, winmode=0x1100)
+        # RenderLock: load a verified copy named by its hash, so a running editor
+        # (Blender) never locks the build output against a native rebuild.
+        loaded = resource_root() / "build" / "loaded" / f"DollyNative-{metadata['sha256'][:16]}.dll"
+        if not loaded.is_file() or hashlib.sha256(loaded.read_bytes()).hexdigest() != metadata["sha256"]:
+            loaded.parent.mkdir(parents=True, exist_ok=True)
+            partial = loaded.with_suffix(".partial")
+            partial.write_bytes(data)
+            partial.replace(loaded)
+        library = ctypes.WinDLL(str(loaded.resolve()), use_last_error=True, winmode=0x1100)
         protocol = library.DollyNativeProtocolVersion
         protocol.argtypes = []
         protocol.restype = ctypes.c_uint32
