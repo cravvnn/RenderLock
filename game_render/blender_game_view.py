@@ -769,12 +769,19 @@ def _frame_changed(scene, _depsgraph=None):
     SESSION.request_tick(scene_tick(scene))
 
 
+def _all_panels(base=None):
+    for panel in (base or bpy.types.Panel).__subclasses__():
+        yield panel
+        yield from _all_panels(panel)
+
+
 def _compatible_panels():
-    from bl_ui import properties_output, properties_render  # noqa: F401
-    return [p for p in bpy.types.Panel.__subclasses__()
-            if hasattr(p, "COMPAT_ENGINES") and "BLENDER_EEVEE_NEXT" in p.COMPAT_ENGINES
-            and p.__name__.startswith(("RENDER_PT_format", "RENDER_PT_frame_range",
-                                       "RENDER_PT_output", "RENDER_PT_color_management"))]
+    """Generic Properties panels (output, camera, object, ...) that any engine can use.
+
+    Blender marks these with BLENDER_RENDER; EEVEE/Cycles-only render settings are skipped.
+    """
+    return [p for p in _all_panels()
+            if isinstance(getattr(p, "COMPAT_ENGINES", None), set) and "BLENDER_RENDER" in p.COMPAT_ENGINES]
 
 
 CLASSES = (RenderLockGameSettings, RENDERLOCK_OT_game_connect, RENDERLOCK_OT_game_disconnect,
