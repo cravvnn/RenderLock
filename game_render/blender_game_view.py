@@ -167,17 +167,19 @@ class Session:
             error = self._start_once(game, demo, width, height, hide_hud)
             if error is None:
                 return
-            if attempt:
+            if attempt or "already running" in error:
+                # Never touch a Deadlock this session did not start.
                 self.state, self.message = "failed", f"Could not start: {error}"
                 return
             self.state, self.message = "starting", "The game stalled while starting; restarting it once…"
+            pid = self._launched_pid()
             try:
                 if self.controller:
                     self.controller.close()
             except Exception:
                 traceback.print_exc()
             self.controller = None
-            _close_game()
+            _close_game(pid)
             time.sleep(10)
 
     def _start_once(self, game, demo, width, height, hide_hud):
@@ -206,7 +208,16 @@ class Session:
             self.message = text[:300]
         print("[RenderLock game]", text, flush=True)
 
+    def _launched_pid(self):
+        """PID of the game this session launched, or None (never another Deadlock)."""
+        try:
+            session = getattr(self.controller, "_session", None)
+            return int(session.pid) if session is not None and session.pid else None
+        except Exception:
+            return None
+
     def stop(self):
+        pid = self._launched_pid()
         try:
             if self.stream:
                 self.stream.close()
@@ -218,7 +229,7 @@ class Session:
             self.stream = None
             self.controller = None
             self.state, self.message = "closed", "Disconnected."
-        threading.Thread(target=_close_game, daemon=True).start()
+        threading.Thread(target=_close_game, args=(pid,), daemon=True).start()
 
     # ---- game controls
     def set_hud(self, visible):
@@ -348,7 +359,7 @@ class Session:
             controller.set_export_timing(fps)
             while self.poll_frame() is not None:
                 pass  # drain frames from before the shot
-            controller.play(project, speed=1, rate=fps, frozen=False)
+            controller.play(project, speed=1, rate=60, frozen=False)
             deadline = time.monotonic() + timeout
             last = len(poses) - 1
             while time.monotonic() < deadline and not cancelled():
@@ -360,7 +371,7 @@ class Session:
                     continue
                 phase = got[0]["phase"]
                 k = int(round(phase * fps))
-                if abs(phase * fps - k) < 1e-3 and 0 <= k <= last and k not in frames:
+                if abs(phase * fps - k) < 0.05 and 0 <= k <= last and k not in frames:
                     frames[k] = got
                 if len(frames) == len(poses):
                     break
@@ -421,9 +432,12 @@ def _keyframe(time_s, pose):
 SESSION = Session()
 
 
-def _close_game():
+def _close_game(pid):
+    """Ask the game this session launched to close; other Deadlock processes are left alone."""
+    if not pid:
+        return
     for _ in range(20):
-        result = subprocess.run(["taskkill", "/IM", "deadlock.exe"], capture_output=True)
+        result = subprocess.run(["taskkill", "/PID", str(pid)], capture_output=True)
         if result.returncode != 0:
             return
         time.sleep(1.5)
@@ -630,10 +644,9 @@ class RENDERLOCK_OT_game_bake(bpy.types.Operator):
             self.report({'ERROR'}, "Connect to the game and set a scene camera first.")
             return {'CANCELLED'}
         fps = scene.render.fps / scene.render.fps_base
-        if abs(fps - round(fps)) > 1e-6 or int(round(fps)) not in (30, 60, 120):
-            self.report({'ERROR'}, "Use 30, 60 or 120 fps for game frames.")
+        if not 18 <= fps <= 120:
+            self.report({'ERROR'}, "Use a scene frame rate from 18 to 120 fps for game frames.")
             return {'CANCELLED'}
-        fps = int(round(fps))
         original = scene.frame_current
         frames = list(range(scene.frame_start, scene.frame_end + 1))
         poses, previous_yaw = [], None

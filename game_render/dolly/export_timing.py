@@ -55,9 +55,12 @@ class ExportTimingMixin:
         seconds per output frame. :meth:`play` preserves the selected speed.
         Previous values are restored by :meth:`clear_export_timing`.
         """
-        fps = int(fps)
-        if fps not in (30, 60, 120, 300, 600):
-            raise ValueError("Fixed-step export requires 30, 60, 120, 300 or 600 FPS.")
+        fps = float(fps)
+        # RenderLock bakes any scene frame rate from 18 to 120 (including 23.976
+        # and 29.97); Dolly's own video exports keep their fixed rates.
+        if not (math.isfinite(fps) and (18 <= fps <= 120 or fps in (300, 600))):
+            raise ValueError("Fixed-step export requires 18 to 120 FPS.")
+        fps = int(fps) if fps.is_integer() else fps
         try:
             speed = float(speed)
         except (TypeError, ValueError) as exc:
