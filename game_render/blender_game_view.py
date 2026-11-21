@@ -88,6 +88,43 @@ def camera_object_pose(scene, camera):
     return source_pose(camera.matrix_world, hfov, aspect)
 
 
+def render_size(scene):
+    render = scene.render
+    return (int(render.resolution_x * render.resolution_percentage / 100),
+            int(render.resolution_y * render.resolution_percentage / 100))
+
+
+def game_window_size(scene):
+    """Render resolution (or the panel's override), shrunk to fit the primary monitor."""
+    props = scene.renderlock_game
+    width, height = (props.width, props.height) if props.width and props.height else render_size(scene)
+    try:
+        import ctypes
+        screen_w = ctypes.windll.user32.GetSystemMetrics(0)
+        screen_h = ctypes.windll.user32.GetSystemMetrics(1)
+    except Exception:
+        screen_w, screen_h = width, height
+    scale = min(1.0, screen_w / width, screen_h / height)
+    width, height = int(width * scale) // 2 * 2, int(height * scale) // 2 * 2
+    return max(320, width), max(240, height)
+
+
+def resample(array, width, height):
+    """Bilinear resize of an HxWx4 uint8 image."""
+    src_h, src_w = array.shape[:2]
+    if (src_w, src_h) == (width, height):
+        return array
+    ys = np.clip((np.arange(height) + 0.5) * src_h / height - 0.5, 0, src_h - 1)
+    xs = np.clip((np.arange(width) + 0.5) * src_w / width - 0.5, 0, src_w - 1)
+    y0, x0 = ys.astype(int), xs.astype(int)
+    y1, x1 = np.minimum(y0 + 1, src_h - 1), np.minimum(x0 + 1, src_w - 1)
+    wy, wx = (ys - y0)[:, None, None], (xs - x0)[None, :, None]
+    a = array.astype(np.float32)
+    top = a[y0][:, x0] * (1 - wx) + a[y0][:, x1] * wx
+    bottom = a[y1][:, x0] * (1 - wx) + a[y1][:, x1] * wx
+    return (top * (1 - wy) + bottom * wy + 0.5).astype(np.uint8)
+
+
 def scene_tick(scene, frame=None):
     props = scene.renderlock_game
     frame = scene.frame_current if frame is None else frame
@@ -115,6 +152,7 @@ class Session:
         self.last_pose = None
         self.position_error = None
         self.held_frame = None
+        self.adopt_tick_scene = None
 
     # ---- lifecycle
     def start(self, game, demo, width, height, hide_hud):
@@ -155,6 +193,8 @@ class Session:
             if hide_hud:
                 self.set_hud(False)
             self.state, self.message = "ready", "Connected. The viewport shows the game."
+            if self.adopt_tick_scene:
+                bpy.app.timers.register(self._adopt_tick, first_interval=0.5)
             return None
         except Exception as error:
             traceback.print_exc()
@@ -196,6 +236,27 @@ class Session:
                 self.controller._request(command, timeout=3, allow_error=True)
             except Exception:
                 traceback.print_exc()
+
+    def replay_tick(self):
+        """The replay tick the game shows now (None if unknown)."""
+        try:
+            return int(self.controller._native_bridge().status()["tick"])
+        except Exception:
+            return None
+
+    def _adopt_tick(self):
+        """Main thread: a scene with no start tick starts where the replay is."""
+        scene = bpy.data.scenes.get(self.adopt_tick_scene or "")
+        self.adopt_tick_scene = None
+        tick = self.replay_tick()
+        if scene is not None and tick is not None and not scene.renderlock_game.start_tick:
+            props = scene.renderlock_game
+            follow, props.follow_timeline = props.follow_timeline, False
+            props.start_tick = tick
+            scene.frame_set(scene.frame_start)
+            props.follow_timeline = follow
+            self.current_tick = tick
+        return None
 
     def push_camera(self, pose):
         if pose is not None:
@@ -476,10 +537,8 @@ class RenderLockGameEngine(bpy.types.RenderEngine):
                 return
             meta, array = got
             if (meta["width"], meta["height"]) != (width, height):
-                # Nearest-neighbour fit to the render size (game window size may differ).
-                ys = (np.arange(height) * meta["height"] / height).astype(int)
-                xs = (np.arange(width) * meta["width"] / width).astype(int)
-                array = array[ys][:, xs]
+                # The game window could not match the render size (monitor too small).
+                array = resample(array, width, height)
             rgba = array[::-1].astype(np.float32) / 255.0
             rgba[..., :3] = srgb_to_linear(rgba[..., :3])
             rgba[..., 3] = 1.0
@@ -502,8 +561,10 @@ class RenderLockGameSettings(bpy.types.PropertyGroup):
     replay_path: bpy.props.StringProperty(name="Replay", subtype='FILE_PATH')
     start_tick: bpy.props.IntProperty(name="Start tick", min=0,
                                       description="Replay tick shown at the scene's first frame")
-    width: bpy.props.IntProperty(name="Game width", default=1280, min=320, max=3840)
-    height: bpy.props.IntProperty(name="Game height", default=720, min=240, max=2160)
+    width: bpy.props.IntProperty(name="Game width", default=0, min=0, max=7680,
+                                 description="Game window width; 0 uses the scene's render resolution")
+    height: bpy.props.IntProperty(name="Game height", default=0, min=0, max=4320,
+                                  description="Game window height; 0 uses the scene's render resolution")
     hide_hud: bpy.props.BoolProperty(name="Hide health bars and HUD", default=True, update=_on_hud)
     cache_dir: bpy.props.StringProperty(name="Baked frames", subtype='DIR_PATH',
                                         default="//renderlock_game_frames")
@@ -523,8 +584,11 @@ class RENDERLOCK_OT_game_connect(bpy.types.Operator):
             return {'CANCELLED'}
         if not props.start_tick and "agr_start_tick" in context.scene:
             props.start_tick = int(context.scene["agr_start_tick"])
+        if not props.start_tick:
+            SESSION.adopt_tick_scene = context.scene.name
         context.scene.view_settings.view_transform = 'Standard'
-        SESSION.start(bpy.path.abspath(props.game_path), replay, props.width, props.height, props.hide_hud)
+        width, height = game_window_size(context.scene)
+        SESSION.start(bpy.path.abspath(props.game_path), replay, width, height, props.hide_hud)
         return {'FINISHED'}
 
 
@@ -575,6 +639,26 @@ class RENDERLOCK_OT_game_bake(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class RENDERLOCK_OT_game_start_here(bpy.types.Operator):
+    """Make the current frame show the replay tick the game is on now"""
+    bl_idname = "renderlock.game_start_here"
+    bl_label = "Start here"
+
+    def execute(self, context):
+        tick = SESSION.replay_tick() if SESSION.state == "ready" else None
+        if tick is None:
+            self.report({'ERROR'}, "Connect to the game first.")
+            return {'CANCELLED'}
+        scene = context.scene
+        fps = scene.render.fps / scene.render.fps_base
+        props = scene.renderlock_game
+        follow, props.follow_timeline = props.follow_timeline, False
+        props.start_tick = max(0, int(round(tick - (scene.frame_current - scene.frame_start) / fps * TICK_RATE)))
+        props.follow_timeline = follow
+        SESSION.current_tick = tick
+        return {'FINISHED'}
+
+
 class RENDERLOCK_OT_game_disconnect(bpy.types.Operator):
     bl_idname = "renderlock.game_disconnect"
     bl_label = "Disconnect"
@@ -602,7 +686,9 @@ class RENDERLOCK_PT_game(bpy.types.Panel):
         col = layout.column()
         col.prop(props, "game_path")
         col.prop(props, "replay_path")
-        col.prop(props, "start_tick")
+        row = col.row(align=True)
+        row.prop(props, "start_tick")
+        row.operator(RENDERLOCK_OT_game_start_here.bl_idname, text="", icon='TIME')
         row = col.row(align=True)
         row.prop(props, "width")
         row.prop(props, "height")
@@ -622,6 +708,10 @@ class RENDERLOCK_PT_game(bpy.types.Panel):
         if SESSION.frame_meta:
             meta = SESSION.frame_meta
             box.label(text=f"Frame {meta['seq']}  tick {meta['tick']}  {meta['width']}×{meta['height']}")
+            want = render_size(context.scene)
+            if (meta['width'], meta['height']) != want:
+                box.label(text=f"Game window {meta['width']}×{meta['height']} is scaled to the "
+                               f"{want[0]}×{want[1]} render.", icon='INFO')
 
 
 @bpy.app.handlers.persistent
@@ -643,7 +733,7 @@ def _compatible_panels():
 
 
 CLASSES = (RenderLockGameSettings, RENDERLOCK_OT_game_connect, RENDERLOCK_OT_game_disconnect,
-           RENDERLOCK_OT_game_bake,
+           RENDERLOCK_OT_game_bake, RENDERLOCK_OT_game_start_here,
            RenderLockGameEngine, RENDERLOCK_PT_game)
 
 
