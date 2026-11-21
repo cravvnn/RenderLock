@@ -756,6 +756,12 @@ void render_overlay(IDXGISwapChain* chain) {
     }
     if (!effects_handled)
         clean_frame(chain, device, immediate, frame_user);
+    if (dolly::stream::active()) {
+        // RenderLock drives the session from Blender: the game window shows only
+        // the game, without Dolly's in-game panel, guides or notices.
+        panel_ui.cancel_position_graph();
+        return;
+    }
     if (reshade_overlay_open() || reshade_overlay_pending()) {
         panel_ui.cancel_position_graph();
         clear_pending_input();

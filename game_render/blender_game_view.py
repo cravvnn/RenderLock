@@ -153,6 +153,9 @@ class Session:
         self.position_error = None
         self.held_frame = None
         self.adopt_tick_scene = None
+        self.wanted_exact = False
+        self.live_playing = False
+        self.suppress_follow = 0
 
     # ---- lifecycle
     def start(self, game, demo, width, height, hide_hud):
@@ -282,19 +285,72 @@ class Session:
     # the tick, then enters manual flight; the streamed camera takes over there.
     def position(self, tick, pose):
         from dolly.path import Project
-        pose = pose or self.last_pose
+        pose = pose or self.last_pose or self.game_pose()
         project = Project(name="renderlock-view", keyframes=[_keyframe(0.0, pose)],
                           interpolation="linear", start_tick=int(tick), tick_rate=TICK_RATE,
                           standard_aspect=pose[7])
         project.validate()
         self.stream.set_camera(None)
         self.held_frame = None
+        self.live_playing = False
         self.controller.prepare_native_recording(project)
         self.stream.set_camera(pose)
         self.current_tick = int(tick)
 
-    def request_tick(self, tick):
+    def game_pose(self):
+        """The camera the game shows now as (x, y, z, pitch, yaw, roll, hfov, aspect)."""
+        try:
+            status = self.controller._native_bridge().status()
+            pose = list(status["applied_pose"] or status["original_pose"])
+            fov = float(status.get("applied_fov") or status.get("original_fov") or 90.0)
+            return (*pose[:6], fov, pose[6] if len(pose) > 6 and pose[6] else 16 / 9)
+        except Exception:
+            return None
+
+    def quick_position(self, tick, pose):
+        """Editing jump: seek, a short natural run-up and an exact pause, without reloading the replay."""
+        from dolly.path import Project
+        pose = pose or self.last_pose or self.game_pose()
+        project = Project(name="renderlock-view", keyframes=[_keyframe(0.0, pose)],
+                          interpolation="linear", start_tick=int(tick), tick_rate=TICK_RATE,
+                          standard_aspect=pose[7])
+        project.validate()
+        controller = self.controller
+        self.stream.set_camera(None)
+        self.held_frame = None
+        try:
+            with controller._op_lock:
+                controller.stop()
+                controller._stop_event.clear()
+                positioned = controller._seek(project, 0)
+                start = controller._seek_shot_time(project, 0, positioned)
+                try:
+                    controller._warm_replay_for_shot(project, start, positioned, calibrate=True)
+                except Exception:
+                    traceback.print_exc()  # the plain jump still stands
+                controller.enter_native_flight(pose=project.evaluate(start))
+        finally:
+            self.stream.set_camera(pose)
+        self.live_playing = False
+        self.current_tick = int(tick)
+
+    def toggle_live(self):
+        """Dolly's pause/resume: the replay runs in real time while the Blender camera stays live."""
+        if self.state != "ready" or self.seeking:
+            return
+        def run():
+            try:
+                status = self.controller.toggle_replay()
+                self.live_playing = not bool(status.get("replay_paused", True))
+                self.current_tick = self.replay_tick()
+            except Exception as error:
+                traceback.print_exc()
+                self.message = f"Play/pause failed: {error}"
+        threading.Thread(target=run, name="renderlock-game-live", daemon=True).start()
+
+    def request_tick(self, tick, exact=False):
         self.wanted_tick = int(tick)
+        self.wanted_exact = bool(exact)
         if self.state == "ready" and not self.seeking:
             self.seeking = True
             threading.Thread(target=self._seek_loop, name="renderlock-game-seek", daemon=True).start()
@@ -304,9 +360,10 @@ class Session:
             while self.state == "ready" and self.wanted_tick is not None and self.wanted_tick != self.current_tick:
                 target = self.wanted_tick
                 self.message = f"Moving the replay to tick {target}…"
+                place = self.position if self.wanted_exact else self.quick_position
                 for attempt in range(3):  # a seek right after a replay reload can miss once
                     try:
-                        self.position(max(0, target), self.last_pose)
+                        place(max(0, target), self.last_pose)
                         self.message = f"Replay tick {target}"
                         self.position_error = None
                         break
@@ -500,6 +557,9 @@ class RenderLockGameEngine(bpy.types.RenderEngine):
             SESSION.push_camera(source_pose(rv3d.view_matrix.inverted(), hfov,
                                             region.width / max(1, region.height)))
         got = SESSION.poll_frame()
+        if _animation_playing(context):
+            baked = baked_frame(context.scene, context.scene.frame_current)
+            got = baked if baked is not None else None
         if got is not None:
             meta, array = got
             image = bpy.data.images.get(IMAGE_NAME)
@@ -535,7 +595,7 @@ class RenderLockGameEngine(bpy.types.RenderEngine):
                 pose = camera_object_pose(scene, scene.camera)
                 SESSION.last_pose = pose
                 tick = scene_tick(scene)
-                SESSION.request_tick(tick)
+                SESSION.request_tick(tick, exact=True)
                 deadline = time.monotonic() + 180
                 while (SESSION.seeking or SESSION.current_tick != tick) and time.monotonic() < deadline:
                     if self.test_break():
@@ -610,6 +670,7 @@ class RenderLockGameSettings(bpy.types.PropertyGroup):
                                         default="//renderlock_game_frames")
     follow_timeline: bpy.props.BoolProperty(name="Follow timeline", default=True,
                                             description="Seek the replay when the frame changes")
+    selected_key: bpy.props.IntProperty(name="Selected camera frame", default=-1)
 
 
 class RENDERLOCK_OT_game_connect(bpy.types.Operator):
@@ -764,9 +825,457 @@ def _frame_changed(scene, _depsgraph=None):
     props = getattr(scene, "renderlock_game", None)
     if props is None or not props.follow_timeline or SESSION.state != "ready":
         return
-    if scene.render.engine != ENGINE:
+    if scene.render.engine != ENGINE or SESSION.suppress_follow or SESSION.live_playing:
         return
+    if _animation_playing(bpy.context):
+        return  # Play shot previews baked frames; no seeking while the timeline plays
     SESSION.request_tick(scene_tick(scene))
+
+
+# --------------------------------------------------------------------------- Dolly-style shot
+
+SHOT_CAMERA = "RenderLock Shot"
+
+
+def _animation_playing(context=None):
+    try:
+        windows = (context or bpy.context).window_manager.windows
+        return any(window.screen and window.screen.is_animation_playing for window in windows)
+    except Exception:
+        return False
+
+
+def _fcurves(id_data):
+    """F-curves of an ID's action (layered actions in Blender 4.4+)."""
+    animation = getattr(id_data, "animation_data", None)
+    if animation is None or animation.action is None:
+        return []
+    try:
+        from bpy_extras.anim_utils import action_get_channelbag_for_slot
+        bag = action_get_channelbag_for_slot(animation.action, animation.action_slot)
+        return list(bag.fcurves) if bag else []
+    except ImportError:
+        return list(animation.action.fcurves)
+
+
+def shot_camera(scene, create=False):
+    camera = scene.camera if scene.camera is not None and scene.camera.get("renderlock_shot") else None
+    camera = camera or next((o for o in scene.objects if o.get("renderlock_shot")), None)
+    if camera is None and create:
+        data = bpy.data.cameras.new(SHOT_CAMERA)
+        data.sensor_fit = 'HORIZONTAL'
+        data.sensor_width = 36.0
+        data.clip_start, data.clip_end = 0.05, 2000.0
+        camera = bpy.data.objects.new(SHOT_CAMERA, data)
+        camera["renderlock_shot"] = True
+        camera.rotation_mode = 'XYZ'
+        scene.collection.objects.link(camera)
+    if camera is not None and scene.camera is not camera:
+        scene.camera = camera
+    return camera
+
+
+def shot_keys(camera):
+    """Frames of the shot's captured cameras, in order."""
+    if camera is None:
+        return []
+    frames = set()
+    for curve in _fcurves(camera):
+        if curve.data_path in ("location", "rotation_euler"):
+            frames.update(int(round(point.co.x)) for point in curve.keyframe_points)
+    return sorted(frames)
+
+
+def frame_for_tick(scene, tick):
+    fps = scene.render.fps / scene.render.fps_base
+    props = scene.renderlock_game
+    return scene.frame_start + int(round((tick - props.start_tick) / TICK_RATE * fps))
+
+
+def set_frame_quietly(scene, frame):
+    """Move the timeline without making the game seek (the game is already there)."""
+    SESSION.suppress_follow += 1
+    try:
+        scene.frame_set(frame)
+    finally:
+        SESSION.suppress_follow -= 1
+
+
+def _view3d(context):
+    """(space, region_3d, window region) of the 3D view the operator runs in, or the first one."""
+    areas = [context.area] if context.area and context.area.type == 'VIEW_3D' else []
+    areas += [a for w in context.window_manager.windows for a in w.screen.areas if a.type == 'VIEW_3D']
+    for area in areas:
+        space = area.spaces.active
+        region = next((r for r in area.regions if r.type == 'WINDOW'), None)
+        if space and space.region_3d and region:
+            return space, space.region_3d, region
+    return None, None, None
+
+
+def capture_view(context, frame):
+    """Key the shot camera at `frame` from what the viewport shows now."""
+    scene = context.scene
+    camera = shot_camera(scene, create=True)
+    space, rv3d, region = _view3d(context)
+    if rv3d is not None and rv3d.view_perspective != 'CAMERA':
+        reference = camera.rotation_euler.copy()
+        matrix = rv3d.view_matrix.inverted()
+        hfov = 2 * math.atan(1.0 / rv3d.window_matrix[0][0])
+        camera.matrix_world = matrix
+        camera.rotation_euler.make_compatible(reference)
+        camera.data.sensor_fit = 'HORIZONTAL'
+        camera.data.lens = camera.data.sensor_width / (2 * math.tan(hfov / 2))
+    camera.keyframe_insert("location", frame=frame)
+    camera.keyframe_insert("rotation_euler", frame=frame)
+    camera.data.keyframe_insert("lens", frame=frame)
+    if rv3d is not None:
+        rv3d.view_perspective = 'CAMERA'  # look through the shot like Dolly's held view
+    return camera
+
+
+def _need_ready(operator):
+    if SESSION.state != "ready":
+        operator.report({'ERROR'}, "Connect to the game first.")
+        return False
+    return True
+
+
+class _ShotOperator:
+    @classmethod
+    def poll(cls, context):
+        return context.engine == ENGINE and SESSION.state == "ready"
+
+
+class RENDERLOCK_OT_shot_capture(_ShotOperator, bpy.types.Operator):
+    """Capture camera: add a shot camera at the replay moment shown now (first capture starts the shot)"""
+    bl_idname = "renderlock.shot_capture"
+    bl_label = "Capture camera"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        scene = context.scene
+        props = scene.renderlock_game
+        tick = SESSION.replay_tick()
+        if tick is None:
+            self.report({'ERROR'}, "The replay tick is not known yet.")
+            return {'CANCELLED'}
+        camera = shot_camera(scene)
+        if not shot_keys(camera):
+            # Like Dolly: the first capture is time zero and sets the shot's start tick.
+            props.start_tick = tick
+            frame = scene.frame_start
+        else:
+            frame = frame_for_tick(scene, tick)
+            if frame < scene.frame_start:
+                self.report({'ERROR'}, "This moment is before the shot start. Move the replay forward.")
+                return {'CANCELLED'}
+        set_frame_quietly(scene, frame)
+        SESSION.current_tick = tick
+        camera = capture_view(context, frame)
+        scene.frame_end = max(scene.frame_end if shot_keys(camera)[:-1] else frame, frame)
+        props.selected_key = frame
+        self.report({'INFO'}, f"Camera {shot_keys(camera).index(frame) + 1} at {match_time(tick)}")
+        return {'FINISHED'}
+
+
+class RENDERLOCK_OT_shot_replace(_ShotOperator, bpy.types.Operator):
+    """Replace the selected camera with the current view, keeping its time"""
+    bl_idname = "renderlock.shot_replace"
+    bl_label = "Replace camera"
+    bl_options = {'REGISTER', 'UNDO'}
+    frame: bpy.props.IntProperty(default=-1)
+
+    def execute(self, context):
+        scene = context.scene
+        keys = shot_keys(shot_camera(scene))
+        frame = self.frame if self.frame >= 0 else scene.renderlock_game.selected_key
+        if frame not in keys:
+            self.report({'ERROR'}, "Select a captured camera first.")
+            return {'CANCELLED'}
+        capture_view(context, frame)
+        return {'FINISHED'}
+
+
+class RENDERLOCK_OT_shot_delete(_ShotOperator, bpy.types.Operator):
+    """Delete this camera from the shot"""
+    bl_idname = "renderlock.shot_delete"
+    bl_label = "Delete camera"
+    bl_options = {'REGISTER', 'UNDO'}
+    frame: bpy.props.IntProperty()
+
+    def execute(self, context):
+        camera = shot_camera(context.scene)
+        for target in (camera, camera.data if camera else None):
+            for curve in _fcurves(target) if target is not None else []:
+                for point in [k for k in curve.keyframe_points if int(round(k.co.x)) == self.frame]:
+                    curve.keyframe_points.remove(point)
+        keys = shot_keys(camera)
+        if keys:
+            context.scene.frame_end = max(keys[-1], context.scene.frame_start)
+        return {'FINISHED'}
+
+
+class RENDERLOCK_OT_shot_goto(_ShotOperator, bpy.types.Operator):
+    """Go to this camera: the replay moves to its moment and the view looks through the shot"""
+    bl_idname = "renderlock.shot_goto"
+    bl_label = "Go to camera"
+    frame: bpy.props.IntProperty(default=-1)
+    step: bpy.props.IntProperty(default=0, description="-1 previous camera, +1 next camera")
+
+    def execute(self, context):
+        scene = context.scene
+        keys = shot_keys(shot_camera(scene))
+        if not keys:
+            return {'CANCELLED'}
+        frame = self.frame
+        if self.step:
+            current = scene.frame_current
+            later = [k for k in keys if k > current] if self.step > 0 else [k for k in keys if k < current][::-1]
+            frame = later[0] if later else (keys[-1] if self.step > 0 else keys[0])
+        scene.renderlock_game.selected_key = frame
+        scene.frame_set(frame)  # the timeline handler moves the replay
+        _space, rv3d, _region = _view3d(context)
+        if rv3d is not None:
+            rv3d.view_perspective = 'CAMERA'
+        return {'FINISHED'}
+
+
+class RENDERLOCK_OT_replay_step(_ShotOperator, bpy.types.Operator):
+    """Seek the replay backward or forward"""
+    bl_idname = "renderlock.replay_step"
+    bl_label = "Seek replay"
+    seconds: bpy.props.FloatProperty(default=1.0)
+
+    def execute(self, context):
+        scene = context.scene
+        fps = scene.render.fps / scene.render.fps_base
+        if SESSION.live_playing:
+            SESSION.toggle_live()
+        scene.frame_set(scene.frame_current + int(round(self.seconds * fps)))
+        return {'FINISHED'}
+
+
+class RENDERLOCK_OT_replay_toggle(_ShotOperator, bpy.types.Operator):
+    """Pause / resume replay time (the camera stays live)"""
+    bl_idname = "renderlock.replay_toggle"
+    bl_label = "Pause / resume replay"
+
+    def execute(self, context):
+        SESSION.toggle_live()
+        return {'FINISHED'}
+
+
+class RENDERLOCK_OT_shot_play(_ShotOperator, bpy.types.Operator):
+    """Play shot: bake the shot in the game, then play it back in the viewport"""
+    bl_idname = "renderlock.shot_play"
+    bl_label = "Play shot"
+
+    def execute(self, context):
+        scene = context.scene
+        if SESSION.live_playing:
+            SESSION.toggle_live()
+        if bpy.ops.renderlock.game_bake() != {'FINISHED'}:
+            return {'CANCELLED'}
+        set_frame_quietly(scene, scene.frame_start)
+        if not _animation_playing(context):
+            bpy.ops.screen.animation_play()
+        return {'FINISHED'}
+
+
+class RENDERLOCK_OT_shot_stop(_ShotOperator, bpy.types.Operator):
+    """Stop shot playback or replay time"""
+    bl_idname = "renderlock.shot_stop"
+    bl_label = "Stop"
+
+    def execute(self, context):
+        if _animation_playing(context):
+            bpy.ops.screen.animation_cancel(restore_frame=False)
+        if SESSION.live_playing:
+            SESSION.toggle_live()
+        return {'FINISHED'}
+
+
+# Dolly editor actions -> RenderLock operators (keys follow the user's Dolly settings).
+DOLLY_ACTIONS = {
+    "capture": ("renderlock.shot_capture", {}),
+    "replace": ("renderlock.shot_replace", {}),
+    "play_pause": ("renderlock.replay_toggle", {}),
+    "play_path": ("renderlock.shot_play", {}),
+    "stop": ("renderlock.shot_stop", {}),
+    "previous_view": ("renderlock.shot_goto", {"step": -1}),
+    "next_view": ("renderlock.shot_goto", {"step": 1}),
+    "seek_back": ("renderlock.replay_step", {"seconds": -1.0}),
+    "seek_forward": ("renderlock.replay_step", {"seconds": 1.0}),
+}
+_BLENDER_KEYS = {
+    "Mouse4": "BUTTON4MOUSE", "Mouse5": "BUTTON5MOUSE", "MiddleMouse": "MIDDLEMOUSE",
+    "Space": "SPACE", "Tab": "TAB", "Enter": "RET", "Escape": "ESC", "Backspace": "BACK_SPACE",
+    "Insert": "INSERT", "Delete": "DEL", "Home": "HOME", "End": "END", "PageUp": "PAGE_UP",
+    "PageDown": "PAGE_DOWN", "Left": "LEFT_ARROW", "Up": "UP_ARROW", "Right": "RIGHT_ARROW",
+    "Down": "DOWN_ARROW", "Comma": "COMMA", "Period": "PERIOD", "Minus": "MINUS", "Equals": "EQUAL",
+    "LeftBracket": "LEFT_BRACKET", "RightBracket": "RIGHT_BRACKET",
+    **dict(zip("0123456789", ("ZERO", "ONE", "TWO", "THREE", "FOUR", "FIVE", "SIX", "SEVEN", "EIGHT", "NINE"))),
+}
+_KEYMAP_ITEMS = []
+KEY_LABELS = {}
+
+
+def dolly_bindings():
+    """The user's Dolly editor bindings (Dolly defaults when Dolly has no settings)."""
+    try:
+        from dolly.settings import load_settings
+        return dict(load_settings().action_bindings)
+    except Exception:
+        traceback.print_exc()
+        from dolly.editor_actions import default_action_bindings
+        return dict(default_action_bindings())
+
+
+def register_keymap():
+    keyconfig = bpy.context.window_manager.keyconfigs.addon
+    if keyconfig is None:
+        return
+    keymap = keyconfig.keymaps.new(name="3D View", space_type='VIEW_3D')
+    for action, binding in dolly_bindings().items():
+        if action not in DOLLY_ACTIONS or binding is None:
+            continue
+        key = _BLENDER_KEYS.get(binding.key, binding.key)
+        idname, properties = DOLLY_ACTIONS[action]
+        try:
+            item = keymap.keymap_items.new(idname, key, 'PRESS', ctrl=binding.ctrl, alt=binding.alt,
+                                           shift=binding.shift)
+        except Exception:
+            print("[RenderLock game] skipped key", binding.key, "for", action)
+            continue
+        for name, value in properties.items():
+            setattr(item.properties, name, value)
+        _KEYMAP_ITEMS.append((keymap, item))
+        label = "+".join([m for m, on in (("Ctrl", binding.ctrl), ("Alt", binding.alt), ("Shift", binding.shift)) if on]
+                         + [binding.key])
+        KEY_LABELS[action] = label
+
+
+def unregister_keymap():
+    for keymap, item in _KEYMAP_ITEMS:
+        try:
+            keymap.keymap_items.remove(item)
+        except Exception:
+            pass
+    _KEYMAP_ITEMS.clear()
+    KEY_LABELS.clear()
+
+
+def _key(action):
+    label = KEY_LABELS.get(action)
+    return f"  ({label})" if label else ""
+
+
+def _live_timer():
+    """While replay time runs, the timeline follows the game (Dolly's P)."""
+    try:
+        if SESSION.state == "ready" and SESSION.live_playing:
+            tick = SESSION.replay_tick()
+            for scene in bpy.data.scenes:
+                if scene.render.engine == ENGINE and tick is not None:
+                    frame = frame_for_tick(scene, tick)
+                    if frame != scene.frame_current:
+                        set_frame_quietly(scene, frame)
+                    SESSION.current_tick = tick
+    except Exception:
+        traceback.print_exc()
+    return 0.05
+
+
+class RENDERLOCK_PT_shot(bpy.types.Panel):
+    bl_label = "Shot"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "RenderLock"
+
+    @classmethod
+    def poll(cls, context):
+        return context.engine == ENGINE
+
+    def draw(self, context):
+        scene = context.scene
+        props = scene.renderlock_game
+        layout = self.layout
+        if SESSION.state not in ("starting", "ready"):
+            layout.prop(props, "replay_path", text="")
+            layout.operator(RENDERLOCK_OT_game_connect.bl_idname, icon='PLAY')
+            if SESSION.message:
+                layout.label(text=SESSION.message[:80])
+            return
+        if SESSION.state == "starting":
+            layout.label(text="Starting Deadlock…", icon='TIME')
+            layout.label(text=SESSION.message[:80])
+            return
+        tick = SESSION.frame_meta["tick"] if SESSION.frame_meta else SESSION.current_tick
+        box = layout.box()
+        status = "playing" if SESSION.live_playing else ("moving…" if SESSION.seeking else "paused")
+        box.label(text=f"Replay {match_time(tick or 0)}   tick {tick}   {status}", icon='TIME')
+        row = box.row(align=True)
+        step = row.operator(RENDERLOCK_OT_replay_step.bl_idname, text="-1 s", icon='REW')
+        step.seconds = -1.0
+        row.operator(RENDERLOCK_OT_replay_toggle.bl_idname, text="",
+                     icon='PAUSE' if SESSION.live_playing else 'PLAY')
+        step = row.operator(RENDERLOCK_OT_replay_step.bl_idname, text="+1 s", icon='FF')
+        step.seconds = 1.0
+        box.label(text=f"Keys{_key('seek_back')}{_key('play_pause')}{_key('seek_forward')}")
+
+        layout.operator(RENDERLOCK_OT_shot_capture.bl_idname, text="Capture camera" + _key("capture"),
+                        icon='OUTLINER_OB_CAMERA')
+        camera = shot_camera(scene)
+        keys = shot_keys(camera)
+        if keys:
+            fps = scene.render.fps / scene.render.fps_base
+            first, last = keys[0], keys[-1]
+            start = props.start_tick + (first - scene.frame_start) / fps * TICK_RATE
+            end = props.start_tick + (last - scene.frame_start) / fps * TICK_RATE
+            layout.label(text=f"{len(keys)} cameras · {match_time(start)} → {match_time(end)} "
+                              f"({(last - first) / fps:.2f} s)")
+            column = layout.column(align=True)
+            for index, frame in enumerate(keys, 1):
+                row = column.row(align=True)
+                tick_at = props.start_tick + (frame - scene.frame_start) / fps * TICK_RATE
+                selected = frame == props.selected_key
+                go = row.operator(RENDERLOCK_OT_shot_goto.bl_idname, depress=selected,
+                                  text=f"Camera {index}   {match_time(tick_at)}")
+                go.frame = frame
+                row.operator(RENDERLOCK_OT_shot_replace.bl_idname, text="", icon='FILE_REFRESH').frame = frame
+                row.operator(RENDERLOCK_OT_shot_delete.bl_idname, text="", icon='X').frame = frame
+        else:
+            layout.label(text="Fly the viewport, then Capture to start a shot.")
+        row = layout.row(align=True)
+        row.scale_y = 1.3
+        row.operator(RENDERLOCK_OT_shot_play.bl_idname, text="Play shot" + _key("play_path"), icon='PLAY')
+        row.operator(RENDERLOCK_OT_shot_stop.bl_idname, text="", icon='SNAP_FACE')
+        layout.operator("render.render", text="Render shot", icon='RENDER_ANIMATION').animation = True
+        if SESSION.message:
+            layout.label(text=SESSION.message[:80])
+
+
+class RENDERLOCK_PT_shot_settings(bpy.types.Panel):
+    bl_label = "Game settings"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "RenderLock"
+    bl_parent_id = "RENDERLOCK_PT_shot"
+    bl_options = {'DEFAULT_CLOSED'}
+
+    @classmethod
+    def poll(cls, context):
+        return context.engine == ENGINE
+
+    def draw(self, context):
+        props = context.scene.renderlock_game
+        layout = self.layout
+        layout.prop(props, "hide_hud")
+        layout.prop(props, "follow_timeline")
+        layout.prop(props, "cache_dir")
+        if SESSION.state in ("starting", "ready"):
+            layout.operator(RENDERLOCK_OT_game_disconnect.bl_idname, icon='CANCEL')
 
 
 def _all_panels(base=None):
@@ -786,7 +1295,10 @@ def _compatible_panels():
 
 CLASSES = (RenderLockGameSettings, RENDERLOCK_OT_game_connect, RENDERLOCK_OT_game_disconnect,
            RENDERLOCK_OT_game_bake, RENDERLOCK_OT_game_start_here,
-           RenderLockGameEngine, RENDERLOCK_PT_game)
+           RENDERLOCK_OT_shot_capture, RENDERLOCK_OT_shot_replace, RENDERLOCK_OT_shot_delete,
+           RENDERLOCK_OT_shot_goto, RENDERLOCK_OT_replay_step, RENDERLOCK_OT_replay_toggle,
+           RENDERLOCK_OT_shot_play, RENDERLOCK_OT_shot_stop,
+           RenderLockGameEngine, RENDERLOCK_PT_game, RENDERLOCK_PT_shot, RENDERLOCK_PT_shot_settings)
 
 
 def register():
@@ -795,13 +1307,20 @@ def register():
     bpy.types.Scene.renderlock_game = bpy.props.PointerProperty(type=RenderLockGameSettings)
     for panel in _compatible_panels():
         panel.COMPAT_ENGINES.add(ENGINE)
-    if _frame_changed not in bpy.app.handlers.frame_change_post:
-        bpy.app.handlers.frame_change_post.append(_frame_changed)
+    for handler in [h for h in bpy.app.handlers.frame_change_post if h.__name__ == "_frame_changed"]:
+        bpy.app.handlers.frame_change_post.remove(handler)  # an earlier run of this script
+    bpy.app.handlers.frame_change_post.append(_frame_changed)
+    register_keymap()
+    if not bpy.app.timers.is_registered(_live_timer):
+        bpy.app.timers.register(_live_timer, first_interval=0.5, persistent=True)
 
 
 def unregister():
-    if _frame_changed in bpy.app.handlers.frame_change_post:
-        bpy.app.handlers.frame_change_post.remove(_frame_changed)
+    unregister_keymap()
+    if bpy.app.timers.is_registered(_live_timer):
+        bpy.app.timers.unregister(_live_timer)
+    for handler in [h for h in bpy.app.handlers.frame_change_post if h.__name__ == "_frame_changed"]:
+        bpy.app.handlers.frame_change_post.remove(handler)
     for panel in _compatible_panels():
         panel.COMPAT_ENGINES.discard(ENGINE)
     del bpy.types.Scene.renderlock_game
