@@ -550,6 +550,29 @@ class RenderLockGameEngine(bpy.types.RenderEngine):
 
 # --------------------------------------------------------------------------- UI
 
+def _scene_of(props):
+    return next((scene for scene in bpy.data.scenes if scene.renderlock_game == props), None)
+
+
+def _get_end_tick(self):
+    scene = _scene_of(self)
+    return scene_tick(scene, scene.frame_end) if scene else self.start_tick
+
+
+def _set_end_tick(self, value):
+    scene = _scene_of(self)
+    if scene is None:
+        return
+    fps = scene.render.fps / scene.render.fps_base
+    frames = max(0, int(round((value - self.start_tick) / TICK_RATE * fps)))
+    scene.frame_end = scene.frame_start + frames
+
+
+def match_time(tick):
+    seconds = max(0, tick) / TICK_RATE
+    return f"{int(seconds // 60)}:{seconds % 60:05.2f}"
+
+
 def _on_hud(self, context):
     if SESSION.state == "ready":
         SESSION.set_hud(not self.hide_hud)
@@ -561,6 +584,9 @@ class RenderLockGameSettings(bpy.types.PropertyGroup):
     replay_path: bpy.props.StringProperty(name="Replay", subtype='FILE_PATH')
     start_tick: bpy.props.IntProperty(name="Start tick", min=0,
                                       description="Replay tick shown at the scene's first frame")
+    end_tick: bpy.props.IntProperty(name="End tick", min=0, get=_get_end_tick, set=_set_end_tick,
+                                    description="Replay tick shown at the scene's last frame "
+                                                "(sets the scene's End frame)")
     width: bpy.props.IntProperty(name="Game width", default=0, min=0, max=7680,
                                  description="Game window width; 0 uses the scene's render resolution")
     height: bpy.props.IntProperty(name="Game height", default=0, min=0, max=4320,
@@ -689,6 +715,11 @@ class RENDERLOCK_PT_game(bpy.types.Panel):
         row = col.row(align=True)
         row.prop(props, "start_tick")
         row.operator(RENDERLOCK_OT_game_start_here.bl_idname, text="", icon='TIME')
+        col.prop(props, "end_tick")
+        scene = context.scene
+        seconds = (scene.frame_end - scene.frame_start) / (scene.render.fps / scene.render.fps_base)
+        col.label(text=f"Replay {match_time(props.start_tick)} to {match_time(props.end_tick)}"
+                       f"  ({seconds:.2f} s, frames {scene.frame_start}-{scene.frame_end})")
         row = col.row(align=True)
         row.prop(props, "width")
         row.prop(props, "height")
@@ -707,7 +738,8 @@ class RENDERLOCK_PT_game(bpy.types.Panel):
             box.label(text=SESSION.message[:120])
         if SESSION.frame_meta:
             meta = SESSION.frame_meta
-            box.label(text=f"Frame {meta['seq']}  tick {meta['tick']}  {meta['width']}×{meta['height']}")
+            box.label(text=f"Game shows tick {meta['tick']} ({match_time(meta['tick'])})  "
+                           f"{meta['width']}×{meta['height']}  · {meta['seq']} frames streamed")
             want = render_size(context.scene)
             if (meta['width'], meta['height']) != want:
                 box.label(text=f"Game window {meta['width']}×{meta['height']} is scaled to the "
