@@ -100,6 +100,7 @@ class Session:
         self.frame_meta = None
         self.image = None
         self.received = 0
+        self.last_pose = None
 
     # ---- lifecycle
     def start(self, game, demo, width, height, hide_hud):
@@ -159,8 +160,27 @@ class Session:
                 traceback.print_exc()
 
     def push_camera(self, pose):
+        if pose is not None:
+            self.last_pose = tuple(pose)
         if self.stream is not None:
             self.stream.set_camera(pose)
+
+    # ---- replay positioning
+    # A bare seek leaves the world wrong (effects from the skipped stretch pile
+    # up, players may not be redrawn). Dolly's recording preparation reloads the
+    # replay, seeks two seconds early, simulates normally and pauses exactly on
+    # the tick, then enters manual flight; the streamed camera takes over there.
+    def position(self, tick, pose):
+        from dolly.path import Project
+        pose = pose or self.last_pose
+        project = Project(name="renderlock-view", keyframes=[_keyframe(0.0, pose)],
+                          interpolation="linear", start_tick=int(tick), tick_rate=TICK_RATE,
+                          standard_aspect=pose[7])
+        project.validate()
+        self.stream.set_camera(None)
+        self.controller.prepare_native_recording(project)
+        self.stream.set_camera(pose)
+        self.current_tick = int(tick)
 
     def request_tick(self, tick):
         self.wanted_tick = int(tick)
@@ -172,15 +192,62 @@ class Session:
         try:
             while self.state == "ready" and self.wanted_tick is not None and self.wanted_tick != self.current_tick:
                 target = self.wanted_tick
+                self.message = f"Moving the replay to tick {target}…"
                 try:
-                    settled = self.controller.seek_replay_tick(max(0, target))
-                    self.current_tick = target
-                    self.message = f"Replay tick {settled.get('tick', target)}"
+                    self.position(max(0, target), self.last_pose)
+                    self.message = f"Replay tick {target}"
                 except Exception as error:
+                    traceback.print_exc()
                     self.message = f"Seek failed: {error}"
                     self.current_tick = target
         finally:
             self.seeking = False
+
+    def capture_range(self, start_tick, fps, poses, cancelled=lambda: False, timeout=600.0):
+        """Play the camera animation once, fixed-step, and keep each frame's game image.
+
+        poses[k] is the camera for shot time k / fps. Returns {k: (meta, array)}.
+        """
+        from dolly.path import Project
+        keys = [_keyframe(k / fps, pose) for k, pose in enumerate(poses)]
+        project = Project(name="renderlock-render", keyframes=keys, interpolation="linear",
+                          rotation_mode="unwrapped", start_tick=int(start_tick), tick_rate=TICK_RATE,
+                          standard_aspect=poses[0][7])
+        project.validate()
+        controller, frames = self.controller, {}
+        self.seeking = True
+        try:
+            self.stream.set_camera(None)
+            controller.prepare_native_recording(project)
+            controller.set_export_timing(fps)
+            while self.poll_frame() is not None:
+                pass  # drain frames from before the shot
+            controller.play(project, speed=1, rate=fps, frozen=False)
+            deadline = time.monotonic() + timeout
+            last = len(poses) - 1
+            while time.monotonic() < deadline and not cancelled():
+                got = self.poll_frame()
+                if got is None:
+                    if controller.status().get("shot_finished") and last in frames:
+                        break
+                    time.sleep(0.001)
+                    continue
+                phase = got[0]["phase"]
+                k = int(round(phase * fps))
+                if abs(phase * fps - k) < 1e-3 and 0 <= k <= last and k not in frames:
+                    frames[k] = got
+                if len(frames) == len(poses):
+                    break
+        finally:
+            try:
+                controller.clear_export_timing()
+                controller.stop()
+                controller.enter_native_flight(pose=None)
+            except Exception:
+                traceback.print_exc()
+            self.current_tick = None
+            self.seeking = False
+        return frames
 
     # ---- frames
     def poll_frame(self):
@@ -218,6 +285,13 @@ class Session:
         return last
 
 
+def _keyframe(time_s, pose):
+    from dolly.path import Keyframe
+    x, y, z, pitch, yaw, roll, hfov, aspect = pose
+    return Keyframe(time=time_s, x=x, y=y, z=z, pitch=pitch, yaw=yaw, roll=roll, fov=hfov,
+                    aspect_ratio=aspect, lens_scale=math.tan(math.radians(hfov) / 2) / aspect)
+
+
 SESSION = Session()
 
 
@@ -227,6 +301,30 @@ def _close_game():
         if result.returncode != 0:
             return
         time.sleep(1.5)
+
+
+def cache_folder(scene):
+    props = scene.renderlock_game
+    folder = bpy.path.abspath(props.cache_dir) if props.cache_dir else ""
+    if not folder or props.cache_dir.startswith("//") and not bpy.data.filepath:
+        folder = os.path.join(bpy.app.tempdir, "renderlock_game_frames")
+    return Path(folder)
+
+
+def baked_frame(scene, frame):
+    """A frame captured by "Bake game frames" for this scene's replay range, if any."""
+    folder = cache_folder(scene)
+    path = folder / f"frame_{frame:06d}.npy"
+    info = folder / "bake.json"
+    if not path.is_file() or not info.is_file():
+        return None
+    import json
+    bake = json.loads(info.read_text())
+    if bake.get("start_tick") != scene.renderlock_game.start_tick or bake.get("replay") != \
+            bpy.path.abspath(scene.renderlock_game.replay_path):
+        return None
+    meta = bake["frames"].get(str(frame))
+    return (meta, np.load(path)) if meta else None
 
 
 def to_display_image(array):
@@ -289,14 +387,21 @@ class RenderLockGameEngine(bpy.types.RenderEngine):
             if SESSION.state != "ready" or scene.camera is None:
                 self.report({'ERROR'}, "Connect to the game and set a scene camera first.")
                 return
-            tick = scene_tick(scene)
-            SESSION.request_tick(tick)
-            deadline = time.monotonic() + 60
-            while (SESSION.seeking or SESSION.current_tick != tick) and time.monotonic() < deadline:
-                if self.test_break():
-                    return
-                time.sleep(0.02)
-            got = SESSION.wait_frame(camera_object_pose(scene, scene.camera))
+            frame = scene.frame_current
+            got = baked_frame(scene, frame)
+            if got is None:
+                # Exact single frame: settle the replay on this tick, then wait for
+                # consecutive game frames that show the scene camera.
+                pose = camera_object_pose(scene, scene.camera)
+                SESSION.last_pose = pose
+                tick = scene_tick(scene)
+                SESSION.request_tick(tick)
+                deadline = time.monotonic() + 180
+                while (SESSION.seeking or SESSION.current_tick != tick) and time.monotonic() < deadline:
+                    if self.test_break():
+                        return
+                    time.sleep(0.02)
+                got = SESSION.wait_frame(pose)
             if got is None:
                 self.report({'ERROR'}, "No frame arrived from the game.")
                 return
@@ -331,6 +436,8 @@ class RenderLockGameSettings(bpy.types.PropertyGroup):
     width: bpy.props.IntProperty(name="Game width", default=1280, min=320, max=3840)
     height: bpy.props.IntProperty(name="Game height", default=720, min=240, max=2160)
     hide_hud: bpy.props.BoolProperty(name="Hide health bars and HUD", default=True, update=_on_hud)
+    cache_dir: bpy.props.StringProperty(name="Baked frames", subtype='DIR_PATH',
+                                        default="//renderlock_game_frames")
     follow_timeline: bpy.props.BoolProperty(name="Follow timeline", default=True,
                                             description="Seek the replay when the frame changes")
 
@@ -349,6 +456,53 @@ class RENDERLOCK_OT_game_connect(bpy.types.Operator):
             props.start_tick = int(context.scene["agr_start_tick"])
         context.scene.view_settings.view_transform = 'Standard'
         SESSION.start(bpy.path.abspath(props.game_path), replay, props.width, props.height, props.hide_hud)
+        return {'FINISHED'}
+
+
+class RENDERLOCK_OT_game_bake(bpy.types.Operator):
+    """Play the scene's frame range once in the game and keep every frame for F12 / Render Animation"""
+    bl_idname = "renderlock.game_bake"
+    bl_label = "Bake game frames"
+
+    def execute(self, context):
+        import json
+        scene = context.scene
+        if SESSION.state != "ready" or scene.camera is None:
+            self.report({'ERROR'}, "Connect to the game and set a scene camera first.")
+            return {'CANCELLED'}
+        fps = scene.render.fps / scene.render.fps_base
+        if abs(fps - round(fps)) > 1e-6 or int(round(fps)) not in (30, 60, 120):
+            self.report({'ERROR'}, "Use 30, 60 or 120 fps for game frames.")
+            return {'CANCELLED'}
+        fps = int(round(fps))
+        original = scene.frame_current
+        frames = list(range(scene.frame_start, scene.frame_end + 1))
+        poses, previous_yaw = [], None
+        for frame in frames:
+            scene.frame_set(frame)
+            pose = list(camera_object_pose(scene, scene.camera))
+            if previous_yaw is not None:  # continuous yaw for interpolation
+                pose[4] += round((previous_yaw - pose[4]) / 360) * 360
+            previous_yaw = pose[4]
+            poses.append(tuple(pose))
+        scene.frame_set(original)
+        props = scene.renderlock_game
+        start_tick = props.start_tick
+        captured = SESSION.capture_range(start_tick, fps, poses)
+        folder = cache_folder(scene)
+        folder.mkdir(parents=True, exist_ok=True)
+        for old in folder.glob("frame_*.npy"):
+            old.unlink()
+        metas = {}
+        for k, (meta, array) in captured.items():
+            np.save(folder / f"frame_{frames[k]:06d}.npy", np.ascontiguousarray(array))
+            metas[str(frames[k])] = {key: meta[key] for key in ("tick", "phase", "present", "seq", "width", "height")}
+        (folder / "bake.json").write_text(json.dumps(dict(
+            start_tick=start_tick, replay=bpy.path.abspath(props.replay_path), fps=fps,
+            requested=len(frames), captured=len(metas), frames=metas), indent=1))
+        missing = len(frames) - len(metas)
+        level = {'WARNING'} if missing else {'INFO'}
+        self.report(level, f"Baked {len(metas)} of {len(frames)} frames into {folder}")
         return {'FINISHED'}
 
 
@@ -385,9 +539,11 @@ class RENDERLOCK_PT_game(bpy.types.Panel):
         row.prop(props, "height")
         col.prop(props, "hide_hud")
         col.prop(props, "follow_timeline")
+        col.prop(props, "cache_dir")
         row = layout.row()
         if SESSION.state in ("starting", "ready"):
             row.operator(RENDERLOCK_OT_game_disconnect.bl_idname, icon='CANCEL')
+            row.operator(RENDERLOCK_OT_game_bake.bl_idname, icon='RENDER_ANIMATION')
         else:
             row.operator(RENDERLOCK_OT_game_connect.bl_idname, icon='PLAY')
         box = layout.box()
@@ -418,6 +574,7 @@ def _compatible_panels():
 
 
 CLASSES = (RenderLockGameSettings, RENDERLOCK_OT_game_connect, RENDERLOCK_OT_game_disconnect,
+           RENDERLOCK_OT_game_bake,
            RenderLockGameEngine, RENDERLOCK_PT_game)
 
 
