@@ -327,13 +327,33 @@ class Session:
                 # clears it, otherwise the next forward jump stops at the old tick.
                 controller._request("demo_resume; demo_pause", allow_error=True)
                 timings["release"] = time.monotonic() - began
-                positioned = controller._seek(project, 0)
+                offset = getattr(self, "seek_offset", None)
+                if offset is not None and int(tick) > 2 * TICK_RATE:
+                    # The replay's demo/server clock offset is fixed; the settle seeks
+                    # two seconds early itself, so skip the jump onto the tick.
+                    controller._last_seek_details = {"target_tick": int(tick), "actual_tick": int(tick),
+                                                     "verified": True, "game_tick_offset": offset}
+                    positioned, start = {"tick": int(tick)}, 0.0
+                else:
+                    positioned = controller._seek(project, 0)
+                    start = controller._seek_shot_time(project, 0, positioned)
+                    if controller._last_seek_details.get("verified"):
+                        self.seek_offset = controller._last_seek_details.get("game_tick_offset")
                 timings["seek"] = time.monotonic() - began
-                start = controller._seek_shot_time(project, 0, positioned)
+                controller._warmup_timescale = 4  # 2 s of replay settles in about half a second
                 try:
-                    controller._warm_replay_for_shot(project, start, positioned, calibrate=True)
+                    warmed = controller._warm_replay_for_shot(project, start, positioned, calibrate=False)
+                    if not warmed.get("replay_warmup", {}).get("performed"):
+                        raise RuntimeError(warmed.get("replay_warmup", {}).get("reason", "not settled"))
                 except Exception:
-                    traceback.print_exc()  # the plain jump still stands
+                    traceback.print_exc()
+                    # Fall back to the plain exact jump (also refreshes the clock offset).
+                    self.seek_offset = None
+                    positioned = controller._seek(project, 0)
+                    start = controller._seek_shot_time(project, 0, positioned)
+                finally:
+                    controller._warmup_timescale = 1
+                    controller._request("demo_timescale 1", allow_error=True)
                 timings["settle"] = time.monotonic() - began
                 controller.enter_native_flight(pose=project.evaluate(start))
                 timings["camera"] = time.monotonic() - began

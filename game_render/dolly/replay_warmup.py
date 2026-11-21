@@ -110,7 +110,9 @@ class ReplayWarmupMixin:
                 self._demo_speed_changed = True
                 goal_owned = True
                 # resume CLEARS a previous goal. Arm the stock one-shot command last.
-                self._request(f"demo_timescale 1; demo_resume; demo_pauseatservertick {server_target}")
+                # RenderLock editing jumps settle faster; shots and bakes keep real time.
+                timescale = getattr(self, "_warmup_timescale", 1)
+                self._request(f"demo_timescale {timescale}; demo_resume; demo_pauseatservertick {server_target}")
                 deadline = time.perf_counter() + 8.0
                 last_frame = int(before["frame_count"])
                 first_paused_frame = None
