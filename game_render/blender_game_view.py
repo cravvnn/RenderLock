@@ -318,19 +318,29 @@ class Session:
         controller = self.controller
         self.stream.set_camera(None)
         self.held_frame = None
+        timings, began = {}, time.monotonic()
         try:
             with controller._op_lock:
                 controller.stop()
                 controller._stop_event.clear()
+                # The previous settle leaves a one-shot pause goal armed; resuming
+                # clears it, otherwise the next forward jump stops at the old tick.
+                controller._request("demo_resume; demo_pause", allow_error=True)
+                timings["release"] = time.monotonic() - began
                 positioned = controller._seek(project, 0)
+                timings["seek"] = time.monotonic() - began
                 start = controller._seek_shot_time(project, 0, positioned)
                 try:
                     controller._warm_replay_for_shot(project, start, positioned, calibrate=True)
                 except Exception:
                     traceback.print_exc()  # the plain jump still stands
+                timings["settle"] = time.monotonic() - began
                 controller.enter_native_flight(pose=project.evaluate(start))
+                timings["camera"] = time.monotonic() - began
         finally:
             self.stream.set_camera(pose)
+            self.last_timings = {k: round(v, 2) for k, v in timings.items()}
+            print("[RenderLock game] jump timings", self.last_timings, flush=True)
         self.live_playing = False
         self.current_tick = int(tick)
 
@@ -391,6 +401,7 @@ class Session:
     def run_up(self, tick, pose, frames=30, fps=60):
         """Reach `tick` by playing `frames` fixed steps from just before it."""
         lead = int(round(frames / fps * TICK_RATE))
+        pose = pose or self.last_pose or self.game_pose()
         captured = self.capture_range(tick - lead, fps, [pose] * (frames + 1))
         if frames not in captured:
             raise RuntimeError(f"The run-up into tick {tick} did not deliver its last frame.")
