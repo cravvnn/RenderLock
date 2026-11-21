@@ -130,7 +130,7 @@ def prepared_map(folder, *, lighting=True):
         (folder / name).write_bytes(data)
         rows.append(dict(file=name, bytes=len(data), sha256=hashlib.sha256(data).hexdigest()))
     doc = dict(format=packages.FORMAT, schema_version=2, package_id="midtown-fixture-v2",
-               builder=dict(commit=packages.BUILDER_COMMIT, map_builder=14),
+               builder=dict(commit=packages.LEGACY_BUILDER_COMMIT, map_builder=14),
                source=dict(kind="installed_game", game_version="6861", native_blend_sha256="a"*64,
                            build_request_sha256="d"*64, map_archive_sha256="e"*64, root_archive_sha256="f"*64,
                            source2viewer_sha256=next(iter(packages.CONVERTER_SHA256)),

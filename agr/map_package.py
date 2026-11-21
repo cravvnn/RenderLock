@@ -9,7 +9,10 @@ import re
 import shutil
 
 FORMAT = 'renderlock-map-v2'
-BUILDER_COMMIT = '0d1958ab553630df997a93fda06d3ab9ed6994c3'
+# deadlockrigs 1.0.7, map builder 26, run unmodified with the Source 2 Viewer 21.1 release.
+BUILDER_COMMIT = '74ddb41198d67f99b831e704434ffaed54528ab3'
+BUILDER_VERSION = 26
+LEGACY_BUILDER_COMMIT = '0d1958ab553630df997a93fda06d3ab9ed6994c3'
 MANIFEST = 'map-package.json'
 LIBRARY = 'RenderLockMap.blend'
 COLLECTION = 'RenderLockMap'
@@ -18,12 +21,15 @@ NAMESPACE = 'RenderLock map | '
 CONVERTER_SHA256 = frozenset({
     'd440ca0c62a885665702b35bf005dc19f3ad4736e45afab4d000f74448c87de7',
     '9142f59e64dc97b7afab4cca3c5cbb4197d38beccb1f7d7f4ffbd691a053e707',
+    # Source 2 Viewer 21.1 release CLI (Windows x64, Linux x64).
+    '50502077543856a3f760eecf53b073dcdea5073c193f0274c2088b5a2a8f4d13',
+    '39b9c48df1241151be23b4d2eec111a2b883aa4339056bf2a6960827302aefe9',
 })
 _SHA = re.compile(r'^[0-9a-f]{64}$')
 # Port review: builder ABIs this copy accepts. The second is deadlockrigs 1.0.0 (4a30eee, map builder 25) run with
 # Source 2 Viewer 21.1 and three local patches; review identity only, not a qualified release pin.
 REVIEW_BUILDER_COMMIT = 'deadlockrigs-1.0.0-4a30eee+s2v21.1-3patches'
-BUILDERS = frozenset({(BUILDER_COMMIT, 14), (REVIEW_BUILDER_COMMIT, 25)})
+BUILDERS = frozenset({(LEGACY_BUILDER_COMMIT, 14), (REVIEW_BUILDER_COMMIT, 25), (BUILDER_COMMIT, BUILDER_VERSION)})
 REVIEW_CONVERTER_SHA256 = '50502077543856a3f760eecf53b073dcdea5073c193f0274c2088b5a2a8f4d13'
 HOSTED_MANIFESTS = frozenset({'92c52ac4f56f132e752a609b4163b7b1384aebca456676484d5ca28e85c0101b'})
 _VERIFIED_PACKAGES = {}

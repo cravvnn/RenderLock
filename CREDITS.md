@@ -35,8 +35,8 @@ Third-party shader libraries remain separate downloads, under their authors' ter
 
 The optional Midtown map is separate from the application package. New prepared
 maps use [Sirsyorrz / deadlockrigs](https://github.com/Sirsyorrz/deadlockrigs)' map
-export, rebatching and material/lighting reconstruction pipeline, pinned to
-`0d1958ab553630df997a93fda06d3ab9ed6994c3`. Its GPL source and notices remain in
+export, rebatching and material/lighting reconstruction pipeline, pinned to release 1.0.7,
+`74ddb41198d67f99b831e704434ffaed54528ab3`. Its GPL source and notices remain in
 the optional tools cache. RenderLock's standalone bridge is also GPL-3.0-or-later;
 the application-side package, composition and proxy adapters are separate code.
 Source2Viewer/ValveResourceFormat supplies the pinned converter for this path.

@@ -18,13 +18,15 @@ import zipfile
 from .map_package import BUILDER_COMMIT, LIBRARY, file_hash, library_identity, load_package
 
 SOURCE_URL = f'https://codeload.github.com/Sirsyorrz/deadlockrigs/zip/{BUILDER_COMMIT}'
-SOURCE_SHA256 = 'c5b43b0a572edb8058eea34adc60c96b096306ce7aef90e7cf39b2ab1828a17a'
-S2V_TAG = 's2v-f030654ff'
+SOURCE_SHA256 = '13cb5522b8c99c2aaa5fa5b1b6efef57985fe2242ede04489be7815b02105a00'
+# The Source 2 Viewer release deadlockrigs 1.0.7 builds with, downloaded from its own project.
+S2V_TAG = 'vrf-21.1'
+S2V_URL = 'https://github.com/ValveResourceFormat/ValveResourceFormat/releases/download/21.1/cli-{asset}.zip'
 S2V = {
-    'win-x64': dict(archive='0ae6a2c4c4285dfbce9a47eb70e55b6dc6747850e6b70bfd133ef3bf5161c7f3',
-                    cli='d440ca0c62a885665702b35bf005dc19f3ad4736e45afab4d000f74448c87de7', name='Source2Viewer-CLI.exe'),
-    'linux-x64': dict(archive='3e49187542d9f2696aeb3234281176afe1ed7c759cbdec8c8c8606b423faf493',
-                      cli='9142f59e64dc97b7afab4cca3c5cbb4197d38beccb1f7d7f4ffbd691a053e707', name='Source2Viewer-CLI'),
+    'win-x64': dict(asset='windows-x64', archive='cd01665e4d31d70c1081546a697eb5654f30718000fef1a2bb0654ae044d659e',
+                    cli='50502077543856a3f760eecf53b073dcdea5073c193f0274c2088b5a2a8f4d13', name='Source2Viewer-CLI.exe'),
+    'linux-x64': dict(asset='linux-x64', archive='6c76b646485977480b9f25bcf5026c30856f70e5d138a1eb127b52d768156843',
+                      cli='39b9c48df1241151be23b4d2eec111a2b883aa4339056bf2a6960827302aefe9', name='Source2Viewer-CLI'),
 }
 ADAPTER_FILES = ('blender_prepared_map.py','blender_prepared_proxy.py','map_package.py')
 
@@ -128,7 +130,7 @@ def tools(cache):
         raise ValueError('Map tools: source archive has no upstream license.')
     cli_info = S2V[rid]
     viewer = _component(tool_cache, S2V_TAG+'-'+rid,
-        f'https://github.com/Sirsyorrz/deadlockrigs/releases/download/{S2V_TAG}/{rid}.zip', cli_info['archive'])
+        S2V_URL.format(asset=cli_info['asset']), cli_info['archive'])
     cli = viewer/cli_info['name']
     if not cli.is_file() or file_hash(cli) != cli_info['cli']:
         raise ValueError('Map tools: converter identity does not match the pinned release.')

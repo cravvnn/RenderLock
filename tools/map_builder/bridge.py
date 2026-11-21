@@ -15,7 +15,7 @@ from types import SimpleNamespace
 import sys
 import uuid
 
-COMMIT = '0d1958ab553630df997a93fda06d3ab9ed6994c3'
+COMMIT = '74ddb41198d67f99b831e704434ffaed54528ab3'
 
 
 def main():
@@ -115,6 +115,9 @@ def main():
         def export(self,m):
             super().export(m);checkpoint('export',m.export)
 
+        def props(self,m):
+            super().props(m);Path(m.props).mkdir(parents=True,exist_ok=True);checkpoint('props',m.props)
+
         def rebatch(self,m):
             super().rebatch(m);checkpoint('rebatch',Path(m.rebatched).parent)
 
@@ -131,7 +134,7 @@ def main():
             if not force and valid('import'):
                 print('Native map cache verified; reusing the completed build.',flush=True)
                 return
-            if not force and all(valid(name) for name in ('export','rebatch','lighting')):
+            if not force and all(valid(name) for name in ('export','props','rebatch','lighting')):
                 print('Resuming map import from verified extracted assets.',flush=True)
                 self.import_(m)
                 Path(m.stamp_file).write_text(json.dumps(game_stamp(self.pak,slug,False)),encoding='utf-8')

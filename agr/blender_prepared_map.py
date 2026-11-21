@@ -122,11 +122,19 @@ def prepare(source, output, provenance):
     if collection is None or world is None or bpy.data.collections.get(map_package.COLLECTION):
         raise ValueError('External map: incomplete or ambiguous builder hierarchy.')
     builder, expected_groups = group_inventory()
+    if builder == 25:
+        # Builder 26 (deadlockrigs 1.0.7) keeps builder 25's lighting graphs; its own build stamp tells them apart.
+        try:
+            stamp = json.loads((source.parent / 'map.json').read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            stamp = {}
+        if isinstance(stamp, dict) and stamp.get('builder') == 26:
+            builder = 26
     for name in expected_groups:
         if bpy.data.node_groups[name].get('renderlock_lighting_basis'):
             raise ValueError('External map: unsupported prepared lighting graph: ' + name)
     # Builder 25 packs small generated particle gradients. Store each as a texture file beside the others.
-    if builder == 25:
+    if builder in (25, 26):
         staging = source.parent / 'textures'
         for image in bpy.data.images:
             if image.packed_file:
@@ -183,7 +191,7 @@ def prepare(source, output, provenance):
     # Port review (builder 25): carry the builder's 1024-pixel texture tier under the same content-addressed names.
     tier_files = 0
     tier_source = root / 'textures_1024'
-    if builder == 25 and tier_source.is_dir():
+    if builder in (25, 26) and tier_source.is_dir():
         for relative, original in sorted(origins.items()):
             small = tier_source / original.name
             if relative.startswith('textures/') and original.parent == root / 'textures' and small.is_file():
@@ -221,7 +229,8 @@ def prepare(source, output, provenance):
     provenance = dict(provenance, native_blend_sha256=digest)
     profile = dict(format=map_package.FORMAT, schema_version=2,
         package_id=f'midtown-{provenance["game_version"]}-{digest[:12]}-v2',
-        builder=dict(commit=map_package.BUILDER_COMMIT if builder == 14 else map_package.REVIEW_BUILDER_COMMIT, map_builder=builder),
+        builder=dict(commit={14: map_package.LEGACY_BUILDER_COMMIT, 25: map_package.REVIEW_BUILDER_COMMIT}.get(
+            builder, map_package.BUILDER_COMMIT), map_builder=builder),
         source=provenance, map_name='dl_midtown', blender_min=[5, 2, 0],
         source_frame='vrf_blender_metres', collection=map_package.COLLECTION,
         world=world.name, namespace=map_package.NAMESPACE,

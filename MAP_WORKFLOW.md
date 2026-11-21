@@ -82,7 +82,7 @@ reconstructed approximations, not full game-render parity. The proxy does not
 establish a frame-rate guarantee. Heavy renders still need considerable memory.
 
 The builder is the separately executed, pinned
-[Sirsyorrz/deadlockrigs map pipeline](https://github.com/Sirsyorrz/deadlockrigs/tree/0d1958ab553630df997a93fda06d3ab9ed6994c3),
+[Sirsyorrz/deadlockrigs map pipeline](https://github.com/Sirsyorrz/deadlockrigs/tree/74ddb41198d67f99b831e704434ffaed54528ab3) (release 1.0.7),
 with its original source and GPL notices retained. See [credits](CREDITS.md) and
 [third-party notices](THIRD_PARTY.md).
 

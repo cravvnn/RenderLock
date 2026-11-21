@@ -99,11 +99,14 @@ def character_snapshot(scene, names):
         scene.frame_set(math.floor(frame), subframe=frame % 1)
         for name in names:
             obj = scene.objects[name]
-            matrix = np.asarray(obj.matrix_world,dtype=np.float64)
+            # An object hidden at this frame (particles key their visibility) is not re-evaluated, so its stored
+            # matrix depends on what was evaluated before. Its visibility keys are covered by the animation hash.
+            hidden = obj.hide_viewport
+            matrix = np.zeros((4, 4)) if hidden else np.asarray(obj.matrix_world,dtype=np.float64)
             transform.update(matrix.tobytes());values.extend(matrix.reshape(-1).tolist())
             if obj.type == 'ARMATURE':
                 for bone in obj.pose.bones:
-                    matrix = np.asarray(bone.matrix,dtype=np.float64)
+                    matrix = np.zeros((4, 4)) if hidden else np.asarray(bone.matrix,dtype=np.float64)
                     transform.update(matrix.tobytes());values.extend(matrix.reshape(-1).tolist())
     scene.frame_set(old_frame, subframe=old_subframe)
     return dict(transforms=transform.hexdigest(), frames=frames,

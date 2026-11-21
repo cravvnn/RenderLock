@@ -64,8 +64,10 @@ def build_cached_proxy(scene, source):
         if match is None:
             visibility = ('visible_camera', 'visible_diffuse', 'visible_glossy',
                           'visible_transmission', 'visible_volume_scatter')
-            if (obj.get('dlr_barn_mask') not in lights or len(obj.data.vertices) != 192
-                    or len(obj.data.polygons) != 96 or any(getattr(obj, flag) for flag in visibility)
+            # Barn-door light masks: 192 vertices / 96 faces up to builder 25, 196 / 97 from builder 26.
+            if (obj.get('dlr_barn_mask') not in lights
+                    or (len(obj.data.vertices), len(obj.data.polygons)) not in {(192, 96), (196, 97)}
+                    or any(getattr(obj, flag) for flag in visibility)
                     or not obj.visible_shadow):
                 raise ValueError('Viewport proxy: unqualified non-cell render mesh: ' + obj.name)
             ignored.append(obj.name)
