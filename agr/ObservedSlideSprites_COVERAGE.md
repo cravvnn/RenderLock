@@ -11,8 +11,8 @@ pitch texture scale follows the installed shader selectors7/8/9; zero scale
 remains refused. The ambient backend has a separate supplied-input admission
 entry point and independent normal/save/render qualification.
 
-The optional `observed_slide_sprite_effects` stage validates a complete reference
-and uses the existing `simulated_effect_package` transaction. Its source profile,
+Captured slide sprites validate a complete reference
+and use the existing `simulated_effect_package` transaction. Its source profile,
 replay/scene identity, native clock mapping, exact endpoints, read budgets, raw
 SIMD arrays and renderer/context bounds are checked before allocation. Collection
 absence, known-empty arrays and missing data have separate representations.

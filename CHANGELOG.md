@@ -1,3 +1,13 @@
+# 0.3.0b35 - Effects on other players and more world effects
+
+- Build effects aimed at a player who is not in the export (hit and debuff effects such as Pocket's pulse hit, Mo & Krill's scorn debuff and ult hit, Graves' weapon ricochet, Siphon Bullets). The export records every other player's position from the replay; the effect follows the player whose recorded positions match it. Not compared with the game; the target's rotation is not recorded.
+- Build world effects whose origin point the game never sets (such as Lash's ground strike collision line), with that point at the world origin as the game leaves it.
+- Build world effects that assign a model to a control point (such as Rejuvenator pending); the parts that need the model are left out and named in the report.
+- Build effects created on no entity but bound to an exported character, effects that read control points the game never set (systems that would land at the world origin are left out), and sprite or trail settings chosen at random (with a fixed substitute seed).
+- Read sprite and trail size scales that follow the effect's age.
+- Count world effects destroyed well before the clip as finished instead of unsupported.
+- Remove unused modules and trim the developer test suite.
+
 # 0.3.0b34 - Effects after a game update
 
 - Build rope effects, particle lights and extended sprite layers on any installed game build. When the game's particle module is not a verified build, the values measured on an earlier build are used and each affected effect is labelled in the coverage report.
