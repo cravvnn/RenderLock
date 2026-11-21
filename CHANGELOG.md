@@ -1,3 +1,9 @@
+# 0.3.0b36 - Midtown from deadlockrigs 1.0.7
+
+- Build maps with Sirsyorrz's deadlockrigs release 1.0.7 and the official Source 2 Viewer 21.1 release, both run unmodified. Map > Build from game downloads and checks them.
+- Accept prepared maps from that builder, including the new hosted Midtown map for game build 6864. Older map packages remain accepted.
+- Fix exports with Include map being refused ("composition changed character animation") when particle effects were hidden at the checked frames.
+
 # 0.3.0b35 - Effects on other players and more world effects
 
 - Build effects aimed at a player who is not in the export (hit and debuff effects such as Pocket's pulse hit, Mo & Krill's scorn debuff and ult hit, Graves' weapon ricochet, Siphon Bullets). The export records every other player's position from the replay; the effect follows the player whose recorded positions match it. Not compared with the game; the target's rotation is not recorded.
