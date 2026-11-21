@@ -1,7 +1,7 @@
 from agr.installed_assets import bind_models
 
 
-def test_original_replay_ids_resolve_without_display_names():
+def test_replay_model_ids_bind_without_display_names_or_hero_merging():
     resources = [
         'models/heroes_staging/haze/haze.vmdl_c',
         'models/heroes_staging/gigawatt_prisoner/gigawatt_prisoner.vmdl_c',
@@ -16,9 +16,7 @@ def test_original_replay_ids_resolve_without_display_names():
     result, errors = bind_models(segment, resources)
     assert not errors
     assert [row['resource'] for row in result] == resources
-
-
-def test_repeated_hero_tracks_keep_separate_model_identity():
+    # Repeated hero tracks keep separate model identity.
     segment = {'entities': [
         {'id': 'one', 'hero_id': 13, 'model_handle': '8650427710956971903'},
         {'id': 'two', 'hero_id': 13, 'model_handle': '4751397631629285555'},

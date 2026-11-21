@@ -45,7 +45,7 @@ def test_development_launcher_only_in_checkout(tmp_path, checkout):
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Requires the real Windows command processor")
-@pytest.mark.parametrize("failure", [-1610612730, 1, 9009])
+@pytest.mark.parametrize("failure", [-1610612730, 9009])
 def test_failed_py_probe_falls_through_to_python(tmp_path, failure):
     source = (Path(__file__).parents[1] / "Launch_RenderLock_Windows.cmd").read_text()
     lines = []

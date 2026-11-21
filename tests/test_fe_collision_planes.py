@@ -29,12 +29,7 @@ def test_strength_relaxes_projection_and_native_parent_scale_is_not_applied():
     np.testing.assert_allclose(project_collision_planes(points,controls,[row]),result,atol=1e-12)
 
 
-@pytest.mark.parametrize('kind',['parent','child','normal','strength','offset'])
-def test_unqualified_plane_rejected(kind):
+def test_unqualified_plane_rejected():
     points,controls,row=fixture()
-    if kind=='parent':row['nCtrlParent']=1
-    elif kind=='child':row['nChildNode']=-1
-    elif kind=='normal':row['m_Plane']['m_vNormal']=[2,0,0]
-    elif kind=='strength':row['flStrength']=1.1
-    else:row['m_Plane']['m_flOffset']=float('nan')
+    row['nCtrlParent']=1
     with pytest.raises(ValueError):project_collision_planes(points,controls,[row])

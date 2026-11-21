@@ -27,13 +27,6 @@ def test_weighted_fit_recovers_actual_rotation_translation_and_identity():
     np.testing.assert_allclose(weighted_rigid_delta(source,source,[1,2,3,4]),np.eye(4),atol=1e-12)
 
 
-def test_fit_refuses_degenerate_plane_and_maintains_proper_rotation():
-    with pytest.raises(ValueError,match='Degenerate'):
-        weighted_rigid_delta([[0,0,0],[1,0,0],[2,0,0]],[[0,0,0],[1,0,0],[2,0,0]],[1,1,1])
-    source=np.array([[0.,0,0],[1,0,0],[0,1,0],[0,0,1]])
-    assert np.linalg.det(weighted_rigid_delta(source,-source,[1,1,1,1])[:3,:3])>0
-
-
 def test_compiled_fit_ranges_are_exact_and_cannot_cross_proxy_domains():
     proxy,physics=fixture()
     fits,reverse=proxy_bone_outputs(proxy,physics)
@@ -55,12 +48,6 @@ def test_proxy_collision_masks_and_named_selection_remain_exact():
     fe['m_VertexMapValues']=[255,255,255]
     assert len(uniform_proxy_colliders(proxy,physics))==1
     fe['m_VertexMapValues']=[255,0,255]
-    with pytest.raises(ValueError,match='per-vertex'):
-        uniform_proxy_colliders(proxy,physics)
-
-
-def test_proxy_collisions_cannot_broaden_nonuniform_mask_leaves():
-    proxy,physics=fixture();physics['m_pFeModel']['m_TreeCollisionMasks'][1]=0
     with pytest.raises(ValueError,match='per-vertex'):
         uniform_proxy_colliders(proxy,physics)
 

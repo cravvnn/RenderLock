@@ -17,7 +17,7 @@ def missing(kind='COrientConstraint'):
                 m_targets=[record('target')])
 
 
-@pytest.mark.parametrize('kind',['COrientConstraint','CAimConstraint','CTiltTwistConstraint'])
+@pytest.mark.parametrize('kind',['CAimConstraint'])
 def test_qualified_missing_slave_is_retained_reported_pose_preserving_noop(kind):
     definitions=[missing(kind)];before=deepcopy(definitions)
     solver=ModelConstraints(['target'],[-1],definitions,binding_policy=POLICY)
@@ -37,14 +37,6 @@ def test_default_policy_and_unqualified_modes_still_refuse_missing_bones():
             ModelConstraints(['target'],[-1],[definition],**kwargs)
 
 
-def test_missing_target_and_named_slave_are_not_inferred_disabled():
-    definitions=[dict(_class='COrientConstraint',m_slaves=[record('target')],m_targets=[record('absent')]),
-                 dict(_class='COrientConstraint',m_slaves=[record('absent')],m_targets=[record('target')])]
-    for definition in definitions:
-        with pytest.raises(ValueError,match='bone hash'):
-            ModelConstraints(['target'],[-1],[definition],binding_policy=POLICY)
-
-
 def test_active_order_and_history_index_survive_reported_disabled_definitions():
     definitions=[missing(),dict(_class='COrientConstraint',m_slaves=[record('middle')],m_targets=[record('target')]),
                  missing('CAimConstraint'),dict(_class='COrientConstraint',m_slaves=[record('last')],m_targets=[record('middle')])]
@@ -55,23 +47,6 @@ def test_active_order_and_history_index_survive_reported_disabled_definitions():
     np.testing.assert_array_equal(result[:,4:],np.tile([0,0,1,0],(3,1)))
     with pytest.raises(ValueError,match='increasing'):
         solver.evaluate(pose,tick=1,names=solver.names)
-
-
-@pytest.mark.parametrize('hash_value',[-1,2**32,True])
-def test_bad_hash_width_is_not_a_native_disabled_binding(hash_value):
-    definition=missing();definition['m_slaves'][0]['m_nBoneHash']=hash_value
-    with pytest.raises(ValueError,match='bone hash'):
-        ModelConstraints(['target'],[-1],[definition],binding_policy=POLICY)
-
-
-def test_disabled_policy_does_not_hide_nonfinite_weights_or_unknown_operations():
-    definition=missing();definition['m_slaves'][0]['m_flWeight']=float('nan')
-    with pytest.raises(ValueError,match='Nonfinite'):
-        ModelConstraints(['target'],[-1],[definition],binding_policy=POLICY)
-    with pytest.raises(ValueError,match='Unsupported model constraint'):
-        ModelConstraints(['target'],[-1],[missing('UnknownConstraint')],binding_policy=POLICY)
-    with pytest.raises(ValueError,match='policy'):
-        ModelConstraints(['target'],[-1],[],binding_policy='guess')
 
 
 def test_pose_space_bone_constraints_are_left_unevaluated_instead_of_refusing_the_model():

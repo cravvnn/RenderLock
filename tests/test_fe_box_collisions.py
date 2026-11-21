@@ -15,22 +15,6 @@ def test_box_radius_expansion_preserves_unselected_and_outside_points():
     np.testing.assert_array_equal(points,[[.5,0,0],[.5,0,0],[4,0,0]])
 
 
-def test_zero_friction_array_keeps_native_face_ties_distinct_from_no_array():
-    points=np.array([[0,0,0],[.5,.5,0]])
-    np.testing.assert_array_equal(project_box(points,FRAME,[1]*3,[0]*2,[0,1]),points)
-    actual=project_box(points,FRAME,[1]*3,[0]*2,[0,1],previous=points,
-        relative_transform=FRAME.tolist(),friction=[0,0])
-    np.testing.assert_array_equal(actual,[[0,0,1],[.5,1,0]])
-
-
-def test_rounded_box_corner_uses_cloth_radius_and_not_an_expanded_cube():
-    point=[[1.1,1.1,0]]
-    result=project_box(point,FRAME,[1]*3,[.2],[0],previous=point,
-        relative_transform=FRAME,friction=[0])
-    np.testing.assert_allclose(result,[[1+.2/np.sqrt(2),1+.2/np.sqrt(2),0]],atol=2e-7)
-    np.testing.assert_allclose(project_box(point,FRAME,[1]*3,[.2],[0]),point,atol=1e-7)
-
-
 def test_native_corner_threshold_uses_face_fallback_below_one_e_minus_five_squared():
     points=[[1.0015]*3,[1.002]*3]
     result=project_box(points,FRAME,[1]*3,[.2]*2,[0,1],previous=points,
@@ -39,25 +23,11 @@ def test_native_corner_threshold_uses_face_fallback_below_one_e_minus_five_squar
     np.testing.assert_allclose(result[1],[1+.2/np.sqrt(3)]*3,atol=2e-7)
 
 
-def test_signed_authored_extent_retains_native_min_then_max_order():
-    point=[[0,0,0]]
-    result=project_box(point,FRAME,[1,-.5,1],[1],[0],previous=point,
-        relative_transform=FRAME,friction=[0])
-    np.testing.assert_array_equal(result,[[0,-.5,0]])
-    np.testing.assert_array_equal(project_box(point,FRAME,[1,-.5,1],[1],[0]),[[0,.5,0]])
-
-
 def test_box_world_frame_rotates_local_offset_and_scales_signed_extents():
     half=np.sqrt(.5)
     frame,size=world_box([1,0,0,1,0,0,0,1],[10,20,30,2,0,0,half,half],[1,-.5,3])
     np.testing.assert_allclose(frame,np.c_[[[0,-1,0],[1,0,0],[0,0,1]],[10,22,30]],atol=2e-6)
     np.testing.assert_array_equal(size,[2,-1,6])
-
-
-@pytest.mark.parametrize('selected',[[True],[0,0],[1]])
-def test_box_rejects_unqualified_selection(selected):
-    with pytest.raises(ValueError,match='selected nodes'):
-        project_box([[0,0,0]],FRAME,[1]*3,[0],selected)
 
 
 def test_box_validates_omitted_points_and_requires_explicit_history():

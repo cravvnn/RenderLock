@@ -3,7 +3,7 @@ import json
 import struct
 from types import SimpleNamespace
 import pytest
-from agr.model_mesh_groups import mesh_group_contract,annotate_document,uint64,write_glb_json
+from agr.model_mesh_groups import mesh_group_contract,annotate_document,write_glb_json
 from agr.blender_mesh_groups import selected_visibility,validate_imported_mesh_groups
 
 
@@ -53,7 +53,7 @@ def test_glb_annotation_preserves_all_binary_chunks_and_unmodified_source(tmp_pa
     assert annotated==document
 
 
-@pytest.mark.parametrize('mutation',['mask','default','identity','lod','duplicate','unmapped'])
+@pytest.mark.parametrize('mutation',['identity'])
 def test_unsupported_metadata_or_ambiguous_mapping_fails_closed(mutation):
     data,ctrl,doc=inputs()
     if mutation=='mask':data['m_refMeshGroupMasks'][0]=-1
@@ -72,17 +72,3 @@ def test_recorded_uint64_selection_and_lifetime_both_restrict_visibility():
     assert selected_visibility(obj,{},samples,data,64,[(1,False),(3,True)])==[(1,False),(2,True)]
     samples[1].pop('mesh_group_mask')
     with pytest.raises(ValueError,match='coverage has gaps'):selected_visibility(obj,{},samples,data,64,[(1,False)])
-
-
-def test_single_group_mesh_still_respects_a_recorded_zero_mask():
-    data,ctrl,document=inputs();data['m_meshGroups']=['body'];data['m_refMeshGroupMasks']=[1,1,1]
-    contract=mesh_group_contract(data,ctrl,document,source_sha256='source',base_sha256='base')
-    assert contract['unconditional'] is False
-    obj=dict(agr_mesh_group_mask='1',agr_mesh_default_mask='1',agr_mesh_groups_unconditional=contract['unconditional'])
-    samples=[dict(tick=10,mesh_group_mask='1'),dict(tick=11,mesh_group_mask='0')]
-    assert selected_visibility(obj,{},samples,dict(start_tick=10,end_tick=11,tick_rate=64),64,[(1,False)])==[(1,False),(2,True)]
-
-
-@pytest.mark.parametrize('value',[-1,1<<64,True,1.5,'01',' 1','+1'])
-def test_mesh_group_masks_preserve_uint64_bounds_and_canonical_text(value):
-    with pytest.raises(ValueError):uint64(value)

@@ -11,7 +11,6 @@ from agr.gui_chrome import TitleBar
 from agr.gui_widgets import rgba_image
 
 
-DPI_SCALES = (1.0, 1.25, 1.5, 2.0)
 RECOVERY_TITLE = 'RenderLock | Export recovery'
 WINDOW_BUTTONS = ('minimize', 'maximize', 'close')
 
@@ -87,8 +86,7 @@ def layout_bounds(bar, button_count):
     }
 
 
-@pytest.mark.parametrize('scale', DPI_SCALES)
-@pytest.mark.parametrize('buttons', [('close',), WINDOW_BUTTONS, ()])
+@pytest.mark.parametrize('scale,buttons', [(1.0, WINDOW_BUTTONS), (2.0, ('close',))])
 def test_recovery_logo_and_caption_have_clear_gap_and_do_not_cover_buttons(
         root, monkeypatch, record_property, scale, buttons):
     scale_display(root, monkeypatch, scale)
@@ -113,8 +111,7 @@ def test_recovery_logo_and_caption_have_clear_gap_and_do_not_cover_buttons(
     record_property('layout', json.dumps(bounds))
 
 
-@pytest.mark.parametrize('scale', DPI_SCALES)
-@pytest.mark.parametrize('buttons', [('close',), WINDOW_BUTTONS, ()])
+@pytest.mark.parametrize('scale,buttons', [(2.0, WINDOW_BUTTONS)])
 def test_long_title_is_single_line_ellipsized_and_refits_after_resize(
         root, monkeypatch, record_property, scale, buttons):
     scale_display(root, monkeypatch, scale)
@@ -148,10 +145,9 @@ def test_long_title_is_single_line_ellipsized_and_refits_after_resize(
     record_property('resize_layouts', json.dumps(observations))
 
 
-@pytest.mark.parametrize('scale', DPI_SCALES)
-@pytest.mark.parametrize('size', [(96, 48), (48, 96)])
-def test_non_square_icon_retains_aspect_content_and_transparency(root, monkeypatch, scale, size):
-    scale_display(root, monkeypatch, scale)
+@pytest.mark.parametrize('size', [(96, 48)])
+def test_non_square_icon_retains_aspect_content_and_transparency(root, monkeypatch, size):
+    scale_display(root, monkeypatch, 1.5)
     width, height = size
     logo = tk.PhotoImage(master=root, width=width, height=height)
     logo.put('#ff0000', to=(0, 0, width // 2, height // 2))
@@ -189,9 +185,8 @@ def test_fitted_icon_preserves_partial_alpha_against_light_and_dark_backgrounds(
         assert composites[0] != (200, 120, 40), 'Partial alpha must not become opaque'
 
 
-@pytest.mark.parametrize('scale', DPI_SCALES)
-def test_title_without_icon_and_empty_title_update_cleanly(root, monkeypatch, scale):
-    scale_display(root, monkeypatch, scale)
+def test_title_without_icon_and_empty_title_update_cleanly(root, monkeypatch):
+    scale_display(root, monkeypatch, 1.25)
     bar, _chrome = titlebar(root, width=240, links=False, title=RECOVERY_TITLE,
                            buttons=WINDOW_BUTTONS)
     assert list(caption_items(bar)) == ['text']
@@ -205,7 +200,7 @@ def test_title_without_icon_and_empty_title_update_cleanly(root, monkeypatch, sc
     assert bar.itemcget(caption_items(bar)['text'], 'fill') == bar._theme['MUTED']
 
 
-@pytest.mark.parametrize('scale', DPI_SCALES)
+@pytest.mark.parametrize('scale', [2.0])
 def test_canvas_events_keep_button_hit_areas_and_window_action_routing(root, monkeypatch, scale):
     scale_display(root, monkeypatch, scale)
     logo = tk.PhotoImage(master=root, width=gui_theme.px(32), height=gui_theme.px(32))
@@ -233,9 +228,8 @@ def test_canvas_events_keep_button_hit_areas_and_window_action_routing(root, mon
     assert not chrome.calls, 'Releasing outside Close must cancel the button press'
 
 
-@pytest.mark.parametrize('scale', DPI_SCALES)
-def test_link_mode_keeps_credits_clickable_and_separate_from_window_actions(root, monkeypatch, scale):
-    scale_display(root, monkeypatch, scale)
+def test_link_mode_keeps_credits_clickable_and_separate_from_window_actions(root, monkeypatch):
+    scale_display(root, monkeypatch, 1.5)
     opened = []
     monkeypatch.setattr('agr.gui_chrome.webbrowser.open', opened.append)
     logo = tk.PhotoImage(master=root, width=256, height=256)

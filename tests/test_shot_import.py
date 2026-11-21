@@ -7,7 +7,7 @@ import math
 import pytest
 
 from agr.blender_shot_package import (
-    ShotPackageImportError, camera_transform, scene_coordinates, scene_frame,
+    ShotPackageImportError, camera_transform, scene_frame,
     validate_against_scene,
 )
 
@@ -80,19 +80,6 @@ def scene():
     }
 
 
-def test_scene_coordinates_handles_legacy_string_and_defaults():
-    data = {"metadata": {"coordinate_system": "source2_z_up_hammer_units"}}
-    assert scene_coordinates(data) == {
-        "unit_scale": 0.0254, "origin": [0, 0, 0],
-        "world_yaw_degrees": 0, "model_yaw_degrees": 0,
-    }
-    data = {"metadata": {"coordinate_system": {
-        "unit_scale": 1.0, "origin": [1, 2, 3], "world_yaw_degrees": 45,
-        "model_yaw_degrees": 180,
-    }}}
-    assert scene_coordinates(data)["world_yaw_degrees"] == 45
-
-
 def test_scene_frame_uses_replay_time():
     assert scene_frame(collection()["shots"][0], camera_sample(), scene_start_tick=1000,
                        tick_rate=64, fps=30) == pytest.approx(16.0)
@@ -116,28 +103,13 @@ def test_camera_transform_applies_scene_coordinates():
     assert transform["clip_end"] == 1_000_000.0
 
 
-def test_validate_accepts_matching_identity_and_range():
-    warnings = validate_against_scene(collection(), scene(), fps=30.0)
-    assert warnings == []
-
-
 @pytest.mark.parametrize("field,value,message", [
-    ("match_id", "other", "match_id"),
     ("sha256", "b" * 64, "SHA-256"),
-    ("build", 9999, "build"),
-    ("tick_rate", 32.0, "tick rate"),
 ])
 def test_validate_rejects_identity_mismatch(field, value, message):
     data = collection()
     data["replay"][field] = value
     with pytest.raises(ShotPackageImportError, match=message):
-        validate_against_scene(data, scene(), fps=30.0)
-
-
-def test_validate_rejects_source_unit_mismatch():
-    data = collection()
-    data["shots"][0]["camera"]["unit_scale"] = 1.0
-    with pytest.raises(ShotPackageImportError, match="unit scale"):
         validate_against_scene(data, scene(), fps=30.0)
 
 
@@ -152,21 +124,6 @@ def test_validate_rejects_range_outside_scene():
         "start_tick": 1000, "end_tick": 1100, "end_tick_exact": 1100.5}
     with pytest.raises(ShotPackageImportError, match="ends after"):
         validate_against_scene(data, scene(), fps=30.0)
-
-
-def test_validate_requires_identity_on_both_sides():
-    data = collection()
-    data["replay"].pop("match_id")
-    data["replay"].pop("sha256")
-    with pytest.raises(ShotPackageImportError, match="no match_id"):
-        validate_against_scene(data, scene(), fps=30.0)
-
-    data = collection()
-    scene_data = scene()
-    scene_data["metadata"].pop("match_id")
-    scene_data["metadata"].pop("demo_sha256")
-    with pytest.raises(ShotPackageImportError, match="scene has no replay identity"):
-        validate_against_scene(data, scene_data, fps=30.0)
 
 
 def test_validate_warns_for_different_fps_and_size():

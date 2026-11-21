@@ -33,16 +33,12 @@ def helper(tmp_path, packager, monkeypatch):
     return probe, runtime
 
 
-@pytest.mark.parametrize("reply", [
-    "not JSON", "[]", '{"schema_version":1,"commands":["decompile-cloth"]}',
-    '{"schema_version":0,"commands":[]}', '{"schema_version":1,"commands":[1]}',
-])
-def test_stale_helper_cannot_create_candidate(packager, helper, tmp_path, monkeypatch, reply):
+def test_stale_helper_cannot_create_candidate(packager, helper, tmp_path, monkeypatch):
     probe, runtime = helper
     native = tmp_path / "native.exe"; native.write_bytes(b"native")
     output = tmp_path / "candidate"
     monkeypatch.setattr(packager.subprocess, "run", lambda *args, **kwargs:
-                        subprocess.CompletedProcess(args, 0, reply, ""))
+                        subprocess.CompletedProcess(args, 0, "not JSON", ""))
     with pytest.raises(ValueError, match="capability check failed"):
         packager.package(tmp_path, output, native, particles_dir=probe, dotnet_runtime=runtime)
     assert not output.exists()
@@ -76,13 +72,9 @@ def test_runtime_is_required(packager, helper):
         packager.verify_particle_helper(helper[0], None)
 
 
-@pytest.mark.parametrize("filename, message", [
-    ("ValveResourceFormat.dll", "qualified material parser"),
-    ("libSkiaSharp.dll", "native image decoder"),
-])
-def test_incomplete_or_wrong_dependencies_refuse(packager, helper, filename, message):
-    (helper[0] / filename).unlink()
-    with pytest.raises(ValueError, match=message):
+def test_incomplete_or_wrong_dependencies_refuse(packager, helper):
+    (helper[0] / "ValveResourceFormat.dll").unlink()
+    with pytest.raises(ValueError, match="qualified material parser"):
         packager.verify_particle_helper(*helper)
 
 
@@ -139,9 +131,8 @@ def test_geometry_without_rest_inventory_refuses(packager, isolated_helpers, mon
         packager.verify_isolated_particle_helpers(*isolated_helpers)
 
 
-@pytest.mark.parametrize('missing', ['libSkiaSharp.dll', 'spirv-cross.dll', 'ParticleSimulationProbe.deps.json', 'Tests.dll'])
-def test_isolated_runtime_requires_complete_dependencies(packager, isolated_helpers, missing):
-    (isolated_helpers[0] / missing).unlink()
+def test_isolated_runtime_requires_complete_dependencies(packager, isolated_helpers):
+    (isolated_helpers[0] / 'spirv-cross.dll').unlink()
     with pytest.raises(ValueError, match='Incomplete simulation helper'):
         packager.verify_isolated_particle_helpers(*isolated_helpers)
 

@@ -100,19 +100,6 @@ def test_save_failure_archives_independently_of_output_directory(job, support_lo
     assert json.loads(files["export-options.json"])["partial"] is False
 
 
-def test_preflight_unwritable_output_still_produces_archive(job, support_logs, capsys):
-    obstruction = job.output.parent / "not-a-directory"
-    obstruction.write_bytes(b"original")
-    job.output = obstruction / "shot.blend"
-    with pytest.raises(FileExistsError):
-        cli.convert(job)
-    event = event_from_stdout(capsys.readouterr().out)
-    assert event["status"] == "saved" and event["work_directory"] is None
-    assert Path(event["path"]).parent == support_logs
-    assert json.loads(read_archive(event["path"])["failure.json"])["stage"] == "preflight"
-    assert obstruction.read_bytes() == b"original"
-
-
 def test_work_failure_metadata_write_error_does_not_hide_export_error(job, monkeypatch, capsys):
     original = ValueError("Original replay failure")
     original.details = {"resource": "missing-model", "api_key": "must-redact"}
@@ -136,17 +123,9 @@ def test_work_failure_metadata_write_error_does_not_hide_export_error(job, monke
     assert json.loads(read_archive(event["path"])["failure.json"])["error"] == str(original)
 
 
-@pytest.mark.parametrize("fault", ["directory", "archive_write", "verification"])
-def test_archive_failure_is_honest_and_preserves_original_exception(job, support_logs, monkeypatch, capsys, fault):
+def test_archive_failure_is_honest_and_preserves_original_exception(job, support_logs, capsys):
     job.fps = 0  # Fail before any Blender, extraction or work-directory write.
-    if fault == "directory":
-        support_logs.write_bytes(b"original obstruction")
-    elif fault == "archive_write":
-        def fail(*args, **kwargs):
-            raise OSError("Fixture diagnostic disk full")
-        monkeypatch.setattr(zipfile.ZipFile, "writestr", fail)
-    else:
-        monkeypatch.setattr(zipfile.ZipFile, "testzip", lambda self: "failure.json")
+    support_logs.write_bytes(b"original obstruction")
     with pytest.raises(ValueError, match="Export FPS"):
         cli.convert(job)
     stdout = capsys.readouterr().out
@@ -154,10 +133,7 @@ def test_archive_failure_is_honest_and_preserves_original_exception(job, support
     assert event["status"] == "failed" and event["path"] is None and event["error"]
     assert event["failure"]["stage"] == "preflight" and "Export FPS" in event["failure"]["error"]
     assert "Support ZIP: " not in stdout and "Support ZIP could not be saved:" in stdout
-    if fault == "directory":
-        assert support_logs.read_bytes() == b"original obstruction"
-    else:
-        assert not list(support_logs.glob("*.zip"))
+    assert support_logs.read_bytes() == b"original obstruction"
 
 
 def test_archive_is_bounded_allowlisted_and_redacts_credentials(tmp_path, support_logs):
@@ -176,32 +152,50 @@ def test_archive_is_bounded_allowlisted_and_redacts_credentials(tmp_path, suppor
                                             'Authorization: Basic basic-secret\nCookie: first=cookie-one; second=cookie-two\n'
                                             'Useful final error\n')
     (work / "installed_asset_report.json").write_bytes(b"x" * (diagnostics.MAX_FILE_BYTES + 1))
+    (work / "particle-preflight.json").write_text(json.dumps({"status": "unavailable", "checked_instances": 4}))
+    effects = tmp_path / "effects"
+    effects.mkdir()
+    (effects / "coverage.json").write_text(json.dumps({"status": "unavailable", "reason": "No instance completed",
+        "selected_recorded_instances": 4, "attempted_instances": 0, "rendered_instances": 0,
+        "instances": [{"private_scene": "do not include"}],
+        "unsupported": [{"resource": f"particles/test{i}", "reason": "token=particle-secret",
+                         "occurrences": 1, "instance_examples": ["private-instance"]}
+                        for i in range(60)]}))
     args = SimpleNamespace(output=tmp_path / "shot.blend", fps=64, token="args-secret")
     error = RuntimeError("Failed https://user:pass@example.test/?token=url-secret")
     error.details = {"credential": "detail-secret", "cause": "missing material"}
     support = diagnostics.ExportDiagnostics(args, lambda line: None)
-    support.work = work
+    support.work, support.effect_artifacts = work, effects
     result = support.finalize(error)
     assert result["status"] == "saved"
     files = read_archive(result["path"])
     all_bytes = b"".join(files.values())
     for secret in (b"startup-secret", b"settings-secret", b"report-secret", b"log secret", b"bearer-secret",
                    b"args-secret", b"url-secret", b"detail-secret", b"user:pass", b"never share this",
-                   b"basic-secret", b"cookie-one", b"cookie-two"):
+                   b"basic-secret", b"cookie-one", b"cookie-two", b"particle-secret",
+                   b"private-instance", b"do not include"):
         assert secret not in all_bytes
     assert b"Useful final error" in files["logs/scene.blender.log"]
     assert b"model missing" in files["work/asset_diagnostic.json"]
     assert "work/installed_asset_report.json" not in files
     assert any("size limit" in warning for warning in result["warnings"])
+    # The particle coverage summary survives, bounded and without private payload.
+    assert json.loads(files["work/particle-preflight.json"])["checked_instances"] == 4
+    summary = json.loads(files["work/particle-coverage-summary.json"])
+    assert summary["status"] == "unavailable" and summary["attempted_instances"] == 0
+    assert len(summary["unsupported"]) == 50 and summary["omitted_unsupported_groups"] == 10
     assert sum(map(len, files.values())) <= diagnostics.MAX_ARCHIVE_BYTES
     assert (work / "scene.blend").read_bytes() == b"never share this scene"
 
 
-def test_repeat_failures_preserve_existing_evidence_and_archives(tmp_path, support_logs):
+def test_repeat_failures_preserve_existing_evidence_and_archives(tmp_path, support_logs, monkeypatch):
+    def broken_pipe(line):
+        raise BrokenPipeError("GUI closed")
     work = tmp_path / "work"
     work.mkdir()
     (work / "failure.json").write_bytes(b"original failure evidence")
-    support = diagnostics.ExportDiagnostics(SimpleNamespace(), lambda line: None)
+    # A closed stdout does not interrupt diagnostic retention.
+    support = diagnostics.ExportDiagnostics(SimpleNamespace(), broken_pipe)
     support.work = work
     first = support.finalize(ValueError("first"))
     first_bytes = Path(first["path"]).read_bytes()
@@ -211,48 +205,7 @@ def test_repeat_failures_preserve_existing_evidence_and_archives(tmp_path, suppo
     assert (work / "failure.json").read_bytes() == b"original failure evidence"
     assert json.loads(read_archive(second["path"])["failure.json"])["error"] == "second"
     assert any("failure.json" in warning for warning in second["warnings"])
-
-
-def test_particle_coverage_summary_survives_large_scene_report_without_private_payload(tmp_path, support_logs):
-    work, effects = tmp_path/'work', tmp_path/'effects'
-    work.mkdir()
-    effects.mkdir()
-    (work/'scene.scene.json').write_bytes(b'x' * (diagnostics.MAX_FILE_BYTES + 1))
-    (work/'particle-preflight.json').write_text(json.dumps({'status': 'unavailable', 'checked_instances': 4}))
-    (effects/'coverage.json').write_text(json.dumps({'status': 'unavailable', 'reason': 'No instance completed',
-        'selected_recorded_instances': 4, 'attempted_instances': 0, 'rendered_instances': 0,
-        'instances': [{'private_scene': 'do not include'}],
-        'unsupported': [{'resource': f'particles/test{i}', 'reason': 'token=report-secret',
-                         'occurrences': 1, 'instance_examples': ['private-instance']}
-                        for i in range(60)]}))
-    support = diagnostics.ExportDiagnostics(SimpleNamespace(), lambda line: None)
-    support.work, support.effect_artifacts = work, effects
-    event = support.finalize(ValueError('fixture'))
-    assert event['status'] == 'saved'
-    files = read_archive(event['path'])
-    assert 'work/scene.scene.json' not in files
-    assert json.loads(files['work/particle-preflight.json'])['checked_instances'] == 4
-    summary = json.loads(files['work/particle-coverage-summary.json'])
-    assert summary['status'] == 'unavailable' and summary['attempted_instances'] == 0
-    assert len(summary['unsupported']) == 50 and summary['omitted_unsupported_groups'] == 10
-    assert b'report-secret' not in b''.join(files.values())
-    assert b'private-instance' not in b''.join(files.values())
-    assert b'do not include' not in b''.join(files.values())
-
-
-def test_oversized_particle_report_is_omitted_without_hiding_original_failure(tmp_path, support_logs):
-    effects = tmp_path/'effects'
-    effects.mkdir()
-    (effects/'coverage.json').write_bytes(b'x' * (diagnostics.MAX_PARTICLE_REPORT_BYTES + 1))
-    support = diagnostics.ExportDiagnostics(SimpleNamespace(), lambda line: None)
-    support.effect_artifacts = effects
-    event = support.finalize(ValueError('original'))
-    assert event['status'] == 'saved' and event['failure']['error'] == 'original'
-    assert any('particle report exceeds' in warning for warning in event['warnings'])
-    assert 'work/particle-coverage-summary.json' not in read_archive(event['path'])
-
-
-def test_archive_name_collision_never_replaces_or_deletes_original(tmp_path, support_logs, monkeypatch):
+    # An archive name collision never replaces or deletes the original.
     open_file = Path.open
     originals = []
     def collision(path, *args, **kwargs):
@@ -264,14 +217,6 @@ def test_archive_name_collision_never_replaces_or_deletes_original(tmp_path, sup
     result = diagnostics.ExportDiagnostics(SimpleNamespace(), lambda line: None).finalize(ValueError("fixture"))
     assert result["status"] == "failed" and result["path"] is None
     assert len(originals) == 1 and originals[0].read_bytes() == b"original archive"
-
-
-def test_closed_stdout_does_not_interrupt_diagnostic_retention(support_logs):
-    def broken_pipe(line):
-        raise BrokenPipeError("GUI closed")
-    result = diagnostics.ExportDiagnostics(SimpleNamespace(), broken_pipe).finalize(ValueError("original"))
-    assert result["status"] == "saved"
-    assert Path(result["path"]).is_file()
 
 
 def test_success_does_not_create_failure_archive(job, support_logs, capsys):

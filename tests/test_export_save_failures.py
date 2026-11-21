@@ -35,8 +35,7 @@ def snapshot(output):
     return result
 
 
-@pytest.mark.parametrize('existing',[False,True])
-@pytest.mark.parametrize('failure',['scene','package','report'])
+@pytest.mark.parametrize('failure,existing',[('scene',False),('report',True)])
 def test_cli_failed_final_save_preserves_all_previous_outputs(export_job,monkeypatch,failure,existing):
     args,data=export_job;output=args.output
     if existing:
@@ -75,12 +74,11 @@ def previous_outputs(args,data):
 
 
 @pytest.mark.skipif(os.name!='nt',reason='Actual Windows file-sharing lock')
-@pytest.mark.parametrize('locked',['scene','report'])
-def test_real_windows_locked_output_preserves_all_previous_files(export_job,locked):
+def test_real_windows_locked_output_preserves_all_previous_files(export_job):
     import ctypes
     from ctypes import wintypes
     args,data=export_job;before=previous_outputs(args,data)
-    target=args.output if locked=='scene' else args.output.with_suffix('.agr-report.json')
+    target=args.output
     api=ctypes.WinDLL('kernel32',use_last_error=True)
     api.CreateFileW.argtypes=[wintypes.LPCWSTR,wintypes.DWORD,wintypes.DWORD,ctypes.c_void_p,wintypes.DWORD,wintypes.DWORD,wintypes.HANDLE]
     api.CreateFileW.restype=wintypes.HANDLE

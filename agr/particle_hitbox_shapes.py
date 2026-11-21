@@ -2,8 +2,7 @@
 
 Pure geometry and explicit snapshot binding only: engine entity/model selection,
 pose acquisition, emitter distribution and attachment lifetime are not inferred.
-Native CHitBox -> shape -> local bounds is qualified separately from generic
-bone boxes in particle_bone_shapes.
+Native CHitBox -> shape -> local bounds.
 """
 import math
 import numbers

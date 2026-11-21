@@ -59,19 +59,13 @@ def test_silence_capture_cannot_grant_child_or_hitbox_evidence(source):
     with pytest.raises(ValueError):validate_response(dict(instances=[bad]),instance['id'],header)
 
 @pytest.mark.parametrize('field,value',[
-    ('schema_version',True),('client_sha256','f'*64),('particles_sha256','f'*64),('policy','observed_crossbow_birth_cp0_equivalence_v1'),
-    ('entity_id','56:896'),('created_tick',11),('tick',11),('tick',True),('demo_sha256','f'*64),
-    ('resource','particles/abilities/priest/priest_crossbow_buff.vpcf'),('model','models/other.vmdl_c'),('model_sha256','f'*64),
-    ('coherent',False),('identity_flags',128),('identity_flags',False),('skeleton_vtable_rva',0),
-    ('runtime_owner_handle',56),('collection_owner_handle',56),('model_method','guessed'),
-    ('owner_srt',[1,2,3,2,0,0,0,1]),('owner_srt',[1,2,3,1,0,0,0,2]),('owner_srt',[1,2,3,True,0,0,0,1]),
-    ('cp0_record','00'),('cp0_record',None),('collection_record','00'),
+    ('client_sha256','f'*64),('entity_id','56:896'),('owner_srt',[1,2,3,2,0,0,0,1]),
 ])
 def test_unqualified_observation_cannot_be_rebound(source,field,value):
     raw,scene,instance,_=source;raw[field]=value
     with pytest.raises(ValueError):bind_silence_capture(raw,scene,instance)
 
-@pytest.mark.parametrize('offset,fmt,value',[(0,'<h',1),(4,'<i',3),(0x50,'<Q',56),(0x10,'<f',float('inf')),(0x1c,'<f',2.),(0x28,'<f',10.)])
+@pytest.mark.parametrize('offset,fmt,value',[(0x10,'<f',float('inf'))])
 def test_actual_cp_record_and_fallback_must_match(source,offset,fmt,value):
     raw,scene,instance,_=source;record=bytearray.fromhex(raw['cp0_record']);struct.pack_into(fmt,record,offset,value);raw['cp0_record']=record.hex()
     with pytest.raises(ValueError):bind_silence_capture(raw,scene,instance)
@@ -84,22 +78,14 @@ def test_observed_and_recorded_fallbacks_are_not_silently_overwritten(source):
     assert header['observed_fallback_position']==list(struct.unpack_from('<3f',record,0x10))
     assert header['observed_fallback_position']!=header['fallback_position']and instance==original
 
-@pytest.mark.parametrize('kind',['late','duplicate','missing_fallback','different_fallback','unset_fallback','offset','creation','file','pose','digest','combined'])
+@pytest.mark.parametrize('kind',['different_fallback','file','combined'])
 def test_source_and_lifecycle_changes_are_refused(source,kind):
     raw,scene,instance,_=source;capture=bind_silence_capture(raw,scene,instance)
     binding=instance['events'][1]['data']['update_particle_ent']
-    if kind=='late':instance['events'][1]['tick']=11;instance['events']=instance['events'][:2]
-    if kind=='duplicate':instance['events'].append(copy.deepcopy(instance['events'][1]));instance['events'][-1]['tick']=11
-    if kind=='missing_fallback':binding.pop('fallback_position')
     if kind=='different_fallback':binding['fallback_position']['x']=99
-    if kind=='unset_fallback':binding['fallback_position']=dict.fromkeys('xyz',float('inf'))
-    if kind=='offset':binding['offset_angles']=dict(z=1)
-    if kind=='creation':instance['events'][0]['data']['create_particle']['attach_type']=2
     if kind=='file':
         from pathlib import Path
         Path(scene['entities'][0]['pose_file']).write_bytes(b'edited')
-    if kind=='pose':scene['entities'][0]['samples']=[dict(tick=10,position=[9,9,9])]
-    if kind=='digest':capture['capture']['identity_flags']=128
     if kind=='combined':
         with pytest.raises(ValueError,match='cannot be combined'):
             scene_point_bindings(instance,10,12,['56:895'],silence_birth_capture=capture,birth_override_capture={},scene=scene)

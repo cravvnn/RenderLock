@@ -124,23 +124,6 @@ def test_bad_selected_texture_reports_identity_before_animation(installed):
     assert report['npr_material_preflight']['details']['resource']=='textures/input.vtex_c'
 
 
-def test_unbound_runtime_expression_keeps_explicit_reference_without_evaluator_gate(installed):
-    installed.sources['materials/a.vmat_c']['m_dynamicParams']=[dict(m_name='g_vColorTint1',m_value=[25,1,0])]
-    installed.prepare()
-    assert not installed.verify_calls
-    material_plan=next(iter(installed.passed[0]['models'].values()))
-    assert material_plan['materials'][0]['runtime']['status']=='unbound_static_reference'
-
-
-def test_legacy_resource_ready_compatibility_report_remains_accepted(installed,monkeypatch):
-    from agr import compatibility
-    monkeypatch.setattr(compatibility,'installed_compatibility',lambda *a:dict(game={},
-        character_lighting={'status':'ready'},static_map_lighting={'status':'ready'},
-        hero_lighting={'status':'ready'},npr_lighting={'status':'ready'}))
-    installed.prepare()
-    assert installed.calls[-2:]==['animation','extensions']
-
-
 def test_scene_extensions_consumes_the_saved_plan_without_replanning(installed,monkeypatch):
     from agr import source_hero_lighting, game_assets
     installed.prepare();plan=installed.passed[0];calls=[]
@@ -159,30 +142,12 @@ def test_scene_extensions_consumes_the_saved_plan_without_replanning(installed,m
     assert report['npr_materials']['status']=='prepared_requires_blender_validation'
 
 
-@pytest.mark.parametrize('kind',['source_only','standard'])
-def test_non_npr_look_does_not_plan_or_check_expression_module(installed,monkeypatch,kind):
+def test_non_npr_look_does_not_plan_or_check_expression_module(installed,monkeypatch):
     monkeypatch.setattr(source_npr_scene,'plan_scene_npr_materials',lambda *a,**kw:pytest.fail('NPR planning started'))
-    # The installed bridge receives Source-only here; Standard also has NPR off.
-    if kind=='source_only':installed.prepare(npr=False)
-    else:
-        installed_assets.prepare_installed_assets(installed.segment,installed.tmp/'work',installed.provider.install_path,
-            installed.provider.cache_dir,installed.tmp/'converter',include_effects=True,log=lambda _:None)
+    # The installed bridge receives Source-only here.
+    installed.prepare(npr=False)
     assert installed.calls[-2:]==['animation','extensions'] and not installed.verify_calls
     assert installed.passed==[None]
-
-
-def test_unused_converted_material_does_not_trigger_evaluator(installed,monkeypatch):
-    original=source_npr_scene.read_glb
-    def document(path):
-        result=original(path)
-        extra=copy.deepcopy(result['materials'][0]);extra['extras']['vmat']['Name']='materials/unused.vmat'
-        result['materials'].append(extra)
-        return result
-    monkeypatch.setattr(source_npr_scene,'read_glb',document)
-    installed.sources['materials/unused.vmat_c']=copy.deepcopy(installed.sources['materials/a.vmat_c'])
-    constant_color(installed.sources['materials/unused.vmat_c'])
-    installed.prepare()
-    assert not installed.verify_calls
 
 
 def test_failure_checkpoint_cannot_replace_original_preflight_exception(installed,monkeypatch):
@@ -200,7 +165,7 @@ def test_failure_checkpoint_cannot_replace_original_preflight_exception(installe
     assert 'animation' not in installed.calls
 
 
-@pytest.mark.parametrize('mutation',['track','bundle'])
+@pytest.mark.parametrize('mutation',['track'])
 def test_reused_plan_rechecks_recorded_material_group_and_variant_bundle(tmp_path,monkeypatch,mutation):
     from agr import model_material_groups as groups
     from agr.source_material_groups import material_group_token

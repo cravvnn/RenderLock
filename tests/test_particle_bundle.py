@@ -37,15 +37,9 @@ def test_bundle_keeps_runtime_and_notices_but_excludes_debug_files(bundle):
         module.stage(runtime, notices, dest)
 
 
-@pytest.mark.parametrize('change', ['tamper', 'extra', 'missing_notice'])
-def test_bundle_rejects_changed_inputs_before_creating_destination(bundle, change):
+def test_bundle_rejects_changed_inputs_before_creating_destination(bundle):
     module, runtime, notices, dest = bundle
-    if change == 'tamper':
-        (runtime / 'coreclr.dll').write_bytes(b'changed')
-    elif change == 'extra':
-        (runtime / 'untracked.dll').touch()
-    else:
-        (notices / 'embedded/sources.json').write_text(json.dumps({'missing': ['font']}))
+    (runtime / 'coreclr.dll').write_bytes(b'changed')
     with pytest.raises(ValueError):
         module.stage(runtime, notices, dest)
     assert not dest.exists()

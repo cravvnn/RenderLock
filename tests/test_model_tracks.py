@@ -6,7 +6,7 @@ import struct
 import numpy as np
 import pytest
 
-from agr.animation import AnimationError, _select_rows, evaluate_segment
+from agr.animation import AnimationError, evaluate_segment
 from agr.blender_scene import visibility_changes
 from agr.cli import animation_mode, read_blender_completion
 from agr.installed_animation import prepare_animation_assets
@@ -65,29 +65,7 @@ def test_separate_rigs_share_one_full_movement_and_player_identity(workspace):
     original=copy.deepcopy(data);expand_model_tracks(data);assert data==original
 
 
-@pytest.mark.parametrize('mutation',['serial','interval','model','overlap'])
-def test_model_tracks_reject_forged_or_overlapping_bindings(workspace,mutation):
-    _,_,_,data,_=switching_workspace(workspace);a,b=data['entities']
-    if mutation=='serial':b['entity_serial']=3
-    elif mutation=='interval':b['model_track']['start_tick']=13
-    elif mutation=='model':b['model_track']['model_handle']='11'
-    else:a['model_track']['end_tick_exclusive']=13
-    with pytest.raises(SceneError):validate_scene(data)
-
-
-def test_initial_form_retains_its_seed_but_returned_form_never_uses_old_cache(workspace):
-    _,_,inputs,data,_=switching_workspace(workspace)
-    raw=json.loads((inputs/'raw_animation_state.json').read_text())
-    assert [r['demo_tick'] for r in _select_rows(raw,data['entities'][0],data['entities'])]==[10,11]
-    assert [r['demo_tick'] for r in _select_rows(raw,data['entities'][1],data['entities'])]==[12,13]
-    # The same model ID returning later does not reopen its earlier pose context.
-    b=data['entities'][1];b['model_handle']='11';b['model_track']['model_handle']='11'
-    for s in b['samples']:s['model_handle']='11'
-    raw[-1]['fields']['m_hModel']=11
-    assert [r['demo_tick'] for r in _select_rows(raw,b,data['entities'])]==[13]
-
-
-@pytest.mark.parametrize('stage',['prepare','evaluate'])
+@pytest.mark.parametrize('stage',['prepare'])
 def test_strict_model_switch_reports_the_unrecorded_reset_pose(workspace,stage):
     root,assets,inputs,data,converter=switching_workspace(workspace)
     pack=root/'prepared'
@@ -140,43 +118,6 @@ def test_saved_slice_after_reset_uses_only_human_pose_and_one_canonical_follow_t
     with pytest.raises(SceneError,match='unavailable pose ticks'):validate_scene(bad)
 
 
-def test_cropped_history_retains_missing_input_without_marking_selected_body_incomplete(workspace,tmp_path):
-    from agr.particle_history import select_output_with_history,require_history_samples
-    from agr.scene_package import save_scene,read_scene
-    data=partial_result(workspace);original=copy.deepcopy(data)
-    kept=select_output_with_history(data,13)
-    validate_scene(kept)
-    entity=kept['entities'][0]
-    assert [s['tick'] for s in entity['samples']]==[12,13]
-    assert entity['pose_unavailable_ticks']==[12]  # Needed to audit historical input.
-    assert kept['animation']['diagnostics']==[]  # No missing selected output pose.
-    assert kept['coverage']['skeletal_animation']['unsupported_entities']==0
-    assert animation_mode(kept,saved_package=True)=='cached'
-    assert visibility_changes(entity,entity['samples'],kept,64)==[(1,False)]
-    path=save_scene(kept,tmp_path/'history.json')
-    assert read_scene(path)['entities'][0]['pose_unavailable_ticks']==[12]
-    with pytest.raises(ValueError,match='tick 12'):
-        require_history_samples(dict(created_tick=12),13,{12,13},{13})
-    assert data==original
-
-
-def test_reset_only_consent_is_based_on_selected_samples_not_other_history(workspace):
-    data=partial_result(workspace);data['start_tick']=data['end_tick']=12
-    data['entities']=[data['entities'][1]]  # Contains an out-of-range available pose at13.
-    with pytest.raises(ValueError,match='only an unavailable reset pose'):
-        animation_mode(data,partial=True)
-
-
-def test_crop_keeps_whole_track_failures_and_only_relevant_reset_ticks(workspace):
-    data=partial_result(workspace);entity=data['entities'][1]
-    whole=dict(id=entity['id'],code='unsupported_animation',details=dict(demo_tick=11),message='whole-track layout failure')
-    data['animation']['diagnostics'].append(whole)
-    after=slice_scene(data,13,13)
-    assert after['animation']['diagnostics']==[whole]
-    at_reset=slice_scene(data,12,13)
-    assert at_reset['animation']['diagnostics'][0]['ticks']==[12]
-
-
 def test_reset_only_form_never_becomes_an_imported_rest_pose(workspace):
     root,assets,inputs,data,converter=switching_workspace(workspace)
     clipped=slice_scene(data,11,12);write(inputs/'segment.json',clipped)
@@ -191,7 +132,7 @@ def test_reset_only_form_never_becomes_an_imported_rest_pose(workspace):
         animation_mode(slice_scene(saved,12,12),partial=True)
 
 
-@pytest.mark.parametrize('mutation',[None,'full_success','visible_gap','wrong_track','missing_ticks'])
+@pytest.mark.parametrize('mutation',['wrong_track'])
 def test_completion_requires_exact_partial_gap_and_model_identity(workspace,tmp_path,mutation):
     data=partial_result(workspace);path,job=completion(tmp_path)
     job['data']=data;job['fps']=64

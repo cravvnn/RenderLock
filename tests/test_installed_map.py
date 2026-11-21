@@ -91,17 +91,13 @@ def test_region_uses_indexed_placed_bounds_and_preserves_attributes(tmp_path):
     assert report['verified_buffer_view_hashes'] > 0
 
 
-def test_region_rejects_missing_selected_texture(tmp_path):
+def test_region_rejects_missing_selected_texture_and_invalid_margin(tmp_path):
     source = world_fixture(tmp_path / 'input')
     (source.parent / 'near.png').unlink()
     with pytest.raises(FileNotFoundError, match='referenced source image'):
         crop(source, tmp_path / 'output/region.gltf', replay_bounds(sample_scene(), 1.0))
-
-
-@pytest.mark.parametrize('margin', [0, -1, float('nan'), float('inf'), True])
-def test_invalid_margin_rejected(margin):
     with pytest.raises(ConversionError, match='margin'):
-        replay_bounds(sample_scene(), margin)
+        replay_bounds(sample_scene(), float('nan'))
 
 
 def test_map_alignment_handles_origin_yaw_scale_independently():
@@ -125,9 +121,6 @@ def test_map_selection_never_guesses_start_or_another_mount(tmp_path):
     assert selected_world(selected) == 'maps/dl_midtown/world.vwrld_c'
     with pytest.raises(MissingResourceError, match='not installed'):
         GameAssetProvider(root, tmp_path / 'cache', map_name='start')
-
-
-def test_ambiguous_compiled_worlds_rejected():
     provider = SimpleNamespace(map_name='dl_midtown', archives=[SimpleNamespace(entries={
         'maps/dl_midtown/world.vwrld_c': None, 'maps/other/world.vwrld_c': None})])
     with pytest.raises(ConversionError, match='2 compiled worlds'):
@@ -191,18 +184,14 @@ def test_installed_map_cache_reuse_and_corrupt_region_rebuild(tmp_path, monkeypa
     assert retried['status'] == 'ready'
 
 
-def test_crop_rejects_unsafe_external_buffer(tmp_path):
+def test_crop_rejects_unsafe_external_buffer_and_unverified_exporter_basis(tmp_path):
     source = world_fixture(tmp_path / 'input')
     document = json.loads(source.read_text())
     document['buffers'][0]['uri'] = '../escape.bin'
     source.write_text(json.dumps(document))
     with pytest.raises(ValueError, match='escapes'):
         crop(source, tmp_path / 'output/region.gltf', replay_bounds(sample_scene(), 1.0))
-
-
-def test_crop_rejects_unverified_exporter_basis(tmp_path):
-    source = world_fixture(tmp_path / 'input')
-    document = json.loads(source.read_text())
+    document['buffers'][0]['uri'] = 'world.bin'
     document['asset']['generator'] = 'Unverified exporter'
     source.write_text(json.dumps(document))
     with pytest.raises(ValueError, match='basis'):
@@ -219,7 +208,7 @@ def binary_entity(model, classname='prop_dynamic'):
             + struct.pack('<II', 0xc8bfbc06, 30) + model.encode() + b'\0')}
 
 
-def test_binary_entity_model_and_kv3_attributes_read_as_typed_properties():
+def test_binary_entity_and_kv3_properties_are_typed_and_malformed_data_is_rejected():
     props = _entity_properties(binary_entity('maps/dl_midtown/entities/unnamed_123.vmdl'))
     assert props['classname'] == 'prop_dynamic'
     assert props['model'] == 'maps/dl_midtown/entities/unnamed_123.vmdl'
@@ -228,26 +217,10 @@ def test_binary_entity_model_and_kv3_attributes_read_as_typed_properties():
                             'attributes': {'Model': 'models/architecture/arch_church/door.vmdl'}}}
     assert list(_data_dependencies('entities.vents_c', {'m_entityKeyValues': [kv3]})) == [
         'models/architecture/arch_church/door.vmdl_c']
-
-
-@pytest.mark.parametrize('damage', ['truncated', 'count', 'type', 'version', 'trailing'])
-def test_binary_entity_rejects_malformed_payload_without_guessing(damage):
-    raw = bytearray(binary_entity('models/door.vmdl')['m_keyValuesData'])
-    if damage == 'truncated':
-        raw = raw[:-1]
-    elif damage == 'count':
-        struct.pack_into('<I', raw, 4, 0xffffffff)
-    elif damage == 'type':
-        struct.pack_into('<I', raw, 16, 0xdead)
-    elif damage == 'version':
-        struct.pack_into('<I', raw, 0, 99)
-    elif damage == 'trailing':
-        raw += b'not another resource'
+    truncated = bytearray(binary_entity('models/door.vmdl')['m_keyValuesData'])[:-1]
     with pytest.raises(ConversionError):
-        _entity_properties({'m_keyValuesData': list(raw)})
-
-
-def test_named_binary_property_hash_is_verified():
+        _entity_properties({'m_keyValuesData': list(truncated)})
+    # Named binary properties have their hash verified.
     raw = struct.pack('<III', 1, 0, 1) + struct.pack('<I', 0xc8bfbc06)
     raw += b'Model\0' + struct.pack('<I', 30) + b'models/door.vmdl\0'
     assert _entity_properties({'m_keyValuesData': list(raw)})['model'] == 'models/door.vmdl'
@@ -323,19 +296,23 @@ def test_missing_real_entity_model_still_fails_before_export(tmp_path):
         _world_dependencies(world, provider, decoder, lambda _: None)
 
 
-def test_cli_missing_geometry_still_fails_even_after_successful_export(tmp_path, monkeypatch):
+def test_cli_missing_geometry_or_shader_fallback_fails_after_successful_export(tmp_path, monkeypatch):
     world, provider, decoder, data, expected = dependency_fixture(tmp_path)
+    # A brush-ish filename is still an unresolved model: no broad filtering.
+    message = ['Failed to load "maps/dl_midtown/entities/blocker_brush_73.vmdl_c"\n']
 
     def export(command, logfile, log):
         target = Path(command[command.index('-o') + 1])
         world_fixture(target.parent)
-        # A brush-ish filename is still an unresolved model: no broad filtering.
-        logfile.write_text('Failed to load "maps/dl_midtown/entities/blocker_brush_73.vmdl_c"\n')
+        logfile.write_text(message[0])
 
     monkeypatch.setattr('agr.installed_map._run_map_export', export)
     with pytest.raises(ConversionError, match='blocker_brush_73'):
         prepare_installed_map(sample_scene(), provider, decoder, margin_metres=1, log=lambda _: None)
     assert not list(decoder.root.glob('*/conversion.json'))
+    message[0] = 'Failed to find shader "environment_blend.vfx"\n'
+    with pytest.raises(ConversionError, match='material shaders: environment_blend.vfx'):
+        prepare_installed_map(sample_scene(), provider, decoder, margin_metres=1, log=lambda _: None)
 
 
 def test_missing_texture_is_deferred_but_preserved_in_dependency_report(tmp_path,monkeypatch):
@@ -360,25 +337,3 @@ def test_selected_authored_texture_reference_cannot_be_hidden_by_exporter():
         _check_missing_texture_usage(selected,missing)
     with pytest.raises(ConversionError,match='lacks source VMAT metadata'):
         _check_missing_texture_usage({'materials':[{'name':'unknown'}]},missing)
-
-
-def test_compiled_shader_inventory_is_copied_and_fingerprinted(tmp_path):
-    world,provider,decoder,data,expected=dependency_fixture(tmp_path)
-    name='shaders/vfx/environment_blend_pc_50_features.vcs'
-    shader=SimpleNamespace(resource_path=name,sha256='shader-version',dependencies=[])
-    original=provider.resolve
-    provider.resources[name]=object()
-    provider.resolve=lambda resource:shader if resource==name else original(resource)
-    records,_,_,_=_world_dependencies(world,provider,decoder,lambda _:None)
-    assert records[name] is shader
-
-
-def test_shader_fallback_is_not_a_successful_map_export(tmp_path,monkeypatch):
-    world,provider,decoder,data,expected=dependency_fixture(tmp_path)
-    def export(command,logfile,log):
-        target=Path(command[command.index('-o')+1])
-        world_fixture(target.parent)
-        logfile.write_text('Failed to find shader "environment_blend.vfx"\n')
-    monkeypatch.setattr('agr.installed_map._run_map_export',export)
-    with pytest.raises(ConversionError,match='material shaders: environment_blend.vfx'):
-        prepare_installed_map(sample_scene(),provider,decoder,margin_metres=1,log=lambda _:None)

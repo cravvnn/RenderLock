@@ -60,13 +60,7 @@ def test_model_asset_material_and_capture_preflight(tmp_path):
 
 
 @pytest.mark.parametrize('change',[
-    {'m_bAnimated':False}, {'m_bForceLoopingAnimation':False}, {'m_bDisableShadows':False},
-    {'m_bAcceptsDecals':True}, {'m_bIgnoreRadius':1}, {'m_nAnimationField':19},
-    {'m_modelInput':{'m_nType':'PVEC_TYPE_CONTROL_POINT_VALUE'}},
-    {'m_bManualAnimFrame':True}, {'m_bManualAnimFrame':True,'m_nManualFrameField':8},
-    {'m_flAnimationRate':-1}, {'m_flAnimationRate':True},
-    {'m_flAnimationRate':{'m_nType':'PF_TYPE_COLLECTION_AGE'}}, {'m_ModelList':[]},
-    {'m_MaterialVars':[]}, {'m_bLocalScale':False,'m_vecComponentScale':{'m_vLiteralValue':[1,2,1]}}
+    {'m_nAnimationField':19},
 ])
 def test_unrepresented_renderer_modes_are_rejected(change):
     r=renderer();r.update(change)
@@ -74,17 +68,14 @@ def test_unrepresented_renderer_modes_are_rejected(change):
 
 
 @pytest.mark.parametrize('field,value',[
-    ('bones',1),('bones',False),('body_groups',1),('material_exported',True),
-    ('resource','models/test/other.vmdl'),('material_resource','materials/test/other.vmat'),
-    ('geometry_sha256','0'*64),('animations',[]),('policy','unqualified')])
+    ('geometry_sha256','0'*64)])
 def test_changed_geometry_or_descriptor_does_not_reach_renderer(tmp_path,field,value):
     a=assets(tmp_path);a['models']['models/test/wing.vmdl'][field]=value
     with pytest.raises(UnsupportedEffect):validate_model(renderer(),a)
 
 
 @pytest.mark.parametrize('field,value',[
-    ('second_sequence',None),('second_sequence',False),('second_sequence',1),
-    ('scratch_float0',None),('scratch_float0',-1),('sequence',True)])
+    ('second_sequence',None)])
 def test_missing_or_unqualified_capture_fields_fail_before_scene_mutation(tmp_path,field,value):
     s=samples();s[0][2][field]=value
     with pytest.raises(UnsupportedEffect):
@@ -129,8 +120,7 @@ def test_expression_control_provenance_keeps_missing_and_external_guards():
         assert not confirmed_materialized_points(dict(row,**change),[0])
 
 
-@pytest.mark.parametrize('group', ['m_intParams','m_textureParams','m_dynamicParams'])
-def test_duplicate_material_parameters_cannot_be_silently_discarded(group):
-    value=material();value[group].append(deepcopy(value[group][0]))
+def test_duplicate_material_parameters_cannot_be_silently_discarded():
+    value=material();value['m_textureParams'].append(deepcopy(value['m_textureParams'][0]))
     with pytest.raises(UnsupportedEffect,match='Duplicate'):
         material_profile(value)

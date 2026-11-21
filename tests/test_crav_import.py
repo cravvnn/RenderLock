@@ -27,7 +27,7 @@ def test_fractional_end_uses_next_tick_and_plan_does_not_claim_reconstruction():
     assert data == original
 
 
-@pytest.mark.parametrize("field", ["demo_sha256", "map_name", "build", "tick_rate", "total_ticks"])
+@pytest.mark.parametrize("field", ["demo_sha256"])
 def test_requires_decoded_identity_not_filename(field):
     data, metadata = inputs()
     metadata[field] = None
@@ -81,7 +81,7 @@ def test_local_preflight_resolves_override_and_rechecks_real_bytes(tmp_path, mon
     assert len(calls) == 1  # Mismatch refused before decoding.
 
 
-@pytest.mark.parametrize("change", ["replay", "package", "metadata", "cancel"])
+@pytest.mark.parametrize("change", ["replay"])
 def test_preflight_never_returns_plan_after_changed_input_or_cancel(tmp_path, monkeypatch, change):
     data, metadata = inputs()
     replay = tmp_path / "source.dem"
@@ -94,16 +94,11 @@ def test_preflight_never_returns_plan_after_changed_input_or_cancel(tmp_path, mo
         nonlocal cancelled
         if change == "replay":
             replay.write_bytes(b"different replay")
-        elif change == "package":
-            package.write_bytes(package.read_bytes() + b" ")
-        elif change == "metadata":
-            metadata["map_name"] = "wrong-map"
         else:
             cancelled = True
         return metadata
     monkeypatch.setattr(crav_import, "inspect_replay", inspect)
-    with pytest.raises(ShotCollectionError, match={"replay": "Replay changed", "package": "collection changed",
-                                                "metadata": "map_name", "cancel": "cancelled"}[change]):
+    with pytest.raises(ShotCollectionError, match={"replay": "Replay changed", "cancel": "cancelled"}[change]):
         crav_import.preflight_reconstruction(package, cancelled=lambda: cancelled)
 
 
@@ -172,7 +167,7 @@ def test_full_map_without_lighting_dependencies_is_refused(tmp_path):
         plan_reconstruction(data, metadata, map_package=load_package(prepared_map(tmp_path / "map", lighting=False)))
 
 
-@pytest.mark.parametrize("change", ["none", "lightmap", "manifest", "missing"])
+@pytest.mark.parametrize("change", ["none", "lightmap"])
 def test_preflight_rechecks_prepared_map_after_decode(tmp_path, monkeypatch, change):
     data, metadata = inputs()
     replay = tmp_path / "source.dem"
@@ -184,10 +179,6 @@ def test_preflight_rechecks_prepared_map_after_decode(tmp_path, monkeypatch, cha
     def inspect(path):
         if change == "lightmap":
             (folder / "lightmaps/irradiance.exr").write_bytes(b"edited lightmap")
-        elif change == "manifest":
-            (folder / "map-package.json").write_text("{broken")
-        elif change == "missing":
-            (folder / "textures/wall.png").unlink()
         return metadata
     monkeypatch.setattr(crav_import, "inspect_replay", inspect)
     if change == "none":

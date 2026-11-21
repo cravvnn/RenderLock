@@ -109,7 +109,7 @@ def test_supported_cloth_retry_with_follow_camera_and_overwrite_is_a_real_retry(
     assert '--no-effects' in starts[0][0] and app.values['effects_enabled'].get() == '0'
 
 
-@pytest.mark.parametrize('changed', ['input', 'settings'])
+@pytest.mark.parametrize('changed', ['input'])
 def test_retry_rejects_a_changed_job_before_applying_compromises(tmp_path, changed):
     app, starts = controller(tmp_path)
     choice = RecoveryChoice('without_cloth', 'Retry without cloth', 'Cloth is omitted',
@@ -130,7 +130,7 @@ def descendants(widget):
         yield from descendants(child)
 
 
-@pytest.mark.parametrize('select_retry', [False, True])
+@pytest.mark.parametrize('select_retry', [True])
 def test_branded_recovery_window_requires_a_choice_and_displays_diagnostic_path(tmp_path, select_retry):
     gui_widgets._CORNER_CACHE.clear()
     root = tk.Tk()

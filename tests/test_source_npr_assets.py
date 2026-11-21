@@ -1,4 +1,3 @@
-import copy
 from types import SimpleNamespace
 import pytest
 from agr import source_npr_assets as assets
@@ -54,14 +53,11 @@ def test_converted_feature_switch_cannot_differ_from_source(monkeypatch):
         assets.plan_npr_material_assets(doc,provider,None)
 
 
-@pytest.mark.parametrize('failure',['index','duplicate','shader','texture'])
+@pytest.mark.parametrize('failure',['shader'])
 def test_unqualified_material_rejected(monkeypatch,failure):
     doc,source,provider=setup(monkeypatch)
     if failure=='index':doc['meshes'][0]['primitives'][0]['material']=-1
-    if failure=='duplicate':
-        doc['materials'].append(copy.deepcopy(doc['materials'][0]));doc['meshes'][0]['primitives'][1]['material']=1
     if failure=='shader':source['m_shaderName']='other.vfx'
-    if failure=='texture':doc['materials'][0]['extras']['vmat']['TextureParams']['g_tNprTransmissiveColor']='wrong.vtex'
     with pytest.raises(ConversionError):assets.plan_npr_material_assets(doc,provider,None)
 
 

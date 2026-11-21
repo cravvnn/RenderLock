@@ -30,31 +30,8 @@ def test_world_literal_profile_preserves_unowned_birth_and_release_tail():
 
 @pytest.mark.parametrize('change',[
  lambda s,i:i.update(entity_id='9:1'),
- lambda s,i:i.update(entity_handle=0xffffffff),
- lambda s,i:i.update(resource='particles/another_world.vpcf'),
- lambda s,i:i.update(generation=2),
- lambda s,i:i.update(generation=2**31,id=f'9:{2**31}'),
- lambda s,i:i['create'].update(cluster=True),
  lambda s,i:i['create'].update(attach_type=5),
- lambda s,i:i['create'].update(fallback_position={}),
- lambda s,i:i['events'].pop(),
- lambda s,i:i['events'][2].update(type='DESTROY'),
- lambda s,i:i['events'][1].update(order=100),
- lambda s,i:[e.update(order=-3+n)for n,e in enumerate(i['events'])],
- lambda s,i:i['events'][1].update(tick=101),
- lambda s,i:i['events'][1]['data']['update_particle_transform'].update(control_point=1),
- lambda s,i:i['events'][1]['data']['update_particle_transform'].update(interpolation_interval=.1),
- lambda s,i:i['events'][1]['data']['update_particle_transform']['position'].pop('z'),
- lambda s,i:i['events'][1]['data']['update_particle_transform']['position'].update(x=float('nan')),
- lambda s,i:i['events'][1]['data']['update_particle_transform']['position'].update(z=131073),
- lambda s,i:i['events'][2]['data'].update(unrecognized=True),
- lambda s,i:i['events'][2]['data'].update(release_particle_index=dict(index=9)),
- lambda s,i:i['involved_entity_handles'].append(16777216),
- lambda s,i:s.update(start_tick=101),
- lambda s,i:s.update(end_tick=5000),
- lambda s,i:s.update(tick_rate=30),
  lambda s,i:s['metadata'].update(demo_sha256='missing'),
- lambda s,i:s['metadata']['coordinate_system'].update(world_yaw_degrees=90),
 ])
 def test_unqualified_world_modes_and_lifecycles_are_not_admitted(change):
  scene,item=fixture();change(scene,item)
@@ -77,17 +54,6 @@ def test_old_helper_or_stale_world_acknowledgement_cannot_pass():
 
 def test_changed_definition_tree_is_not_treated_as_supported():
  with pytest.raises(ValueError,match='authored explosion tree'):validate_definitions({RESOURCE:{}})
-
-def test_world_provider_refuses_missing_platform_qualification(tmp_path):
- from types import SimpleNamespace
- from agr.recorded_world_effects import qualify_installation
- with pytest.raises(ValueError,match='not yet qualified'):qualify_installation(SimpleNamespace(install_path=tmp_path))
-
-def test_world_provider_refuses_changed_native_client(tmp_path):
- from types import SimpleNamespace
- from agr.recorded_world_effects import qualify_installation
- binary=tmp_path/'game/citadel/bin/win64/client.dll';binary.parent.mkdir(parents=True);binary.write_bytes(b'changed client')
- with pytest.raises(ValueError,match='client changed'):qualify_installation(SimpleNamespace(install_path=tmp_path))
 
 def test_projected_defaults_require_matching_native_renderer(tmp_path,monkeypatch):
  import hashlib

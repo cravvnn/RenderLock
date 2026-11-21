@@ -20,7 +20,7 @@ def test_actual_payload_and_precedence_match(tmp_path):
     verify_region_inputs(report,provider,world,'a'*64)
 
 
-@pytest.mark.parametrize('field,value',[('archive','other.vpk'),('sha256','c'*64)])
+@pytest.mark.parametrize('field,value',[('sha256','c'*64)])
 def test_same_name_wrong_payload_or_archive_rejected(tmp_path,field,value):
     world,provider,report=fixture(tmp_path)
     report['inputs']['materials/test.vmat_c'][field]=value

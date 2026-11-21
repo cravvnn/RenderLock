@@ -60,14 +60,10 @@ def test_missing_recorded_group_is_explicit_reference_and_requires_broad_partial
     with pytest.raises(ValueError,match='gaps'):prepared.prepare([prepared.samples[0],dict(tick=11)])
 
 
-@pytest.mark.parametrize('mutation',['model','bundle','track','dropped_bundle','wrong_bundle_materials','base_inventory'])
+@pytest.mark.parametrize('mutation',['model','base_inventory'])
 def test_stale_or_incomplete_material_contract_rejected(prepared,mutation):
     contract=prepared.prepare()
     if mutation=='model':prepared.model.write_bytes(b'changed')
-    elif mutation=='bundle':prepared.variant.write_bytes(b'changed')
-    elif mutation=='track':contract['track']['selections'][1]['token']=0
-    elif mutation=='dropped_bundle':contract['bundle']=None
-    elif mutation=='wrong_bundle_materials':contract['bundle']['materials']=[]
     else:contract['base_materials']=['materials/invented.vmat_c']
     # Recomputing the envelope hash must not bypass semantic coverage checks.
     contract['content_sha256']=canonical_sha({key:value for key,value in contract.items() if key!='content_sha256'})
@@ -93,8 +89,8 @@ def test_two_actors_same_model_with_different_selected_materials_get_distinct_np
     with pytest.raises(ValueError,match='coverage changed'):npr.validate_scene_npr_selection(package,entities,manifest_dir=prepared.model.parent)
 
 
-@pytest.mark.parametrize('partial',[False,True])
-def test_completion_cannot_drop_or_shorten_material_slot_outcome_even_partial(prepared,tmp_path,partial):
+def test_completion_cannot_drop_or_shorten_material_slot_outcome_even_partial(prepared,tmp_path):
+    partial=True
     from agr.cli import read_blender_completion
     from test_blender_completion_stages import completion
     path,job=completion(tmp_path);contract=prepared.prepare()

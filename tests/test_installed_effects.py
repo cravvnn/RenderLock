@@ -27,65 +27,46 @@ def instance():
 
 
 class InstalledEffectsTests(unittest.TestCase):
-    def test_release_keeps_authored_lifetime(self):
+    def test_release_and_destroy_lifetimes(self):
         p = layer_particles(definition(), instance(), 64, 300)[0]
         self.assertAlmostEqual(p['end_tick'], 106.4)
-
-    def test_immediate_destroy_clips_lifetime(self):
         event = dict(instance(), destroy_tick=102, destroy_immediately=True)
         self.assertEqual(layer_particles(definition(), event, 64, 300)[0]['end_tick'], 102)
-
-    def test_nonimmediate_destroy_keeps_burst_tail(self):
         event = dict(instance(), destroy_tick=102, destroy_immediately=False)
         self.assertAlmostEqual(layer_particles(definition(), event, 64, 300)[0]['end_tick'], 106.4)
-
-    def test_authored_age_does_not_restart_at_clip_start(self):
+        # Authored age does not restart at the clip start.
         d, event = definition(), instance()
         p = layer_particles(d, event, 64, 300)[0]
         at = particle_state(d, p, p['renderers'][0], event, 106, 64)
         self.assertAlmostEqual(at['alpha'], .125)
 
-    def test_unsupported_emitters_never_get_fallback_sprite(self):
+    def test_unsupported_emitters_and_operators_never_render(self):
         d = definition()
         d['m_Emitters'][0]['_class'] = 'C_OP_ContinuousEmitter'
         with self.assertRaisesRegex(UnsupportedEffect, 'instantaneous'):
             layer_particles(d, instance(), 64, 300)
-
-    def test_unknown_operator_does_not_render(self):
         d = definition()
         d['m_Operators'].append({'_class': 'C_OP_CollideWithWorld'})
         with self.assertRaisesRegex(UnsupportedEffect, 'CollideWithWorld'):
             classify_layer(d)
 
-    def test_changing_attachment_is_rejected(self):
+    def test_changing_or_unknown_attachment_is_rejected(self):
         e = instance()
         e['events'] = [{'data': {'update_particle_ent': {'control_point': 0, 'entity_handle': 5455956,
                                                       'attach_type': 5, 'attachment': index}}} for index in (7, 8)]
         with self.assertRaisesRegex(UnsupportedEffect, 'changes'):
             attachment_binding(e)
-
-    def test_source_attachment_point_is_not_guessed(self):
-        e = instance()
         e['events'] = [{'data': {'update_particle_ent': {'control_point': 0, 'entity_handle': 5455956,
                                                       'attach_type': 1, 'attachment': 0}}}]
         with self.assertRaisesRegex(UnsupportedEffect, 'type 5'):
             attachment_binding(e)
 
-    def test_reproducible_variation(self):
-        d = definition()
-        d['m_Initializers'][0]['m_InputValue'] = {'m_nType': 'PF_TYPE_RANDOM_UNIFORM', 'm_flRandomMin': .05, 'm_flRandomMax': .1}
-        self.assertEqual(layer_particles(d, instance(), 64, 300), layer_particles(d, instance(), 64, 300))
-
-    def test_nonfinite_and_nonliteral_values_rejected(self):
+    def test_scalar_and_curve_values(self):
         for value in (math.inf, {'m_nType': 'PF_TYPE_PARTICLE_SPEED'}):
             with self.assertRaises(UnsupportedEffect):
                 scalar(value)
-
-    def test_curve_matches_endpoints(self):
         points = [{'x': 0, 'y': 0, 'm_flSlopeOutgoing': 1}, {'x': 1, 'y': 1, 'm_flSlopeIncoming': 1}]
         self.assertEqual([hermite(points, v) for v in (-1, 0, .5, 1, 2)], [0, 0, .5, 1, 1])
-
-    def test_malformed_curve_rejected(self):
         with self.assertRaises(UnsupportedEffect):
             hermite([{'x': 1, 'y': 1}, {'x': 1, 'y': 2}], .5)
 
@@ -95,8 +76,6 @@ class InstalledEffectsTests(unittest.TestCase):
             _texture_sequence(atlas, 8)
         atlas['is_sprite_sheet'] = False
         self.assertEqual(_texture_sequence(atlas, 8), 'seq0.png')
-
-    def test_animated_atlas_has_no_first_frame_substitute(self):
         atlas = {'is_sprite_sheet': True, 'sequences': {'0': {'status': 'unsupported', 'frames': [{'image': 'a.png'}, {'image': 'b.png'}]}}}
         with self.assertRaises(UnsupportedEffect):
             _texture_sequence(atlas, 0)

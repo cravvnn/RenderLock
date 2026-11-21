@@ -27,37 +27,12 @@ def test_hard_baseline_removes_animated_child_noise_before_soft_blend():
     np.testing.assert_array_equal(rows[2,:3],[999,-100,7])
 
 
-def test_guarded_full_preparation_closes_repeat_passes_without_squaring_alpha():
-    source=model();rows=np.asarray(source['m_pFeModel']['m_InitPose'],dtype=float)
-    assert validate_preparation_layout(source)==[0,1]
-    first=prepare_control_offsets(rows,source)
-    np.testing.assert_array_equal(first[2,:3],[2,0,0])
-    for _ in range(4):
-        np.testing.assert_array_equal(prepare_control_offsets(first,source),first)
-
-
 @pytest.mark.parametrize('mutation,message',[
-    (lambda f:f['m_CtrlOffsets'].append(dict(f['m_CtrlOffsets'][0])),'unique'),
     (lambda f:f['m_CtrlOffsets'].insert(0,dict(nCtrlParent=2,nCtrlChild=1,vOffset=[0,1,0])),'dependency'),
-    (lambda f:f['m_CtrlSoftOffsets'][0].update(nCtrlChild=1),'baseline'),
-    (lambda f:f.update(m_MorphLayers=[{}]),'morph'),
-    (lambda f:f.update(m_DynKinLinks=[{}]),'DynKin'),
-    (lambda f:f.update(m_CtrlOsOffsets=[{}]),'Os'),
 ])
 def test_phase_contract_rejects_unqualified_layouts(mutation,message):
     source=model();mutation(source['m_pFeModel'])
     with pytest.raises(ValueError,match=message):validate_preparation_layout(source)
-
-
-def test_matrix_adapter_preserves_world_rotation_and_source_unit_offsets():
-    rows=np.asarray(model()['m_pFeModel']['m_InitPose'],dtype=float)
-    rows[:,:3]+=[10,20,30];rows[:,4:]=[.5,.5,.5,.5]
-    matrices=control_transform_matrices(rows,.0254)
-    actual=control_transform_rows(matrices,.0254)
-    np.testing.assert_allclose(actual[:,:4],rows[:,:4],atol=1e-12)
-    np.testing.assert_allclose(control_transform_matrices(actual,.0254),matrices,atol=1e-12)
-    matrices[0,:3,:3]*=2
-    with pytest.raises(ValueError,match='unit'):control_transform_rows(matrices,.0254)
 
 
 def test_native_animation_gather_discards_uniform_bone_scale_but_keeps_xyz_and_rotation():

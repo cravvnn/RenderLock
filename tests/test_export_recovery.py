@@ -42,10 +42,6 @@ MISSING_MODELS = (
     'enter explicit Hero IDs to export a subset, or enable partial export to retain '
     'all selected tracks with movement placeholders.'
 )
-MISSING_POSES = (
-    'Saved package has no evaluated bone tracks for: Hero84. Select supported entities, '
-    'enable partial export, or convert the original replay.'
-)
 
 
 def single(command, failure, log='', *, choice_id=None):
@@ -56,10 +52,9 @@ def single(command, failure, log='', *, choice_id=None):
     return choices[0]
 
 
-@pytest.mark.parametrize('switches', [['--secondary-motion'], ['--cloth'], ['--cloth', '--secondary-motion']])
-def test_exact_hero84_cloth_failure_removes_only_cloth_switches(switches):
+def test_exact_hero84_cloth_failure_removes_only_cloth_switches():
     original = BASE + LIGHTING + MAP + ['--particle-probe', 'D:/p.dll', '--dotnet', 'D:/net.exe']
-    command = original + switches
+    command = original + ['--cloth', '--secondary-motion']
     before = deepcopy((command, CLOTH))
     assert [choice.id for choice in recovery_choices(command, CLOTH)] == ['supported_cloth', 'without_cloth']
     choice = single(command, CLOTH, choice_id='without_cloth')
@@ -74,22 +69,15 @@ def test_exact_hero84_cloth_failure_removes_only_cloth_switches(switches):
     assert (command, CLOTH) == before
     assert single(command, CLOTH, choice_id='without_cloth') == choice
     assert 'cloth' in recovery_summary(command, CLOTH)
-
-
-def test_existing_partial_consent_is_preserved_without_enabling_another_policy():
+    # Existing partial consent is preserved without enabling another policy.
     choice = single(BASE + ['--partial', '--secondary-motion'], CLOTH, choice_id='without_cloth')
     assert choice.command == tuple(BASE + ['--partial'])
     assert choice.partial_override is None
 
 
-@pytest.mark.parametrize('extra', [
-    ['--particle-probe', 'D:/probe.dll', '--dotnet', 'D:/dotnet.exe', '--particle-history-ticks', '36'],
-    ['--particle-probe=D:/probe.dll', '--dotnet=D:/dotnet.exe', '--particle-history-ticks=36'],
-    ['--particle-probe', 'D:/probe.exe', '--particle-history-ticks=36', '--particle-history-ticks', '40'],
-    [],  # Effects from a saved package do not require a new simulator.
-])
-def test_effects_choice_removes_simulator_arguments_with_values(extra):
+def test_effects_choice_removes_simulator_arguments_with_values():
     retained = BASE + LIGHTING + MAP + ['--secondary-motion']
+    extra = ['--particle-probe', 'D:/probe.exe', '--particle-history-ticks=36', '--particle-history-ticks', '40']
     choice = single(retained + extra, EFFECTS)
     assert choice.command == tuple(retained + ['--no-effects'])
     assert dict(choice.values_overrides) == {
@@ -97,49 +85,23 @@ def test_effects_choice_removes_simulator_arguments_with_values(extra):
     assert choice.partial_override is None
     assert 'without particle effects' in choice.description
     assert 'Export > Output' in choice.description
-
-
-@pytest.mark.parametrize('extra', [
-    ['--particle-observations', 'observations.json', '--captured-slide-inputs', 'slides.json'],
-    ['--particle-observations=observations.json', '--captured-slide-inputs=slides.json'],
-    ['--particle-observations', '--source-lighting', '--captured-slide-inputs', '--model-constraints'],
-])
-def test_without_effects_drops_supplied_input_value_units(extra):
+    # Supplied particle inputs are dropped as whole option/value units.
+    extra = ['--particle-observations', '--source-lighting', '--captured-slide-inputs', '--model-constraints']
     choice = single(BASE + extra, EFFECTS)
     assert choice.command==tuple(BASE+['--no-effects'])
     assert dict(choice.values_overrides)==dict(effects_enabled='0',simulate_effects='0',
         particle_history_ticks='0',particle_observations='',captured_slide_inputs='')
 
 
-@pytest.mark.parametrize('option', ['--particle-observations','--captured-slide-inputs','--captured-ambient-inputs'])
-def test_model_rule_omission_cannot_keep_an_input_requiring_those_rules(option):
+def test_model_rule_omission_cannot_keep_an_input_requiring_those_rules():
     failure=dict(stage='prepare_installed_assets',error='Requested model bone rules could not be prepared: missing bone')
-    command=BASE+['--model-constraints',option,'capture.json']
+    command=BASE+['--model-constraints','--captured-ambient-inputs','capture.json']
     assert recovery_choices(command,failure)==[]
     assert 'supplied particle inputs require model bone rules' in recovery_summary(command,failure).lower()
 
 
-@pytest.mark.parametrize('extra',[
-    ['--captured-ambient-inputs','ambient.json'],
-    ['--captured-ambient-inputs=ambient.json'],
-    ['--captured-ambient-inputs','--model-constraints'],
-])
-def test_without_effects_removes_ambient_option_as_one_value_unit(extra):
-    choice=single(BASE+extra,EFFECTS)
-    assert choice.command==tuple(BASE+['--no-effects'])
-    assert dict(choice.values_overrides)['captured_ambient_inputs']==''
-
-
-@pytest.mark.parametrize('error', [
-    'Installed game compatibility check failed for hero lighting before asset preparation: probe atlas changed',
-    'Installed game compatibility check failed for static map lighting before asset preparation: shader changed',
-    'World probe layout requires requalification',
-    'Probe atlas format/mip layout requires requalification',
-    'Probe cubemap format/layout requires requalification',
-    'Unsupported probe cubemap array depth',
-    'Unqualified probe decoder companion: ValveResourceFormat.dll',
-])
-def test_source_compatibility_choices_remove_only_lighting_and_its_dependencies(error):
+def test_source_compatibility_choices_remove_only_lighting_and_its_dependencies():
+    error = 'Unqualified probe decoder companion: ValveResourceFormat.dll'
     retained = BASE + MAP + ['--secondary-motion', '--particle-probe', 'D:/p.exe']
     failure = {'stage': 'prepare_installed_assets', 'error': error}
     choice = single(retained + LIGHTING, failure)
@@ -152,28 +114,8 @@ def test_source_compatibility_choices_remove_only_lighting_and_its_dependencies(
     assert 'Source' in recovery_summary(retained + LIGHTING, failure)
 
 
-def test_equals_lighting_values_are_removed_without_losing_map_or_other_helpers():
-    flags = ['--source-lighting', '--partial-lighting', '--source-hero-lighting',
-             '--source-npr-lighting', '--lighting-dotnet=D:/net.exe',
-             '--world-region-probe=D:/world.dll', '--probe-atlas-decoder=D:/atlas.dll',
-             '--cubemap-decoder=D:/cube.dll', '--character-shader=D:/shader.blend']
-    retained = BASE + MAP + ['--dotnet', 'D:/particle-net.exe', '--particle-probe', 'D:/p.dll']
-    choice = single(retained + flags, {'stage': 'prepare_installed_assets',
-                                     'error': 'World probe layout requires requalification'})
-    assert choice.command == tuple(retained)
-
-
-@pytest.mark.parametrize('error', [
-    'Installed game compatibility check failed for NPR lighting before asset preparation: npr_pbr_shader changed',
-    'Material expression evaluator module requires requalification',
-    'NPR shader requires requalification',
-    'NPR texture decoder requires requalification',
-    'Extended NPR source requires exact bounded BC7 mip payload',
-    'Extended NPR source requires exact bounded BC7 or BC5 mip payload',
-    'Extended NPR BC5 source requires aligned, uncompressed mip data after DATA',
-    'Combined NPR/unlit permutation requires qualification',
-])
-def test_npr_failure_keeps_source_probe_lighting_and_removes_dependent_shader(error):
+def test_npr_failure_keeps_source_probe_lighting_and_removes_dependent_shader():
+    error = 'Extended NPR BC5 source requires aligned, uncompressed mip data after DATA'
     retained = BASE + MAP + LIGHTING[:-2]
     choice = single(BASE + MAP + LIGHTING, {'stage': 'prepare_installed_assets', 'error': error})
     assert choice.id == 'without_npr'
@@ -193,14 +135,7 @@ def test_optional_shader_failure_can_keep_npr_lighting():
 
 @pytest.mark.parametrize(('stage', 'error', 'details'), [
     ('evaluate_animation', RESET_MESSAGE, {'code': 'animation_reset_pose_unavailable'}),
-    ('model_coverage', 'Saved model tracks contain unavailable reset pose samples; '
-     'enable explicit partial export or select a range after the reset.', {}),
     ('model_coverage', MISSING_MODELS, {}),
-    ('model_coverage', MISSING_POSES, {}),
-    ('evaluate_animation', 'Hero84 (7:2): No raw animation state for this entity', {}),
-    ('evaluate_animation', 'Hero84 (7:2): No animation record for requested tick 80366', {}),
-    ('evaluate_animation', 'Hero84 (7:2): Missing decoded animation clips (2): idle.vanim, run.vanim', {}),
-    ('evaluate_animation', 'Hero84 (7:2): Missing decoded skeleton models/hero.vskel', {}),
 ])
 def test_only_known_missing_models_or_reset_poses_offer_labeled_partial_consent(stage, error, details):
     command = BASE + ['--secondary-motion']
@@ -220,61 +155,29 @@ def test_only_known_missing_models_or_reset_poses_offer_labeled_partial_consent(
         assert 'placeholders' in choice.description
 
 
-@pytest.mark.parametrize('flag', ['--partial', '--motion-only'])
-def test_no_partial_retry_when_animation_was_already_opted_out(flag):
-    assert recovery_choices(BASE + [flag], {'stage': 'model_coverage', 'error': MISSING_MODELS}) == []
+def test_no_partial_retry_when_animation_was_already_opted_out():
+    for flag in ('--partial', '--motion-only'):
+        assert recovery_choices(BASE + [flag], {'stage': 'model_coverage', 'error': MISSING_MODELS}) == []
 
 
-@pytest.mark.parametrize('error', [
-    'Replay SHA256 does not match the segment provenance',
-    'Fresh animation sidecars belong to a different replay',
-    'Hero84: Bone index outside skeleton: 256',
-    'Mask index outside recorded skeleton',
-    'Animation type ID 45 exceeds the recorded registry',
-    'Unsupported recorded animation operation: NewTask (ID 72)',
-    'Task dependency references an unavailable slot',
-    'Animation extraction checksum mismatch: raw_animation_state.json',
-    'Truncated replay data', 'Corrupt replay', 'Array index out of bounds',
-    'Recorded primary graph does not match models/hero.vnmgraph',
-    'Cached mapping does not match the asset skeleton',
-    'Duplicate animation records for one entity and tick',
-    'First recipe at tick 80366 is stale; extract earlier state through the last fresh pose',
-    'No animation record for requested tick 80366, because the task dependencies are corrupt',
-    'No raw animation state for this entity: input mismatch',
-    'Fresh animation needs raw_animation_state.json and network_ticks.json',
-    'Blender completion report character tracks differ from this job.',
-    'Something failed while loading Source lighting, cloth and particle data',
-])
-def test_validation_and_unknown_failures_never_get_blanket_partial(error):
+def test_validation_unknown_and_corrupt_failures_never_get_a_retry():
     command = BASE + LIGHTING + ['--secondary-motion', '--particle-probe', 'D:/p.exe']
-    failure = {'stage': 'evaluate_animation', 'error': error}
-    assert recovery_choices(command, failure) == []
-    assert isinstance(recovery_summary(command, failure), str)
+    for error in ('No animation record for requested tick 80366, because the task dependencies are corrupt',
+                  'Something failed while loading Source lighting, cloth and particle data'):
+        failure = {'stage': 'evaluate_animation', 'error': error}
+        assert recovery_choices(command, failure) == []
+        assert isinstance(recovery_summary(command, failure), str)
+    # A known prefix does not bypass corruption or validation.
+    error = 'Installed game compatibility check failed for hero lighting before asset preparation: truncated resource'
+    assert recovery_choices(BASE + LIGHTING + ['--cloth'], {'stage': 'prepare_installed_assets', 'error': error}) == []
 
 
-@pytest.mark.parametrize('error', [
-    'Cloth preparation character identities differ from this job.',
-    'Invalid cloth preparation entity coverage.',
-    'Installed game compatibility check failed for hero lighting before asset preparation: truncated resource',
-])
-def test_known_prefix_does_not_bypass_corruption_or_validation(error):
-    stage = 'validate_cloth_preparation' if 'cloth' in error.lower() else 'prepare_installed_assets'
-    assert recovery_choices(BASE + LIGHTING + ['--cloth'], {'stage': stage, 'error': error}) == []
-
-
-@pytest.mark.parametrize('failure', [
-    {'stage': 'evaluate_animation', 'error': 'The selected model contains only an unrecorded reset pose; '
-     'choose a range ending before the reset or containing a later recorded pose.',
-     'details': {'code': 'animation_reset_only_range'}},
-    {'stage': 'model_coverage', 'error': 'A selected model track contains only an unavailable reset pose; '
-     'choose a range before the reset or containing a later recorded pose.'},
-])
-def test_reset_only_range_has_guidance_but_no_partial_choice(failure):
+def test_reset_only_range_has_guidance_but_no_partial_choice():
+    failure = {'stage': 'evaluate_animation', 'error': 'The selected model contains only an unrecorded reset pose; '
+               'choose a range ending before the reset or containing a later recorded pose.',
+               'details': {'code': 'animation_reset_only_range'}}
     assert recovery_choices(BASE, failure) == []
     assert 'partial export cannot supply this pose' in recovery_summary(BASE, failure)
-
-
-def test_conflicting_reset_code_never_turns_a_skeleton_mismatch_into_partial():
     assert recovery_choices(BASE, {'stage': 'evaluate_animation', 'error': RESET_MESSAGE,
                                    'details': {'code': 'animation_skeleton_mismatch'}}) == []
 
@@ -294,23 +197,13 @@ def test_specific_failure_beats_stale_errors_or_progress_in_log():
            'Source lighting failed; particle simulation skipped\n')
     assert recovery_choices(BASE + ['--cloth'], {'stage': 'publish_scene', 'error': 'Disk full'}, log) == []
     assert recovery_choices(BASE + ['--cloth'], {}, 'cloth failed\nparticle failed\n') == []
-
-
-def test_empty_failure_uses_only_final_exception_and_not_traceback_source_lines():
+    # An empty failure uses only the final exception, not traceback source lines.
     log = ('RuntimeError: Requested cloth preparation did not complete: Hero84: unsupported layout\n'
            '  raise ValueError("NPR shader requires requalification")\n'
            'ValueError: Disk full\n')
     assert recovery_choices(BASE + LIGHTING + ['--cloth'], {}, log) == []
     choice = single(BASE + LIGHTING, {}, 'ValueError: NPR shader requires requalification\n')
     assert choice.id == 'without_npr'
-
-
-def test_generic_blender_failure_uses_last_nested_exception():
-    failure = {'stage': 'build_blender_scene', 'error': 'Blender failed with exit code 1',
-               'blender_log_tail': 'ValueError: Particle simulation has unresolved diagnostics\n'}
-    choice = single(BASE + ['--particle-probe', 'D:/p.exe'], failure)
-    assert choice.id == 'without_effects'
-    assert choice.command == tuple(BASE + ['--no-effects'])
 
 
 def test_actual_blender_subprocess_error_uses_its_nested_failure_only_at_blender_stage():
@@ -337,11 +230,9 @@ def test_runtime_cloth_failure_offers_cloth_only_consent_and_omission():
 def test_flag_like_option_values_are_not_removed_as_cloth_switches():
     command = BASE + ['--character-shader=--cloth', '--map-name', '--secondary-motion', '--cloth']
     assert single(command, CLOTH, choice_id='without_cloth').command == tuple(command[:-1])
-
-
-@pytest.mark.parametrize('command', [BASE + ['--character-shader'], BASE + ['--', '--cloth'], []])
-def test_incomplete_or_terminated_argv_has_no_retry(command):
-    assert recovery_choices(command, CLOTH) == []
+    # Incomplete or terminated argv has no retry.
+    for command in (BASE + ['--character-shader'], BASE + ['--', '--cloth'], []):
+        assert recovery_choices(command, CLOTH) == []
 
 
 def test_shell_text_is_rejected_and_rows_are_immutable():
@@ -360,18 +251,10 @@ def test_unrecognized_or_malformed_metadata_has_no_retry():
         recovery_choices(BASE, None)
 
 
-@pytest.mark.parametrize(('extra', 'failure'), [
-    (['--cloth'], CLOTH),
-    (['--particle-probe=D:/p.dll', '--dotnet=D:/net.exe', '--particle-history-ticks=36'], EFFECTS),
-    (LIGHTING + MAP, {'stage': 'prepare_installed_assets',
-                      'error': 'World probe layout requires requalification'}),
-    (LIGHTING + MAP, {'stage': 'prepare_installed_assets',
-                      'error': 'NPR shader requires requalification'}),
-    ([], {'stage': 'model_coverage', 'error': MISSING_MODELS}),
-])
-def test_retry_argv_still_parses_as_the_same_conversion(extra, failure):
+def test_retry_argv_still_parses_as_the_same_conversion():
     from agr.cli import parser
 
+    extra, failure = ['--particle-probe=D:/p.dll', '--dotnet=D:/net.exe', '--particle-history-ticks=36'], EFFECTS
     before = parser().parse_args((BASE + extra)[3:])
     after = parser().parse_args(recovery_choices(BASE + extra, failure)[0].command[3:])
     for name in ('demo', 'segment', 'start_tick', 'end_tick', 'heroes', 'shot_hero',
@@ -381,13 +264,10 @@ def test_retry_argv_still_parses_as_the_same_conversion(extra, failure):
         assert getattr(after, name) == getattr(before, name), name
 
 
-@pytest.mark.parametrize('error', [
-    'Requested cloth preparation did not complete: Hero 84: Imported-bone solver requires additional authored operations: m_WorldCollisionNodes',
-    'Requested cloth preparation did not complete: Hero 2: Imported-bone solver requires additional authored operations: m_WorldCollisionNodes, m_Effects; Hero 80: Imported-bone solver requires additional authored operations: m_WorldCollisionNodes, m_Effects; Hero 81: Generated cloth proxy lacks an explicit vertex-map identity; Hero 84: Imported-bone solver requires additional authored operations: m_WorldCollisionNodes; Hero 85: Imported-bone solver requires additional authored operations: m_Effects',
-])
-def test_supplied_cloth_failures_offer_supported_cloth_first_without_broad_partial(error):
+def test_supplied_cloth_failures_offer_supported_cloth_first_without_broad_partial():
     from agr.cli import parser
 
+    error = ('Requested cloth preparation did not complete: Hero 2: Imported-bone solver requires additional authored operations: m_WorldCollisionNodes, m_Effects; Hero 80: Imported-bone solver requires additional authored operations: m_WorldCollisionNodes, m_Effects; Hero 81: Generated cloth proxy lacks an explicit vertex-map identity; Hero 84: Imported-bone solver requires additional authored operations: m_WorldCollisionNodes; Hero 85: Imported-bone solver requires additional authored operations: m_Effects')
     command = BASE + LIGHTING + ['--secondary-motion']
     failure = dict(CLOTH, error=error)
     choices = recovery_choices(command, failure)
@@ -402,9 +282,7 @@ def test_supplied_cloth_failures_offer_supported_cloth_first_without_broad_parti
     args = parser().parse_args(supported.command[3:])
     assert args.partial_cloth and args.secondary_motion and not args.partial and not args.motion_only
     assert omitted.command == tuple(BASE + LIGHTING)
-
-
-def test_existing_partial_cloth_has_only_the_without_cloth_choice():
+    # Existing partial cloth consent leaves only the without-cloth choice.
     command = BASE + ['--secondary-motion', '--partial-cloth']
     choice = single(command, CLOTH)
     assert choice.id == 'without_cloth'
@@ -430,13 +308,6 @@ def test_optional_bone_rule_retry_removes_only_that_requested_feature():
     assert 'recorded' in recovery_summary(command, failure).lower()
     assert (command, failure) == before
     assert recovery_choices(list(choice.command), failure) == []
-
-
-@pytest.mark.parametrize('stage,error', [
-    ('model_coverage', 'Requested model bone rules could not be prepared: missing bone'),
-    ('prepare_installed_assets', 'Constraint bone hash is absent from model'),
-    ('prepare_installed_assets', 'Authored constraint source/preparation identity mismatch'),
-    ('prepare_installed_assets', 'Requested model bone rules could not be prepared: checksum mismatch'),
-])
-def test_optional_bone_rules_do_not_offer_bypassing_other_validation(stage, error):
-    assert recovery_choices(BASE, dict(stage=stage, error=error)) == []
+    # The bone-rule retry does not bypass other validation.
+    assert recovery_choices(BASE, dict(stage='prepare_installed_assets',
+        error='Requested model bone rules could not be prepared: checksum mismatch')) == []

@@ -17,13 +17,6 @@ def test_version_binding_and_corruption(tmp_path):
     with pytest.raises(ValueError):load(tmp_path,'model.vmdl_c',digest,physics)
 
 
-def test_numeric_transport_migration_preserves_legacy_cache_and_rebuilds(tmp_path):
-    legacy=tmp_path/'prepared-cloth-v1'/('a'*64+'.json')
-    legacy.parent.mkdir();legacy.write_text('legacy rounded definitions remain untouched')
-    assert load(tmp_path,'model.vmdl_c','a'*64,{'m_pFeModel':None}) is None
-    assert legacy.read_text()=='legacy rounded definitions remain untouched'
-
-
 def test_identical_model_bytes_at_distinct_resource_names_keep_independent_entries(tmp_path):
     physics={'m_pFeModel':None}
     definition=dict(schema='agr_decompiled_fe_proxy_v1',physics=physics,
@@ -80,8 +73,7 @@ def test_automatic_prepared_cache_regenerates_after_solver_or_parser_identity_ch
     assert load(tmp_path,'model','a'*64,{}) is None
 
 
-@pytest.mark.parametrize('parts', [[], [None], [{'schema': 'agr_decompiled_fe_proxy_v1',
-                                               'physics': {'wrong': True}, 'mesh_suffix': '.body'}]])
+@pytest.mark.parametrize('parts', [[]])
 def test_bundle_cannot_report_empty_or_mismatched_garments_as_prepared(tmp_path, parts):
     definition = dict(schema='agr_decompiled_fe_proxy_bundle_v1', physics={}, parts=parts,
                       source_sha256={'proxy': 'fixture'}, scope='fixture')

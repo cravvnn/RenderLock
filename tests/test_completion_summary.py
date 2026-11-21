@@ -18,9 +18,7 @@ def latest_shape(map_status='failed'):
 def test_latest_failure_summary_names_map_without_marking_working_particles_failed():
     summary=scene_completion_message(latest_shape())
     assert summary=='Scene saved; map failed. See the coverage report.'
-
-
-def test_successful_map_and_partial_effects_are_explicit_supported_content():
+    # A successful map and partial effects are explicit supported content.
     summary=scene_completion_message(latest_shape('imported'))
     assert 'map and supported effects imported' in summary
     assert 'Additional effect layers remain unsupported' in summary
@@ -38,9 +36,7 @@ def test_partial_character_export_names_missing_skeletal_animation_before_option
     summary = scene_completion_message(report)
     assert summary == 'Scene saved; skeletal animation unavailable for Seven [2:1]. See the coverage report.'
     assert 'Bebop' not in summary
-
-
-def test_model_reset_summary_names_only_the_hidden_sample_without_claiming_whole_actor_missing():
+    # A model reset names only the hidden sample, not the whole actor.
     report=dict(coverage={'skeletal_animation':{'unsupported_entities':1}},blender={'entities':[
         dict(id='7:2',hero_name='Silver',pose=dict(status='baked')),
         dict(id='7:2@model:12',hero_name='Silver',pose=dict(status='baked_partial',unavailable_pose_ticks=[12]))]})
@@ -55,25 +51,23 @@ def test_source_diffuse_completion_names_actual_material_application():
     assert 'Source character diffuse lighting applied to 6 materials.' in scene_completion_message(report)
     report['hero_lighting']['applied_components']=[]
     assert 'lighting applied' not in scene_completion_message(report)
-
-
-def test_preserved_unlit_surface_is_not_counted_as_applied_diffuse():
+    # A preserved unlit surface is not counted as applied diffuse.
     report=dict(hero_lighting=dict(status='partial',applied_components=['diffuse'],material_count=2,
         material_routes=[dict(applied_components=['diffuse']),dict(applied_components=[])]))
     assert 'lighting applied to 1 material.' in scene_completion_message(report)
 
 
-@pytest.mark.parametrize('exit_code', [0,3])
-def test_gui_worker_reads_summary_only_after_successful_export(tmp_path,exit_code):
+def test_gui_worker_reads_summary_only_after_successful_export(tmp_path):
     from agr.gui import AGRApp
     report=tmp_path/'scene.agr-report.json';report.write_text(json.dumps(latest_shape()))
-    app=AGRApp.__new__(AGRApp)
-    app.events=queue.Queue();app.cancel_requested=threading.Event()
-    app.termination_done=threading.Event();app.termination_done.set()
-    app.process_lock=threading.Lock();app.process=None
-    app._run([sys.executable,'-c',f'raise SystemExit({exit_code})'],'convert',report)
-    finished=[payload for kind,payload in list(app.events.queue) if kind=='finished']
-    assert len(finished)==1
-    operation,code,summary=finished[0]
-    assert operation=='convert' and code==exit_code
-    assert summary==(scene_completion_message(latest_shape()) if exit_code==0 else '')
+    for exit_code in (0,3):
+        app=AGRApp.__new__(AGRApp)
+        app.events=queue.Queue();app.cancel_requested=threading.Event()
+        app.termination_done=threading.Event();app.termination_done.set()
+        app.process_lock=threading.Lock();app.process=None
+        app._run([sys.executable,'-c',f'raise SystemExit({exit_code})'],'convert',report)
+        finished=[payload for kind,payload in list(app.events.queue) if kind=='finished']
+        assert len(finished)==1
+        operation,code,summary=finished[0]
+        assert operation=='convert' and code==exit_code
+        assert summary==(scene_completion_message(latest_shape()) if exit_code==0 else '')

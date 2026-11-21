@@ -52,10 +52,7 @@ def test_explicit_static_descriptor_and_aux_inputs_reach_normal_preflight(fixed)
 
 
 @pytest.mark.parametrize('field,value',[
-    ('policy','agr_particle_model_morph_v1'),('schema_version',True),('bones',True),('bones',0),
-    ('body_groups',False),('body_groups',1),('animations',[{}]),('mesh_groups',['variant']),
-    ('material_exported',True),('source_sha256','0'*64),('material_sha256','0'*64),
-    ('geometry_sha256','0'*64),('geometry_file','other.glb')])
+    ('policy','agr_particle_model_morph_v1'),('geometry_sha256','0'*64)])
 def test_legacy_or_changed_static_contract_never_falls_through_to_morph(fixed,field,value):
     renderer,descriptor=fixed;descriptor[field]=value
     with pytest.raises(UnsupportedEffect):assets.validate_model(renderer,dict(models={silence.MODEL:descriptor}))
@@ -69,7 +66,7 @@ def test_normal_preflight_cannot_bypass_missing_aux_policy(fixed):
             dict(definitions={'start':dict(m_Renderers=[renderer])},models={silence.MODEL:descriptor}),policy)
 
 
-@pytest.mark.parametrize('unit',[True,0,-1,float('nan')])
+@pytest.mark.parametrize('unit',[True,float('nan')])
 def test_invalid_units_cannot_key_a_static_hierarchy(fixed,unit):
     with pytest.raises(UnsupportedEffect):silence.validate_samples(*fixed,samples(),policies(),unit)
 

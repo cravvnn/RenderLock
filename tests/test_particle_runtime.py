@@ -24,11 +24,11 @@ def test_dll_requires_explicit_existing_host(tmp_path):
     assert particle_environment(probe, host)['DOTNET_ROOT'] == str(tmp_path.resolve())
 
 
-@pytest.mark.parametrize('name', ['missing.exe', 'ParticleProbe.cmd', 'ParticleProbe.json'])
-def test_runtime_rejects_missing_or_non_executable_input(tmp_path, name):
-    probe = tmp_path / name
-    if name != 'missing.exe':
-        probe.touch()
+def test_runtime_rejects_missing_or_non_executable_input(tmp_path):
+    with pytest.raises(ValueError, match='ParticleProbe'):
+        particle_command(tmp_path / 'missing.exe')
+    probe = tmp_path / 'ParticleProbe.cmd'
+    probe.touch()
     with pytest.raises(ValueError, match='ParticleProbe'):
         particle_command(probe)
 

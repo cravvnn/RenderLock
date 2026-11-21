@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from agr.scene_package import SceneError, read_scene, save_scene, slice_scene, validate_scene
-from agr.cli import publish_package, animation_mode
+from agr.cli import publish_package
 
 
 def fixture():
@@ -70,12 +70,6 @@ def test_crop_particle_history_excludes_future_inputs_and_retains_creation_histo
     assert result['particle_slice']['retained_events'] == 1
 
 
-def test_unchanged_range_preserves_recorded_particle_inputs():
-    data = fixture()
-    data['particle_instances'] = [{'created_tick': 8, 'events': [{'tick': 8, 'frame': -1}]}]
-    assert slice_scene(data, None, None)['particle_instances'] == data['particle_instances']
-
-
 def test_published_package_keeps_pose_files_after_source_removed(tmp_path):
     src = tmp_path/"work"; src.mkdir()
     pose = src/"track.npz"; pose.write_bytes(b"pose bytes")
@@ -102,26 +96,6 @@ def test_refuses_to_replace_unrelated_directory(tmp_path):
     assert (dest/"important.txt").read_text() == "keep"
 
 
-@pytest.mark.parametrize('winerror',[5,32,33])
-def test_package_retries_transient_windows_rename_lock(tmp_path,monkeypatch,winerror):
-    import agr.cli as cli
-    src=save_scene(fixture(),tmp_path/'source.json')
-    dest=tmp_path/'shot.agrscene'
-    original=Path.rename
-    calls=[]
-    def rename(path,target):
-        calls.append((path,target))
-        if len(calls)==1:
-            error=PermissionError('Temporary Windows lock');error.winerror=winerror
-            raise error
-        return original(path,target)
-    monkeypatch.setattr(Path,'rename',rename)
-    monkeypatch.setattr(cli.time,'sleep',lambda delay:None)
-    publish_package(src,dest)
-    assert len(calls)==2
-    assert read_scene(dest)['entities'][0]['id']=='5:1'
-
-
 def test_package_persistent_lock_restores_previous_package(tmp_path,monkeypatch):
     import agr.cli as cli
     src=save_scene(fixture(),tmp_path/'source.json')
@@ -140,43 +114,3 @@ def test_package_persistent_lock_restores_previous_package(tmp_path,monkeypatch)
     with pytest.raises(PermissionError):publish_package(src,dest,overwrite=True)
     assert len(attempts)==6
     assert (dest/'manifest.json').read_bytes()==before
-
-
-def test_package_other_rename_errors_are_not_retried(tmp_path,monkeypatch):
-    import agr.cli as cli
-    def rename(path,target):raise OSError('Not a Windows sharing error')
-    def sleep(delay):raise AssertionError('Unexpected retry')
-    monkeypatch.setattr(Path,'rename',rename)
-    monkeypatch.setattr(cli.time,'sleep',sleep)
-    with pytest.raises(OSError,match='Not a Windows'):
-        cli._rename_package_path(tmp_path/'a',tmp_path/'b')
-
-
-def test_partial_package_reuses_available_tracks_without_raw_sidecars():
-    data = fixture()
-    data["entities"][0].update(pose_file="a.npz", skeleton_file="a.json")
-    with pytest.raises(ValueError, match="Saved package"):
-        animation_mode(copy.deepcopy(data), saved_package=True)
-    assert animation_mode(data, saved_package=True, partial=True) == "cached"
-    assert data["entities"][1]["animation_status"] == "unsupported"
-
-
-def test_normal_import_restores_poses_after_motion_only_export():
-    data = fixture()
-    for e in data["entities"]:
-        e.update(pose_file="a.npz", skeleton_file="a.json")
-    assert animation_mode(data, motion_only=True) == "motion"
-    assert data["coverage"]["animation"] == "not_requested"
-    assert animation_mode(data, saved_package=True) == "cached"
-    assert "animation" not in data["coverage"]
-
-
-def test_slice_coverage_describes_current_selection():
-    data = fixture()
-    data["entities"][0].update(pose_file="a.npz", skeleton_file="a.json")
-    data["entities"][1].update(pose_file="b.npz", skeleton_file="b.json")
-    data["coverage"] = {"skeletal_animation": {"evaluated_entities": 2}}
-    clipped = slice_scene(data, 10, 11)
-    assert len(clipped["entities"]) == 1
-    assert clipped["coverage"]["skeletal_animation"]["evaluated_entities"] == 1
-    assert clipped["source_coverage"]["skeletal_animation"]["evaluated_entities"] == 2

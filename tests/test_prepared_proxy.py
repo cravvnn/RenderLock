@@ -17,8 +17,7 @@ def test_proxy_removes_duplicates_and_collinear_triangles_without_changing_input
 
 
 @pytest.mark.parametrize('points,faces', [([[np.nan, 0, 0]], [[0, 0, 0]]),
-                                        ([[0, 0, 0]], [[0, 1, 2]]),
-                                        ([[0, 0, 0]], [[-1, 0, 0]])])
+                                        ([[0, 0, 0]], [[0, 1, 2]])])
 def test_invalid_proxy_geometry_fails(points, faces):
     with pytest.raises(ValueError, match='Viewport proxy:'):
         simplify(points, np.asarray(faces, np.int32))

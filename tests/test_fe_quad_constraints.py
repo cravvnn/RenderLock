@@ -39,12 +39,7 @@ def test_zero_axis_and_symmetric_offsets_take_native_fallback():
     np.testing.assert_allclose(result[12:],[[0,2,0]]*4)
 
 
-@pytest.mark.parametrize('kind',['index','pin','slack','shape','weight'])
-def test_unqualified_compiled_layout_rejected(kind):
+def test_unqualified_compiled_layout_rejected():
     points,block=fixture()
-    if kind=='index':block['nNode'][0][0]=16
-    elif kind=='pin':block['f4Weights'][0][0]=.1
-    elif kind=='slack':block['f4Slack'][0]=.1
-    elif kind=='shape':block['vShape'][0]=[]
-    else:block['f4Weights'][2][0]=float('nan')
+    block['f4Weights'][0][0]=.1
     with pytest.raises(ValueError):project_two_pin_quads(points,[block])

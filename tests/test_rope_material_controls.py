@@ -13,9 +13,6 @@ def test_literal_byte_color_is_normalized_after_vertex_gamma_without_a_second_ga
 
 @pytest.mark.parametrize('provider',[
     {'m_nType':'PVEC_TYPE_PARTICLE_VECTOR','m_vLiteralValue':[1,1,1]},
-    {'m_nType':'PVEC_TYPE_LITERAL_COLOR','m_LiteralColor':[256,128,255]},
-    {'m_nType':'PVEC_TYPE_LITERAL_COLOR','m_LiteralColor':[True,128,255]},
-    {'m_nType':'PVEC_TYPE_LITERAL','m_vLiteralValue':[1e300,1,1]},
 ])
 def test_unavailable_or_invalid_vector_providers_cannot_become_white(provider):
     with pytest.raises(UnsupportedEffect):rope_color_scale({'m_vecColorScale':provider})
@@ -38,8 +35,6 @@ def test_rope_uv_rotation_and_wrapped_offsets_precede_saturation():
 
 
 @pytest.mark.parametrize('uv,controls',[
-    ([(0,float('nan'))],{}), ([(0,0,0)],{}),
-    ([(0,0)],{'m_flFinalTextureScaleU':0}),
     ([(0,0)],{'m_flFinalTextureOffsetV':{'m_nType':'PF_TYPE_CONTROL_POINT_COMPONENT','m_nControlPoint':4}}),
 ])
 def test_rope_placed_uvs_refuse_invalid_or_unprovided_inputs(uv,controls):

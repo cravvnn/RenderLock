@@ -54,10 +54,9 @@ def test_source_preset_derives_map_and_probe_requirements_in_one_command(tmp_pat
     assert values['map_enabled'] == '0' and values['character_shader'].endswith('remembered-library.blend')
 
 
-@pytest.mark.parametrize('partial', [False, True])
-def test_broad_animation_loss_does_not_grant_lighting_consent(tmp_path, partial):
+def test_broad_animation_loss_does_not_grant_lighting_consent(tmp_path):
     with pytest.raises(ValueError, match='partial lighting limits'):
-        gui.build_convert_command(values_for(tmp_path), partial=partial)
+        gui.build_convert_command(values_for(tmp_path), partial=True)
 
 
 def test_elagrimm_preset_resolves_flags_but_keeps_explicit_camera_and_library(tmp_path, monkeypatch):

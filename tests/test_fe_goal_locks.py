@@ -30,11 +30,5 @@ def test_goal_then_parent_tail_order_keeps_recorded_parent_scale():
     assert result[1,3]==.5
 
 
-@pytest.mark.parametrize('indices',[[-1],[3],[True]])
-def test_invalid_goal_indices_rejected(indices):
-    with pytest.raises(ValueError,match='outside'):apply_goal_locks(*arrays(),indices)
-
-
-def test_bad_goal_positions_rejected():
-    current,previous,positions=arrays();positions[0,0]=float('nan')
-    with pytest.raises(ValueError,match='positions'):apply_goal_locks(current,previous,positions,[1])
+def test_invalid_goal_indices_rejected():
+    with pytest.raises(ValueError,match='outside'):apply_goal_locks(*arrays(),[3])

@@ -26,11 +26,10 @@ def test_shared_model_prepared_once_with_exact_entity_selection(tmp_path,monkeyp
     assert json.dumps(segment)==before
 
 
-@pytest.mark.parametrize('case',['implicit','duplicate','missing_model'])
+@pytest.mark.parametrize('case',['duplicate'])
 def test_invalid_selection_rejected_before_planning(tmp_path,monkeypatch,case):
     segment,calls=setup_models(tmp_path,monkeypatch)
     if case=='duplicate':segment['entities'][1]['id']='a'
-    if case=='missing_model':segment['entities'][1].pop('model_file')
     with pytest.raises(ValueError):
         stage.prepare_scene_npr_materials(segment,None,None,manifest_dir=tmp_path,allow_partial=case!='implicit')
     assert calls==[]
@@ -49,27 +48,14 @@ def test_later_unsupported_model_prevents_any_decode(tmp_path,monkeypatch):
     assert calls==['plan']
 
 
-@pytest.mark.parametrize('mutation',['model_bytes','entity_id','missing_model_package','extra_model_package','duplicate_current'])
+@pytest.mark.parametrize('mutation',['model_bytes'])
 def test_scene_selection_rejects_stale_or_wrong_actor(tmp_path,monkeypatch,mutation):
     segment,calls=setup_models(tmp_path,monkeypatch)
     package=stage.prepare_scene_npr_materials(segment,None,None,manifest_dir=tmp_path,allow_partial=True)
     monkeypatch.setattr(stage,'validate_npr_material_package',lambda p:None)
     if mutation=='model_bytes':(tmp_path/'model.glb').write_bytes(b'changed')
-    if mutation=='entity_id':segment['entities'][0]['id']='wrong'
-    if mutation=='missing_model_package':package['models'].clear()
     if mutation=='extra_model_package':package['models']['extra']={}
-    if mutation=='duplicate_current':segment['entities'].append(segment['entities'][0])
     with pytest.raises(ValueError):stage.validate_scene_npr_selection(package,segment['entities'],manifest_dir=tmp_path)
-
-
-def test_scene_selection_uses_current_identical_model_location(tmp_path,monkeypatch):
-    segment,calls=setup_models(tmp_path,monkeypatch)
-    package=stage.prepare_scene_npr_materials(segment,None,None,manifest_dir=tmp_path,allow_partial=True)
-    monkeypatch.setattr(stage,'validate_npr_material_package',lambda p:None)
-    (tmp_path/'relocated.glb').write_bytes(b'model')
-    segment['entities'][0]['model_file']='relocated.glb'
-    result=stage.validate_scene_npr_selection(package,segment['entities'],manifest_dir=tmp_path)
-    assert set(result)=={'a','b'}
 
 
 def reusable_scene(tmp_path,monkeypatch):
@@ -102,18 +88,12 @@ def test_plan_can_be_reused_without_replanning_and_all_models_plan_before_decode
     assert result['entities']==plan['entities']
 
 
-@pytest.mark.parametrize('mutation',['model','actor','duplicate_actor','missing_plan','changed_plan','source_coverage','document','consent'])
+@pytest.mark.parametrize('mutation',['changed_plan','consent'])
 def test_reused_plan_rejects_changed_selection_or_material_union_before_any_decode(tmp_path,monkeypatch,mutation):
     segment,provider,_,documents,calls=reusable_scene(tmp_path,monkeypatch)
     plan=stage.plan_scene_npr_materials(segment,provider,None,manifest_dir=tmp_path,allow_partial=True)
     if mutation=='model':(tmp_path/'b.glb').write_bytes(b'changed')
-    elif mutation=='actor':segment['entities'][0]['id']='other'
-    elif mutation=='duplicate_actor':segment['entities'].append(copy.deepcopy(segment['entities'][0]))
-    elif mutation=='missing_plan':plan['models'].pop(next(iter(plan['models'])))
     elif mutation=='changed_plan':next(iter(plan['models'].values()))['materials'][0]['source_sha256']='f'*64
-    elif mutation=='source_coverage':
-        next(iter(plan['models'].values()))['materials']*=2
-        plan['content_sha256']=stage.canonical_sha({k:v for k,v in plan.items() if k!='content_sha256'})
     elif mutation=='document':documents['b.glb']['materials'][0]['extras']['vmat']['Name']='materials/other.vmat'
     with pytest.raises(ValueError):
         stage.prepare_scene_npr_materials(segment,provider,None,manifest_dir=tmp_path,

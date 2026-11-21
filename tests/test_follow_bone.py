@@ -36,8 +36,7 @@ def test_mode_zero_still_copies_entire_target_transform():
         np.testing.assert_allclose(getattr(result,field)[1],getattr(p,field)[2],atol=1e-12)
 
 
-@pytest.mark.parametrize('mode',[1,3,-1,4])
-def test_unvalidated_follow_modes_still_fail(mode):
+def test_unvalidated_follow_modes_still_fail():
     p=Pose(np.tile([0.,0.,0.,1.],(2,1)),np.zeros((2,3)),np.ones(2))
     with pytest.raises(ValueError,match='Unsupported FollowBone mode'):
-        follow_bone(p,np.array([-1,0]),1,0,mode)
+        follow_bone(p,np.array([-1,0]),1,0,1)

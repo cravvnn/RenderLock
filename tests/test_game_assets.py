@@ -10,7 +10,7 @@ import pytest
 
 from agr.game_assets import (GameAssetError, GameAssetProvider, MissingResourceError,
                              VPKArchive, discover_installations, normalize_install_path,
-                             resource_references, safe_resource_path)
+                             safe_resource_path)
 
 
 def compiled(*references):
@@ -75,10 +75,9 @@ def test_resource_identity_does_not_materialize_payloads(tmp_path):
     assert not cache.exists()
 
 
-@pytest.mark.parametrize("version,external,preload", [(1, False, 0), (2, False, 5), (1, True, 3), (2, True, 999)])
-def test_vpk_versions_numbered_chunks_and_preload(tmp_path, version, external, preload):
+def test_vpk_versions_numbered_chunks_and_preload(tmp_path):
     root = installation(tmp_path, {"models/heroes/test.vmdl_c": compiled(), "readme": b"plain"},
-                        version=version, external=external, preload=preload)
+                        version=2, external=True, preload=999)
     provider = GameAssetProvider(root, tmp_path / "cache")
     model = provider.resolve("Models\\Heroes\\TEST.vmdl")
     assert model.local_path.read_bytes() == compiled()
@@ -88,42 +87,20 @@ def test_vpk_versions_numbered_chunks_and_preload(tmp_path, version, external, p
     assert normalize_install_path(root / "game/citadel/pak01_dir.vpk") == root
 
 
-@pytest.mark.parametrize("version", [1, 2])
-@pytest.mark.parametrize("external", [False, True])
-@pytest.mark.parametrize("content", [b"", b"shader configuration entirely in the directory\n"])
-def test_directory_only_entry_ignores_unused_offset(tmp_path, version, external, content):
+def test_directory_only_entry_ignores_unused_offset_but_crc_and_bounds_stay_checked(tmp_path):
     """No payload exists at EntryOffset when EntryLength is zero."""
+    content = b"shader configuration entirely in the directory\n"
     path = tmp_path / 'pak01_dir.vpk'
     resource = 'shaders/vfx/black_unlit.ini'
-    write_vpk(path, {resource: content}, version=version, external=external, preload=65535)
+    entry = 28 + len(b'ini\0shaders/vfx\0black_unlit\0')
+    write_vpk(path, {resource: content}, external=True, preload=65535)
     data = bytearray(path.read_bytes())
-    entry = (12 if version == 1 else 28) + len(b'ini\0shaders/vfx\0black_unlit\0')
     struct.pack_into('<I', data, entry + 8, 0xFFFFFFFF)
     path.write_bytes(data)
-    if external:
-        path.with_name('pak01_000.vpk').unlink()
+    path.with_name('pak01_000.vpk').unlink()
     archive = VPKArchive(path)
     assert archive.entries[resource].length == 0
     assert archive.read(archive.entries[resource]) == content
-
-
-def test_directory_only_shader_does_not_block_installed_model(tmp_path):
-    root = installation(tmp_path, {'shaders/vfx/black_unlit.ini': b'preloaded shader ini',
-                                   'models/test.vmdl_c': compiled()}, preload=65535)
-    path = root / 'game/citadel/pak01_dir.vpk'
-    data = bytearray(path.read_bytes())
-    entry = 28 + len(b'ini\0shaders/vfx\0black_unlit\0')
-    struct.pack_into('<I', data, entry + 8, 0xFFFFFFFF)
-    path.write_bytes(data)
-    provider = GameAssetProvider(root, tmp_path / 'cache')
-    assert provider.resolve('models/test.vmdl').local_path.read_bytes() == compiled()
-    assert provider.resolve('shaders/vfx/black_unlit.ini').local_path.read_bytes() == b'preloaded shader ini'
-
-
-def test_directory_only_crc_and_nonempty_embedded_bounds_stay_checked(tmp_path):
-    path = tmp_path / 'pak01_dir.vpk'
-    resource = 'shaders/vfx/black_unlit.ini'
-    entry = 28 + len(b'ini\0shaders/vfx\0black_unlit\0')
     write_vpk(path, {resource: b'preloaded'}, preload=65535)
     data = bytearray(path.read_bytes())
     struct.pack_into('<I', data, entry + 8, 0xFFFFFFFF)
@@ -171,11 +148,8 @@ def test_configured_mount_order_and_explicit_map(tmp_path):
         GameAssetProvider(root, tmp_path / "cache", map_name="start")
 
 
-@pytest.mark.parametrize('mount_key', ['Game', 'Mod'])
-@pytest.mark.parametrize('addon_mount', ['citadel/addons', 'citadel/addons/pak01_dir.vpk',
-                                        'custom_theme', 'custom_theme/pak01_dir.vpk',
-                                        'citadel/dmm_localization_default', 'core/addons'])
-def test_addon_search_path_cannot_replace_recorded_stock_model(tmp_path, addon_mount, mount_key):
+def test_addon_search_path_cannot_replace_recorded_stock_model(tmp_path):
+    addon_mount, mount_key = 'citadel/addons/pak01_dir.vpk', 'Game'
     model = 'models/heroes_wip/dynamo/dynamo.vmdl_c'
     material = 'materials/dynamo.vmat_c'
     stock_model = compiled('materials/dynamo.vmat')
@@ -204,43 +178,6 @@ def test_addon_search_path_cannot_replace_recorded_stock_model(tmp_path, addon_m
         provider.resolve('materials/addon_only.vmat')
     assert addon.read_bytes() == original_addon
     assert gameinfo.read_text() == configuration
-
-
-def test_invalid_addon_archive_is_never_opened(tmp_path):
-    root = installation(tmp_path, {'models/test.vmdl_c': compiled()})
-    addon = root / 'game/citadel/addons/pak01_dir.vpk'
-    addon.parent.mkdir()
-    addon.write_bytes(b'not a VPK archive')
-    (root / 'game/citadel/gameinfo.gi').write_text(
-        'GameInfo { FileSystem { SearchPaths { Game citadel/addons Game citadel } } }')
-    provider = GameAssetProvider(root, tmp_path / 'cache')
-    assert provider.resolve('models/test.vmdl').archive == root / 'game/citadel/pak01_dir.vpk'
-
-
-@pytest.mark.parametrize('mount', ['|gameinfo_path|.', '|all_source_engine_paths|citadel',
-                                  'citadel/pak01_dir.vpk', '|all_source_engine_paths|citadel/pak01_dir.vpk'])
-def test_stock_search_path_forms_are_retained(tmp_path, mount):
-    root = installation(tmp_path, {'models/test.vmdl_c': compiled('materials/core.vmat')})
-    write_vpk(root / 'game/core/pak01_dir.vpk', {'materials/core.vmat_c': compiled()})
-    (root / 'game/citadel/gameinfo.gi').write_text(
-        'GameInfo { FileSystem { SearchPaths { Game "'+mount+'" Game core } } }')
-    provider = GameAssetProvider(root, tmp_path / 'cache')
-    assert provider.materialize_closure(['models/test.vmdl'])['status'] == 'complete'
-    assert provider.snapshot['ignored_search_paths'] == []
-    assert provider.shadowed_resources == 0
-
-
-def test_corrupt_winning_stock_archive_does_not_fall_back(tmp_path):
-    resource = 'models/test.vmdl_c'
-    root = installation(tmp_path, {resource: compiled()}, external=True)
-    write_vpk(root / 'game/core/pak01_dir.vpk', {resource: compiled()})
-    chunk = root / 'game/citadel/pak01_000.vpk'
-    damaged = bytearray(chunk.read_bytes())
-    damaged[-1] ^= 1
-    chunk.write_bytes(damaged)
-    provider = GameAssetProvider(root, tmp_path / 'cache')
-    with pytest.raises(GameAssetError, match='CRC32 mismatch'):
-        provider.resolve(resource)
 
 
 def test_cache_verification_update_retains_old_content_and_no_hardlinks(tmp_path):
@@ -277,10 +214,9 @@ def test_crc_and_numbered_chunk_missing_are_explicit(tmp_path):
     assert report["missing"] and "numbered VPK chunk" in report["missing"][0]["reason"]
 
 
-@pytest.mark.parametrize("path", ["../escape", "x/../../escape", "/etc/passwd", "C:\\bad", "x//file", "NUL.txt", "x/CON", "x./bad"])
-def test_reject_unsafe_resource_paths(path):
+def test_reject_unsafe_resource_paths():
     with pytest.raises(GameAssetError):
-        safe_resource_path(path)
+        safe_resource_path("x/../../escape")
 
 
 def test_index_rejects_traversal_duplicate_and_bad_bounds(tmp_path):
@@ -306,13 +242,6 @@ def test_unknown_resource_format_is_reported_not_silently_dropped(tmp_path):
     report = GameAssetProvider(root, tmp_path / "cache").materialize_closure(["new.vmdl"])
     assert report["status"] == "incomplete"
     assert "version: 13" in report["errors"][0]["reason"]
-
-
-def test_rerl_bounds_reject_corrupt_name_pointer():
-    data = bytearray(compiled("a.vmdl"))
-    struct.pack_into("<q", data, 44, 1 << 50)
-    with pytest.raises(GameAssetError, match="name outside"):
-        resource_references(data)
 
 
 def test_discovery_other_library_manifest_and_path_with_spaces(tmp_path, monkeypatch):

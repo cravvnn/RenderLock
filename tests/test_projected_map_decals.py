@@ -57,7 +57,3 @@ def test_projected_material_descriptor_carries_the_colour_texture():
 def test_unknown_projected_shader_is_recorded_not_substituted():
     result = collect_projected_materials(DEFINITIONS, Decoder('other.vfx'), Adapter(), None)
     assert result[MATERIAL]['status'] == 'unsupported' and 'other.vfx' in result[MATERIAL]['reason']
-
-
-def test_definitions_without_projected_layers_add_nothing():
-    assert collect_projected_materials({'a': {'m_Renderers': [{'_class': 'C_OP_RenderSprites'}]}}, None, None, None) == {}

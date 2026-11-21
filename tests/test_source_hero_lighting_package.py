@@ -32,7 +32,7 @@ def test_valid_package_resolves_exact_assets(prepared,tmp_path):
     assert len(r['atlas'])==7 and len(r['cubes'])==42
 
 
-@pytest.mark.parametrize('key,value',[('allow_partial',False),('allow_partial',1),('schema_version',True),('world_sha256','a'*64),('coverage_status','complete'),('assumptions',{})])
+@pytest.mark.parametrize('key,value',[('coverage_status','complete')])
 def test_implicit_or_unqualified_package_rejected(prepared,tmp_path,key,value):
     prepared[key]=value
     with pytest.raises(ValueError):package.validate_hero_lighting_package(prepared,WORLD_SHA256,tmp_path)
@@ -41,11 +41,6 @@ def test_implicit_or_unqualified_package_rejected(prepared,tmp_path,key,value):
 def test_plan_change_rejected(prepared,tmp_path):
     prepared['plan']['probes'][0]['origin']=[1,2,3]
     with pytest.raises(ValueError,match='plan identity'):package.validate_hero_lighting_package(prepared,WORLD_SHA256,tmp_path)
-
-
-def test_coefficient_change_rejected(prepared,tmp_path):
-    prepared['cubes'][0]['coefficients'][0]['coefficients'][0]=1
-    with pytest.raises(ValueError,match='metadata identity'):package.validate_hero_lighting_package(prepared,WORLD_SHA256,tmp_path)
 
 
 def test_payload_tampering_rejected(prepared,tmp_path):

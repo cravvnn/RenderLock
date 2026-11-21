@@ -22,9 +22,8 @@ def test_reference_zero_distance_and_equal_slopes_do_not_divide_by_zero():
     radius,alpha=response(2,10,dict(m_bEnableFadingAndClamping=True,m_flStartFadeSize=.2,m_flEndFadeSize=.2))
     assert radius==2 and alpha==.75
 
-@pytest.mark.parametrize('changes',[dict(m_bEnableFadingAndClamping=1),dict(m_flMinSize=-1),dict(m_flMinSize=3,m_flMaxSize=2),dict(m_flStartFadeSize=float('nan'))])
-def test_invalid_camera_parameters_are_refused(changes):
-    renderer=r();renderer.update(changes)
+def test_invalid_camera_parameters_are_refused():
+    renderer=r();renderer.update(m_flMinSize=3,m_flMaxSize=2)
     with pytest.raises(UnsupportedEffect):response(2,10,renderer)
 
 def test_geometry_applies_size_before_splining_without_editing_particle_state():

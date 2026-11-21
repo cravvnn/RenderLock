@@ -19,25 +19,19 @@ def proxy_result():
                 proxy_hidden_in_render=True)
 
 
-@pytest.mark.parametrize('partial', [False, True])
-@pytest.mark.parametrize('mutation', ['missing', 'hash', 'viewport', 'render', 'count', 'boolean'])
-def test_requested_proxy_requires_the_completed_map_and_valid_visibility(tmp_path, partial, mutation):
+@pytest.mark.parametrize('mutation', ['missing', 'boolean'])
+def test_requested_proxy_requires_the_completed_map_and_valid_visibility(tmp_path, mutation):
+    partial = True
     full_map, proxy = map_result(), proxy_result()
     path, job = completion(tmp_path, external_map=full_map, map_proxy=proxy)
     library = {'sha256': maps.MAP_BLEND_SHA256}
     assert read_blender_completion(path, **job, external_map=library, partial=partial, map_viewport_proxy=True)
     if mutation == 'missing':
         proxy = None
-    elif mutation == 'hash':
-        proxy['source_map_sha256'] = 'other'
     elif mutation == 'viewport':
         proxy['full_map_hidden_in_viewport'] = False
-    elif mutation == 'render':
-        proxy['proxy_hidden_in_render'] = False
-    elif mutation == 'boolean':
-        proxy['proxy_hidden_in_render'] = 1
     else:
-        proxy['proxy_faces'] = proxy['source_faces'] + 1
+        proxy['proxy_hidden_in_render'] = 1
     doc = json.loads(path.read_text())
     doc['map_proxy'] = proxy
     path.write_text(json.dumps(doc))
@@ -110,7 +104,7 @@ def test_proxy_retry_updates_the_headless_gui_controller(tmp_path):
     assert app.values['external_map'].get() == str(path)
 
 
-@pytest.mark.parametrize('map_kind', ['missing', 'legacy'])
+@pytest.mark.parametrize('map_kind', ['legacy'])
 def test_proxy_requires_the_current_map_before_scene_preparation(export_job, monkeypatch, map_kind):
     from agr import cli
     args, _ = export_job

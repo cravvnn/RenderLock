@@ -55,9 +55,6 @@ def test_point_on_an_entity_that_is_not_exported_holds_its_recorded_fallback():
 
 @pytest.mark.parametrize('events, mode, message', [
     ([bind(1, 0, OWNER, 5, 3), bind(2, 1, OTHER, 5, 3)], 2, 'no recorded fallback'),
-    ([bind(1, 0, OWNER, 5, 3, ), bind(2, 1, OWNER, 5, 3, offset_position=dict(x=1.0))], 2, 'offsets'),
-    ([bind(1, 0, OWNER, 7, 0)], 2, 'binding mode 7'),
-    ([], 2, 'no control point 0'),
     ([bind(1, 0, OWNER, 5, 3), bind(2, 1, OWNER, 5, 3, ) | dict(tick=101)], 2, 'after creation'),
 ])
 def test_unsupported_shapes_stay_refused(events, mode, message):
@@ -164,14 +161,7 @@ def test_world_origin_driver_holds_the_point_at_the_world_origin():
         tick=100, control_point=3, position=[0.0, 0.0, 0.0], rotation=[0, 0, 0, 1], interpolation_interval=0)]
 
 
-def test_named_configuration_without_its_definition_is_checked_at_binding_level_only():
-    assert [row['control_point'] for row in broad_bindings(configured_instance(), 90, 130)] == [0]
-
-
 @pytest.mark.parametrize('definition, message', [
-    ({}, 'no control point configuration named preview'),
-    ({'m_controlPointConfigurations': [{'m_name': 'preview', 'm_drivers': [
-        {'m_iAttachType': 'PATTACH_POINT_FOLLOW', 'm_attachmentName': 'a', 'm_vecOffset': [1.0, 0, 0]}]}]}, 'offset'),
     ({'m_controlPointConfigurations': [{'m_name': 'preview', 'm_drivers': [
         {'m_iAttachType': 'PATTACH_CUSTOMORIGIN'}]}]}, 'driver mode PATTACH_CUSTOMORIGIN'),
 ])

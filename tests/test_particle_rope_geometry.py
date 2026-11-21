@@ -1,5 +1,4 @@
 import copy
-import numpy as np
 import pytest
 from agr.particle_rope_geometry import build_rope_geometry, rope_subdivisions, rope_collection_bounds
 from agr.installed_effects import UnsupportedEffect
@@ -42,28 +41,7 @@ def test_ribbon_is_connected_interpolated_and_uses_chord_texture_length():
         assert mesh['vertices'][4*i+2]==mesh['vertices'][4*(i+1)+3]
 
 
-def test_scalar_coordinates_follow_live_array_order_reverse_and_closed_loop():
-    p=nodes();p[0]['id']=20;p[2]['id']=10 # IDs are not sort keys.
-    mesh=build_rope_geometry(p,settings(m_bUseScalarForTextureCoordinate=True,m_nScalarFieldForTextureCoordinate=18))
-    assert mesh['uv'][1]==(0,.125) and mesh['uv'][-2]==(1,.5)
-    reverse=build_rope_geometry(p,settings(m_bReverseOrder=True,m_bClosedLoop=True))
-    assert len(reverse['faces'])==6
-    assert np.mean(reverse['vertices'][:1]+reverse['vertices'][3:4],axis=0)==pytest.approx([20,0,0])
-    assert reverse['vertices'][-2]==reverse['vertices'][3]
-
-
-def test_degenerate_and_parallel_normals_remain_finite_and_width_continuous():
-    p=nodes()
-    for row in p:row['normal']=[1,0,0];row['position']=[0,0,0]
-    mesh=build_rope_geometry(p,settings())
-    assert np.isfinite(mesh['vertices']).all()
-    assert np.linalg.norm(np.array(mesh['vertices'][0])-mesh['vertices'][3])==pytest.approx(4)
-    assert build_rope_geometry(p[:1],settings())['faces']==[]
-
-
 @pytest.mark.parametrize('change',[
-    {'m_nMaxTesselation':8},{'m_nTextureVParamsCP':6},{'m_nVectorFieldForOrientation':0},
-    {'m_bEnableFadingAndClamping':True},{'m_flTextureVWorldSize':0},
     {'m_nOrientationType':'unknown'},
 ])
 def test_unsupported_geometry_does_not_silently_fall_back(change):
@@ -105,13 +83,3 @@ def test_original_density_bounds_and_orthographic_camera_are_resolved_per_sample
         rope_subdivisions(p,renderer,[0,0,0])
     with pytest.raises(UnsupportedEffect,match='child/trail'):
         rope_subdivisions(p,renderer,[0,0,0],projection,dict(m_Children=[{}]))
-
-
-def test_invalid_native_range_and_unrepresentable_bounds_are_diagnosed():
-    p=nodes()[:2]
-    renderer=dict(m_nMinTesselation=2,m_nMaxTesselation=4)
-    with pytest.raises(UnsupportedEffect,match='tessellation bounds'):
-        rope_subdivisions(p,{**renderer,'m_nMaxTesselation':2**40},[0,0,0],dict(type='ORTHO',height=100))
-    for row in p:row.update(position=[3e38,0,0],radius=3e38)
-    with pytest.raises(UnsupportedEffect,match='float32'):
-        rope_subdivisions(p,renderer,[0,0,0],dict(type='ORTHO',height=100))

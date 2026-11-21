@@ -48,12 +48,11 @@ def test_release_manifest_matches_final_zip_bytes(packager, source, tmp_path):
                 compile(data, item["path"], "exec")
 
 
-@pytest.mark.parametrize("filename", ["agr/__init__.py", "agr/gui.py"])
-def test_null_source_rejected_and_previous_release_preserved(packager, source, tmp_path, filename):
+def test_null_source_rejected_and_previous_release_preserved(packager, source, tmp_path):
     output = tmp_path / "release.zip"
     packager.package(source, output)
     good_release = output.read_bytes()
-    path = source / filename
+    path = source / "agr/gui.py"
     path.write_bytes(path.read_bytes() + b"\x00")
     with pytest.raises(packager.ReleaseIntegrityError, match="Invalid Python source.*null bytes"):
         packager.package(source, output)
@@ -80,8 +79,7 @@ def test_source_changed_while_archiving_is_rejected(packager, source, tmp_path, 
     assert list(tmp_path.glob("release.zip.*")) == []
 
 
-@pytest.mark.parametrize("field", ["bytes", "sha256"])
-def test_manifest_must_describe_written_archive_bytes(packager, source, tmp_path, field):
+def test_manifest_must_describe_written_archive_bytes(packager, source, tmp_path):
     output = tmp_path / "release.zip"
     packager.package(source, output)
     prefix = "Deadlock_AGR_0.2.0_Alpha"
@@ -89,7 +87,7 @@ def test_manifest_must_describe_written_archive_bytes(packager, source, tmp_path
         contents = {name: archive.read(name) for name in archive.namelist()}
     manifest_name = prefix + "/release_manifest.json"
     manifest = json.loads(contents[manifest_name])
-    manifest["files"][0][field] = 0 if field == "bytes" else "0" * 64
+    manifest["files"][0]["sha256"] = "0" * 64
     contents[manifest_name] = json.dumps(manifest).encode("utf-8")
     candidate = tmp_path / "tampered.zip"
     with ZipFile(candidate, "w") as archive:

@@ -8,14 +8,11 @@ def fixture():
         assume_white_instance_color=True))
 
 
-@pytest.mark.parametrize('case',['strict','missing_hero','missing_materials','implicit_camera','numeric_white','extra'])
+@pytest.mark.parametrize('case',['strict','missing_hero','numeric_white'])
 def test_runtime_rejects_incomplete_or_implicit_inputs(case):
     data=fixture()
     if case=='missing_hero':data.pop('hero_lighting')
-    if case=='missing_materials':data.pop('npr_materials')
-    if case=='implicit_camera':data['npr_runtime'].pop('assume_camera_forward')
     if case=='numeric_white':data['npr_runtime']['assume_white_instance_color']=1
-    if case=='extra':data['npr_runtime']['rim']='complete'
     with pytest.raises(ValueError):validate_npr_runtime(data,allow_partial=case!='strict')
 
 

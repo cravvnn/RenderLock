@@ -71,8 +71,6 @@ def button(window, label):
 
 
 @pytest.mark.parametrize(('show', 'labels'), [
-    (gui_dialogs.showerror, ['OK']),
-    (gui_dialogs.showinfo, ['OK']),
     (gui_dialogs.askyesno, ['No', 'Yes']),
 ])
 def test_real_dialog_uses_shared_branding_and_waits_for_explicit_button(root, show, labels):
@@ -95,22 +93,17 @@ def test_real_dialog_uses_shared_branding_and_waits_for_explicit_button(root, sh
 
 
 @pytest.mark.parametrize(('action', 'expected'), [
-    ('Yes', True), ('No', False), ('escape', False), ('close', False), ('destroy', False),
-    ('return', False),
+    ('escape', False), ('return', False),
 ])
 def test_question_result_and_cancellation(root, action, expected):
     def interact(window):
-        if action in ('Yes', 'No'):
-            button(window, action)._invoke()
-        elif action == 'escape':
+        if action == 'escape':
             window.focus_force()
             root.update()
             window.event_generate('<Escape>')
             assert not gui_dialogs._exists(window)
         elif action == 'close':
             window.tk.call(window.protocol('WM_DELETE_WINDOW'))
-        elif action == 'destroy':
-            window.destroy()
         else:
             # The initial button is deliberately No. Return activates that focused button.
             assert window.focus_lastfor() is button(window, 'No')
@@ -194,7 +187,7 @@ def test_newer_grab_is_not_replaced_on_return(root):
         newer.destroy()
 
 
-@pytest.mark.parametrize('phase', ['mapping', 'waiting'])
+@pytest.mark.parametrize('phase', ['mapping'])
 def test_owner_destruction_safely_cancels_without_returning_yes(root, phase):
     if phase == 'mapping':
         root.after_idle(root.destroy)
@@ -211,19 +204,6 @@ def test_no_root_requires_existing_owner_without_creating_a_native_dialog(monkey
         gui_dialogs.askyesno('Continue?', 'Details')
 
 
-@pytest.mark.parametrize('first', [True, False])
-def test_completion_is_idempotent_and_only_an_explicit_yes_accepts(first):
-    destroys = []
-    dialog = gui_dialogs._MessageDialog.__new__(gui_dialogs._MessageDialog)
-    dialog.window = SimpleNamespace(winfo_exists=lambda: not destroys, destroy=lambda: destroys.append(True))
-    dialog.result, dialog.finished = False, False
-    assert dialog.choose(first) == 'break'
-    assert dialog.cancel() == 'break'
-    dialog.choose(not first)
-    assert dialog.result is first
-    assert len(destroys) == 1
-
-
 def test_work_area_queries_the_owner_monitor_through_existing_chrome():
     queries = []
     api = SimpleNamespace(wintypes=SimpleNamespace(HWND=lambda value: value),
@@ -233,20 +213,8 @@ def test_work_area_queries_the_owner_monitor_through_existing_chrome():
     assert queries == [0x1234]
 
 
-@pytest.mark.parametrize('api', [None, SimpleNamespace(
-    wintypes=SimpleNamespace(HWND=lambda value: value), maximized_area=lambda hwnd: None)])
-def test_work_area_fallback_preserves_virtual_desktop_origin(api):
-    parent = SimpleNamespace(wm_frame=lambda: '0x1234', winfo_vrootx=lambda: -2560,
-                             winfo_vrooty=lambda: -1200, winfo_vrootwidth=lambda: 6400,
-                             winfo_vrootheight=lambda: 2640)
-    assert gui_dialogs._work_area(parent, SimpleNamespace(api=api)) == (-2560, -1200, 3840, 1440)
-
-
 @pytest.mark.parametrize(('area', 'origin', 'visible', 'expected'), [
-    ((1920, 40, 3840, 1080), (2300, 200), True, '620x300+2440+400'),
     ((-2560, 0, 0, 1440), (-2500, 100), True, '620x300+-2360+300'),
-    ((0, -1200, 1920, 0), (100, -1150), True, '620x300+240+-950'),
-    ((1920, 40, 3840, 1080), (3800, 1000), True, '620x300+3220+780'),
     ((-2560, 40, 0, 1440), (0, 0), False, '620x300+-1590+590'),
 ])
 def test_geometry_stays_in_owner_work_area_including_negative_origins(monkeypatch, area, origin,

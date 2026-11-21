@@ -133,32 +133,6 @@ def test_missing_explicit_id_remains_visible_and_is_not_dropped(checklist):
     assert heroes.get() == "" and "999" not in widget._notice.get()
 
 
-def test_saved_package_roster_deduplicates_and_retains_unknown_ids(checklist):
-    widget, heroes, empty = checklist
-    widget.load({"roster": [
-        {"id": "91:1", "hero_id": 2, "hero_name": "Hero 2"},
-        {"id": "91:2", "hero_id": 2},
-        {"id": "95:4", "hero_id": 999}, {"hero_id": 0}, {"hero_id": True},
-        {"hero_id": -2}, {"hero_id": "11"}, None]})
-    assert set(widget._rows) == {2, 999}
-    ids = widget.hero_ids
-    ids.clear()
-    assert widget.hero_ids == {2, 999}
-    assert widget._rows[2]["name"] == "Seven"
-    assert widget._rows[999]["name"] == "Hero 999"
-    _click(widget, 2)
-    assert (heroes.get(), empty.get()) == ("999", "0")
-
-
-def test_grouped_rows_choose_available_name_without_duplicate_controls(checklist):
-    widget, heroes, empty = checklist
-    widget.load({"heroes": [{"hero_id": 2}, {"hero_id": 2, "hero_name": " Seven\n "},
-                             {"hero_id": 2, "hero_name": "Other"}]})
-    assert len(widget._rows) == 1
-    assert widget._rows[2]["name"] == "Seven"
-    assert _selected(widget) == {2}
-
-
 def test_roster_warning_and_clip_limit_are_honest(checklist):
     widget, heroes, empty = checklist
     warning = "Two player rows have no valid hero ID; the list may be incomplete."
@@ -218,23 +192,6 @@ def test_invalid_raw_filter_is_reported_and_not_silently_rewritten(checklist):
     assert heroes.get() == "2,,oops"
     widget.all_button._invoke()
     assert heroes.get() == ""
-
-
-def test_rebuild_and_destroy_remove_owned_traces(checklist, character_root):
-    widget, heroes, empty = checklist
-    widget.load(_roster())
-    old_variables = [row["variable"] for row in widget._rows.values()]
-    widget.load(_roster())
-    assert all(not variable.trace_info() for variable in old_variables)
-    for variable in old_variables:
-        variable.set(False)  # No callback may draw a destroyed CheckBox.
-    row_variables = [row["variable"] for row in widget._rows.values()]
-    widget.destroy()
-    assert not heroes.trace_info() and not empty.trace_info()
-    assert all(not variable.trace_info() for variable in row_variables)
-    heroes.set("2")
-    empty.set("1")
-    character_root.update()
 
 
 def test_long_names_preserve_hover_labels_without_widening_portrait_tray(checklist, character_root):

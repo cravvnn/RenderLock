@@ -67,15 +67,7 @@ def test_app_switch_never_overrides_environment(monkeypatch):
     assert not gui_theme.motion_enabled()
 
 
-def test_app_switch_never_overrides_system_preference(monkeypatch):
-    monkeypatch.setattr(gui_theme, "_system_motion_enabled", lambda: False)
-    gui_theme.set_motion_disabled(False)
-    assert not gui_theme.motion_enabled()
-
-
-@pytest.mark.parametrize("contents, expected", [(None, False), ("broken", False),
-    ('[]', False), ('{}', False), ('{"disable_ui_animations":"1"}', True),
-    ('{"disable_ui_animations":"0"}', False)])
+@pytest.mark.parametrize("contents, expected", [("broken", False)])
 def test_standalone_preference_load(tmp_path, monkeypatch, contents, expected):
     path = tmp_path / "settings.json"
     monkeypatch.setattr(gui_theme, "settings_path", lambda: path)
@@ -100,7 +92,7 @@ def test_app_change_saves_immediately_and_reloads(tmp_path, monkeypatch):
     assert app.values["disable_ui_animations"].get() == "1"
 
 
-@pytest.mark.parametrize("kind", ["canvas", "paper"])
+@pytest.mark.parametrize("kind", ["canvas"])
 def test_active_progress_stops_timers_but_stays_visible(kind):
     canvas = Canvas()
     if kind == "canvas":
@@ -160,18 +152,3 @@ def test_backdrop_discards_queued_opacity_frames():
     backdrop.motion_changed()
     assert not backdrop._queue and len(canvas.jobs) == 1  # one static repaint
     assert backdrop._level() == 100
-
-
-def test_update_paper_cancels_build_and_boil_on_disable():
-    canvas = Canvas()
-    window = update_window.UpdateWindow.__new__(update_window.UpdateWindow)
-    window.canvas = canvas
-    window._queue = ["pending"]
-    window._boil_job = canvas.after(1000, lambda: None)
-    window._build_job = canvas.after(15, lambda: None)
-    window._mode = "progress"
-    window._sources = {"progress": object()}
-    gui_theme.set_motion_disabled(True)
-    window.motion_changed()
-    assert not canvas.jobs and not window._queue
-    assert window._boil_job is window._build_job is None

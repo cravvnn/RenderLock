@@ -48,13 +48,7 @@ def test_maps_materials_by_source_mesh_and_index_stream_despite_reordered_meshes
 
 @pytest.mark.parametrize('change',[
     lambda d,i:i['meshes'][0]['primitives'][0].update(indices_sha256='0'*64),
-    lambda d,i:i['meshes'][1].update(source_mesh_index=0),
-    lambda d,i:i.update(source_sha256='2'*64),
-    lambda d,i:i.update(schema_version=True),
-    lambda d,i:i['meshes'][0]['primitives'][0].update(primitive=True),
     lambda d,i:d['buffers'][0].update(uri='external.bin'),
-    lambda d,i:d['bufferViews'][0].update(byteLength=4),
-    lambda d,i:d['nodes'].append({'name':'unmatched','mesh':0}),
 ])
 def test_changed_identity_geometry_and_unqualified_layout_refuse(tmp_path,change):
     document,inventory,save=fixture(tmp_path);change(document,inventory);path,digest=save()

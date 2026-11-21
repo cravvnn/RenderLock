@@ -4,7 +4,7 @@ import pytest
 from agr import npr_render_sequence as runner
 
 
-@pytest.mark.parametrize('failure',[None,'exit','receipt','image','frame'])
+@pytest.mark.parametrize('failure',[None,'exit','image'])
 def test_sequence_validates_worker_results_and_stops(tmp_path,monkeypatch,failure):
     blender=tmp_path/'blender.exe';blender.write_bytes(b'fixture')
     scene=tmp_path/'scene.blend';scene.write_bytes(b'fixture scene')

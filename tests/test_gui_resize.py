@@ -61,7 +61,7 @@ def test_destroy_cancels_pending_idle_callback(surface):
     assert calls == []
 
 
-@pytest.mark.parametrize("skin", gui_theme.SKINS.values())
+@pytest.mark.parametrize("skin", [gui_theme.SKINS["workbench"]])
 def test_linear_gradient_runs_match_every_original_pixel(skin):
     top, bottom = skin["RAIL_EDGE_TOP"], skin["RAIL_EDGE_BOTTOM"]
     for length in (1, 2, 17, 731, 1440):

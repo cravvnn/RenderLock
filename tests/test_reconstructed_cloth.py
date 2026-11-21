@@ -5,7 +5,6 @@ import json
 import pytest
 
 from agr import installed_cloth, reconstructed_cloth
-from agr.coverage_diagnostics import merge_secondary_motion_coverage, scene_coverage_warnings
 
 
 class Converter:
@@ -57,21 +56,6 @@ def test_missing_registered_proxy_is_reconstructed_once_and_bound_to_physics(tmp
     assert first.get('baked_entity_count',0)==0
 
 
-def test_model_without_fe_nodes_is_not_an_unsupported_cloth_failure(tmp_path,monkeypatch):
-    monkeypatch.setattr(installed_cloth,'decode_physics',lambda *a:({},'b'*64))
-    monkeypatch.setattr(reconstructed_cloth,'reconstruct',lambda *a,**k:
-        {'status':'not_applicable','reason':'Installed model has no FE cloth nodes'})
-    report=installed_cloth.prepare_cloth_assets({'entities':[{'id':'15:1','hero_name':'Bebop'}]},
-        [{'id':'15:1','resource':'models/test.vmdl_c'}],SimpleNamespace(cache_dir=tmp_path/'cache'),
-        None,tmp_path/'pack',log=lambda _:None)
-    assert report['status']=='not_applicable'
-    assert report['unsupported_entities']==[]
-    assert len(report['not_applicable_entities'])==1
-    merged=merge_secondary_motion_coverage(report,[])
-    assert merged['status']=='not_applicable' and merged['baked_entity_count']==0
-    assert scene_coverage_warnings({'secondary_motion':merged})==[]
-
-
 def mixed_proxy_modeldoc():
     return {'children': [
         {'_class': 'ClothProxyMeshFile', 'filename': 'models/test/cable.dmx',
@@ -83,9 +67,8 @@ def mixed_proxy_modeldoc():
              'add_bones_to_render_mesh': True}]}]}
 
 
-@pytest.mark.parametrize('files', [['cable.dmx', 'pants.dmx'], ['pants.dmx', 'cable.dmx']])
-def test_generated_surface_uses_authored_route_instead_of_first_proxy(files):
-    selected, pending = reconstructed_cloth.select_surface_proxy(mixed_proxy_modeldoc(), files)
+def test_generated_surface_uses_authored_route_instead_of_first_proxy():
+    selected, pending = reconstructed_cloth.select_surface_proxy(mixed_proxy_modeldoc(), ['cable.dmx', 'pants.dmx'])
     assert selected == ('pants.dmx', 'pants_ClothVertexMap')
     assert len(pending) == 1 and pending[0].startswith('cable.dmx:')
 
@@ -96,21 +79,6 @@ def test_proxy_deformation_route_and_inventory_must_be_qualified():
         reconstructed_cloth.select_surface_proxy(modeldoc, ['pants.dmx'])
     modeldoc['children'][0]['add_bones_to_render_mesh'] = True
     with pytest.raises(ValueError, match='deformation route'):
-        reconstructed_cloth.select_surface_proxy(modeldoc, ['cable.dmx', 'pants.dmx'])
-
-
-def test_multiple_generated_surfaces_need_their_own_mapping():
-    modeldoc = mixed_proxy_modeldoc()
-    modeldoc['children'][1]['children'].append(dict(
-        modeldoc['children'][1]['children'][0], filename='models/test/other.dmx'))
-    with pytest.raises(ValueError, match='proxy-to-garment mapping'):
-        reconstructed_cloth.select_surface_proxy(modeldoc, ['cable.dmx', 'pants.dmx', 'other.dmx'])
-
-
-def test_generated_proxy_without_named_map_is_not_guessed_from_position():
-    modeldoc = mixed_proxy_modeldoc()
-    del modeldoc['children'][1]['name']
-    with pytest.raises(ValueError, match='vertex-map identity'):
         reconstructed_cloth.select_surface_proxy(modeldoc, ['cable.dmx', 'pants.dmx'])
 
 

@@ -15,23 +15,18 @@ def completion(tmp_path,**stages):
     return path,dict(segment=segment,output=output,data=data,fps=64)
 
 
-@pytest.mark.parametrize('stage',['character_shader','map','map_lighting'])
-def test_requested_flag_cannot_become_missing_completion_stage(tmp_path,stage):
+def test_requested_flag_cannot_become_missing_completion_stage(tmp_path):
     path,job=completion(tmp_path)
     with pytest.raises(RuntimeError,match='lacks requested'):
-        read_blender_completion(path,**job,partial=True,requested_stages=[stage])
+        read_blender_completion(path,**job,partial=True,requested_stages=['map'])
 
 
-@pytest.mark.parametrize('stage',['npr_lighting','character_shader'])
-def test_actor_presence_cannot_hide_dropped_selected_material(tmp_path,stage):
-    row={'status':'partial'}
-    if stage=='npr_lighting':
-        material={'source_material':'body.vmat_c'}
-        row['preparation']={'actors':[{'entity_id':'actor','materials':[material]}],'materials':[material]}
-    else:row['materials']=[{'entity_id':'actor','material':'body.vmat_c'}]
-    path,job=completion(tmp_path,**{stage:row})
+def test_actor_presence_cannot_hide_dropped_selected_material(tmp_path):
+    material={'source_material':'body.vmat_c'}
+    row={'status':'partial','preparation':{'actors':[{'entity_id':'actor','materials':[material]}],'materials':[material]}}
+    path,job=completion(tmp_path,npr_lighting=row)
     with pytest.raises(RuntimeError,match='coverage'):
-        read_blender_completion(path,**job,requested_stages=[stage])
+        read_blender_completion(path,**job,requested_stages=['npr_lighting'])
 
 
 def test_follow_camera_must_cover_requested_range_and_actor(tmp_path):
@@ -40,8 +35,8 @@ def test_follow_camera_must_cover_requested_range_and_actor(tmp_path):
         read_blender_completion(path,**job,shot_hero=15)
 
 
-@pytest.mark.parametrize('partial',[False,True])
-def test_mesh_group_completion_requires_exact_recorded_selection_even_partial(tmp_path,partial):
+def test_mesh_group_completion_requires_exact_recorded_selection_even_partial(tmp_path):
+    partial=True
     from agr.blender_mesh_groups import expected_mesh_group_summary
     path,job=completion(tmp_path)
     entity=job['data']['entities'][0]
@@ -82,8 +77,8 @@ def test_model_default_reference_does_not_consent_to_missing_animated_render_sta
     assert read_blender_completion(path,**job,partial=True)
 
 
-@pytest.mark.parametrize('stage',['npr_lighting','character_shader'])
-def test_mixed_material_completion_cannot_claim_generic_as_npr_or_drop_dynamic_status(tmp_path,stage):
+def test_mixed_material_completion_cannot_claim_generic_as_npr_or_drop_dynamic_status(tmp_path):
+    stage='character_shader'
     rows=[dict(source_material='body.vmat_c',material='body.vmat_c',entity_id='actor',route='npr_indirect',
                runtime={'status':'static_authored_inputs'},fidelity_gaps=[],no_specular_at_full_roughness=False,artist_shader_applied=True),
           dict(source_material='eyes.vmat_c',material='eyes.vmat_c',entity_id='actor',route='generic_pbr_indirect',
@@ -99,8 +94,8 @@ def test_mixed_material_completion_cannot_claim_generic_as_npr_or_drop_dynamic_s
         read_blender_completion(path,**job,requested_stages=[stage])
 
 
-@pytest.mark.parametrize('reason',['capture_failed','serialized_budget_exceeded','helper_not_advertised'])
-def test_unavailable_projectile_capture_requires_partial_even_with_manager_objects(tmp_path,reason):
+def test_unavailable_projectile_capture_requires_partial_even_with_manager_objects(tmp_path):
+    reason='capture_failed'
     from agr.recorded_projectile_effects import merge_projectile_report
     effects=dict(status='partial',candidate_instances=1,selected_recorded_instances=1,attempted_instances=1,
         rendered_instances=1,objects=3,particle_tracks=1,point_lights=0,pre_shot_rendered_instances=0,

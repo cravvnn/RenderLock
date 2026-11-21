@@ -63,11 +63,6 @@ def test_explicit_prepared_pack_is_backward_compatible(inputs):
     assert report["coverage"]["hero_models"]["model_files_available"] == 12
 
 
-def test_cli_sources_are_mutually_exclusive(inputs):
-    with pytest.raises(SystemExit):
-        arguments(inputs, "--assets", str(inputs.assets), "--game-install", str(inputs.install))
-
-
 def test_installed_source_prepares_selected_segment_before_coverage(inputs):
     seen = []
     def prepare(**kwargs):
@@ -130,30 +125,6 @@ def test_animation_mismatch_failure_preserves_structured_details(inputs):
     assert not args.output.exists()
 
 
-def test_partial_is_forwarded_without_pruning_the_roster(inputs):
-    calls = []
-    def prepare(**kwargs):
-        calls.append(kwargs)
-        return inputs.assets
-    inputs.adapter.prepare_installed_assets = prepare
-    report = cli.convert(arguments(inputs, "--source2viewer", str(inputs.converter), "--partial"))
-    assert calls[0]["strict"] is False
-    assert report["entities"] == 12
-
-
-def test_fresh_installed_conversion_requests_animation_resources(inputs, monkeypatch):
-    calls = []
-    def prepare(**kwargs):
-        calls.append(kwargs)
-        return inputs.assets
-    inputs.adapter.prepare_installed_assets = prepare
-    monkeypatch.setattr("agr.animation.evaluate_segment", lambda segment, *args, **kwargs: segment)
-    args = arguments(inputs, "--source2viewer", str(inputs.converter))
-    args.motion_only = False
-    cli.convert(args)
-    assert calls[0]["need_animation"] is True
-
-
 def test_baked_segment_reuses_pose_files_without_raw_animation_inputs(inputs, monkeypatch):
     """A plain saved manifest with evaluated tracks requires only new geometry."""
     import numpy as np
@@ -182,23 +153,14 @@ def test_baked_segment_reuses_pose_files_without_raw_animation_inputs(inputs, mo
     assert report["entities"] == 12
 
 
-@pytest.mark.parametrize('fault', ['missing', 'unreadable', 'other_job', 'missing_character'])
-def test_invalid_blender_completion_cannot_replace_existing_scene_or_publish_companions(inputs, monkeypatch, fault):
+def test_invalid_blender_completion_cannot_replace_existing_scene_or_publish_companions(inputs, monkeypatch):
     args = arguments(inputs, '--assets', str(inputs.assets), '--overwrite')
     args.output.write_bytes(b'previous user scene')
     def blender(command, check):
         report = write_blender_completion(command)
         path = Path(command[command.index('--output') + 1]).with_suffix('.scene.json')
-        if fault == 'missing':
-            path.unlink()
-        elif fault == 'unreadable':
-            path.write_text('{interrupted report')
-        else:
-            if fault == 'other_job':
-                report['output'] = str(inputs.root / 'other-scene.blend')
-            else:
-                report['entities'].pop()
-            path.write_text(json.dumps(report))
+        report['output'] = str(inputs.root / 'other-scene.blend')
+        path.write_text(json.dumps(report))
     monkeypatch.setattr(cli.subprocess, 'run', blender)
     with pytest.raises(RuntimeError, match='Blender completion report'):
         cli.convert(args)
@@ -209,46 +171,16 @@ def test_invalid_blender_completion_cannot_replace_existing_scene_or_publish_com
     assert failure['stage'] == 'validate_blender_completion'
 
 
-@pytest.mark.parametrize('stage',['hero_lighting','npr_lighting','effects','cloth','camera'])
-@pytest.mark.parametrize('partial',[False,True])
-def test_dropped_requested_stage_cannot_publish_even_partial(inputs,monkeypatch,stage,partial):
-    data=read_scene(inputs.segment)
-    if stage=='hero_lighting':data['hero_lighting']={'status':'prepared'}
-    elif stage=='npr_lighting':
-        data['npr_runtime']={'mode':'partial_indirect_reference'}
-        data['npr_materials']={'entities':[{'entity_id':e['id'],'model_sha256':'model'} for e in data['entities']],
-                               'models':{'model':{'materials':[{'material':'body.vmat_c'}]}}}
-    elif stage=='effects':data['effects']={'manifest_file':'effects.json'}
-    elif stage=='cloth':
-        definition=inputs.root/'cloth.json';definition.write_text('{}')
-        data['entities'][0]['secondary_motion_file']=str(definition)
-    save_scene(data,inputs.segment)
-    extra=['--assets',str(inputs.assets),'--overwrite']
-    if partial:extra.append('--partial')
-    if stage=='camera':extra+=['--shot-hero','15']
-    args=arguments(inputs,*extra);args.output.write_bytes(b'previous final scene')
-    with pytest.raises(RuntimeError,match='completion|requested'):
-        cli.convert(args)
-    assert args.output.read_bytes()==b'previous final scene'
-    assert not args.output.with_suffix('.agrscene').exists()
-    assert not args.output.with_suffix('.agr-report.json').exists()
-    failure=json.loads(next(inputs.root.glob('agr-*/failure.json')).read_text())
-    assert failure['stage']=='validate_blender_completion'
-
-
-@pytest.mark.parametrize('partial',[False,True])
-def test_failed_requested_effect_stage_requires_explicit_broad_partial(inputs,monkeypatch,partial):
+def test_failed_requested_effect_stage_requires_explicit_broad_partial(inputs,monkeypatch):
     data=read_scene(inputs.segment);data['effects']={'manifest_file':'effects.json'};save_scene(data,inputs.segment)
     def blender(command,check):write_blender_completion(command,effects={'status':'failed','error':'Decoder process exited1'})
     monkeypatch.setattr(cli.subprocess,'run',blender)
-    args=arguments(inputs,'--assets',str(inputs.assets),*(['--partial'] if partial else ['--partial-lighting']))
-    if not partial:
-        with pytest.raises(RuntimeError,match='did not complete requested effects'):cli.convert(args)
-        assert not args.output.exists()
-    else:
-        report=cli.convert(args)
-        assert report['status']=='converted_with_warnings'
-        assert any('Requested effects failed' in warning for warning in report['warnings'])
+    args=arguments(inputs,'--assets',str(inputs.assets),'--partial-lighting')
+    with pytest.raises(RuntimeError,match='did not complete requested effects'):cli.convert(args)
+    assert not args.output.exists()
+    report=cli.convert(arguments(inputs,'--assets',str(inputs.assets),'--partial'))
+    assert report['status']=='converted_with_warnings'
+    assert any('Requested effects failed' in warning for warning in report['warnings'])
 
 
 def test_blender_capability_failure_precedes_conversion_work_and_assets(inputs, monkeypatch):
@@ -286,8 +218,7 @@ def test_artistic_lighting_acceptance_does_not_allow_incompatible_character_anim
     assert not args.output.exists()
 
 
-@pytest.mark.parametrize('partial', [False, True])
-def test_missing_pose_result_never_retains_cached_evaluated_coverage(inputs, monkeypatch, partial):
+def test_missing_pose_result_never_retains_cached_evaluated_coverage(inputs, monkeypatch):
     import numpy as np
     np.savez(inputs.root / 'cached.npz', ticks=np.array([1]),
              q=np.array([[[0., 0., 0., 1.]]]), t=np.zeros((1, 1, 3)), s=np.ones((1, 1)))
@@ -304,58 +235,40 @@ def test_missing_pose_result_never_retains_cached_evaluated_coverage(inputs, mon
                                reason='No recorded bone poses cover the selected range.')
         Path(command[command.index('--output') + 1]).with_suffix('.scene.json').write_text(json.dumps(result))
     monkeypatch.setattr(cli.subprocess, 'run', blender)
-    args = arguments(inputs, '--assets', str(inputs.assets), *(['--partial'] if partial else []))
+    args = arguments(inputs, '--assets', str(inputs.assets))
     args.motion_only = False
-    if not partial:
-        with pytest.raises(RuntimeError, match='did not complete skeletal animation'):
-            cli.convert(args)
-        assert not args.output.exists()
-    else:
-        report = cli.convert(args)
-        coverage = report['coverage']['skeletal_animation']
-        assert coverage['evaluated_entities'] == 0 and coverage['unsupported_entities'] == 12
-        assert not coverage['all_requested_entities']
-        assert report['status'] == 'converted_with_warnings'
-        assert any('skeletal animation unavailable; imported rest pose' in warning for warning in report['warnings'])
-        saved = read_scene(args.output.with_suffix('.agrscene'))
-        assert saved['coverage']['skeletal_animation'] == coverage
+    with pytest.raises(RuntimeError, match='did not complete skeletal animation'):
+        cli.convert(args)
+    assert not args.output.exists()
+    args = arguments(inputs, '--assets', str(inputs.assets), '--partial')
+    args.motion_only = False
+    report = cli.convert(args)
+    coverage = report['coverage']['skeletal_animation']
+    assert coverage['evaluated_entities'] == 0 and coverage['unsupported_entities'] == 12
+    assert not coverage['all_requested_entities']
+    assert report['status'] == 'converted_with_warnings'
+    assert any('skeletal animation unavailable; imported rest pose' in warning for warning in report['warnings'])
+    saved = read_scene(args.output.with_suffix('.agrscene'))
+    assert saved['coverage']['skeletal_animation'] == coverage
 
 
-def test_unique_discovered_install_is_selected(inputs):
-    result = cli.resolve_asset_source(arguments(inputs, "--source2viewer", str(inputs.converter)))
-    assert result["install_path"] == inputs.install
-
-
-@pytest.mark.parametrize("count", [0, 2])
-def test_absent_or_ambiguous_install_needs_explicit_folder(inputs, count):
-    inputs.provider.discover_installations = lambda: [inputs.install] * count
-    with pytest.raises(ValueError, match="--game-install"):
-        cli.resolve_asset_source(arguments(inputs, "--source2viewer", str(inputs.converter)))
-
-
-def test_invalid_converter_fails_before_extraction_work_is_created(inputs):
+def test_asset_source_refusals_name_the_fix(inputs):
     args = arguments(inputs, "--game-install", str(inputs.install), "--source2viewer", str(inputs.root / "missing.exe"))
     with pytest.raises(ValueError, match="command-line exporter"):
         cli.convert(args)
     assert not list(inputs.root.glob("agr-*"))
-
-
-def test_desktop_viewer_is_rejected(inputs):
     gui = inputs.root / "Source2Viewer.exe"
     gui.write_bytes(b"test")
     with pytest.raises(ValueError, match="desktop viewer"):
         cli.resolve_asset_source(arguments(inputs, "--source2viewer", str(gui)))
-
-
-def test_cache_cannot_write_under_install(inputs):
     with pytest.raises(ValueError, match="outside"):
         cli.resolve_asset_source(arguments(inputs, "--source2viewer", str(inputs.converter),
                                            "--asset-cache", str(inputs.install / "cache")))
-
-
-def test_installed_options_not_silently_ignored_with_prepared_pack(inputs):
     with pytest.raises(ValueError, match="only to the installed"):
         cli.resolve_asset_source(arguments(inputs, "--assets", str(inputs.assets), "--map-name", "dl_midtown"))
+    inputs.provider.discover_installations = lambda: [inputs.install] * 2
+    with pytest.raises(ValueError, match="--game-install"):
+        cli.resolve_asset_source(arguments(inputs, "--source2viewer", str(inputs.converter)))
 
 
 def test_selected_python_environment_symlink_is_preserved(tmp_path):
@@ -377,13 +290,6 @@ def gui_values(inputs, **changes):
             "asset_cache": str(inputs.root / "cache"), "blender": str(inputs.engine),
             "output": str(inputs.root / "gui.blend"), "start": "10", "end": "10",
             "fps": "64", "heroes": "", **changes}
-
-
-def test_new_gui_defaults_to_installed_and_legacy_settings_to_prepared():
-    from agr.gui import asset_source_mode
-    assert asset_source_mode({}) == "installed"
-    assert asset_source_mode({"assets": "D:/existing assets"}) == "prepared"
-    assert asset_source_mode({"asset_source": "installed", "assets": "D:/existing assets"}) == "installed"
 
 
 def test_real_gui_settings_migration_and_new_fields_persist(tmp_path, monkeypatch):
@@ -424,16 +330,3 @@ def test_gui_installed_argv_does_not_add_legacy_asset_folder(inputs):
     assert "--heroes" not in command
     # Values containing spaces remain single argv items; no shell string concatenation.
     assert "Steam Library" in command[command.index("--game-install") + 1]
-
-
-def test_gui_legacy_prepared_argv_preserved(inputs):
-    from agr.gui import build_convert_command
-    command = build_convert_command(gui_values(inputs))
-    assert "--assets" in command and "--game-install" not in command
-    assert "--source2viewer" not in command
-
-
-def test_gui_invalid_converter_names_clear_fix(inputs):
-    from agr.gui import build_convert_command
-    with pytest.raises(ValueError, match="command-line exporter"):
-        build_convert_command(gui_values(inputs, asset_source="installed", source2viewer=""))

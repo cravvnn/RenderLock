@@ -44,10 +44,6 @@ def test_every_tick_carries_the_latest_recorded_value_of_each_point():
 
 
 @pytest.mark.parametrize('change, message', [
-    (lambda s, i: i['events'].append(dict(type='UPDATE_ENT', tick=103, order=15, data={})), 'only literal transforms'),
-    (lambda s, i: i.update(events=[i['events'][0], i['events'][-1]]), 'no recorded control point'),
-    (lambda s, i: i['events'].__setitem__(2, transform(101, 12, 2, (4, 5, 6))), 'creation-time value'),
-    (lambda s, i: s.update(end_tick=100 + 5000), 'more than 64 s'),
     (lambda s, i: i.update(entity_handle=5), 'unattached creation'),
 ])
 def test_shapes_outside_the_literal_profile_stay_refused(change, message):

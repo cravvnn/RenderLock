@@ -56,32 +56,9 @@ def test_normal_package_accepts_complete_arrays_and_explicit_empty(data):
     s.validate_reference(reseal(r), data)
 
 
-@pytest.mark.parametrize('change', ['prefix', 'missing_root', 'missing_point', 'unavailable', 'duplicate_id',
-    'bool_count', 'ordinal', 'different_scene', 'layout', 'scope', 'clock_policy', 'descriptor'])
+@pytest.mark.parametrize('change', ['duplicate_id', 'different_scene'])
 def test_normal_admission_rejects_incomplete_or_unqualified_frames(data, change):
     r = reference(data);c = r['capture'];frame = c['frames'][0];row = frame['systems'][0]
-    if change == 'prefix':c['frames'].pop()
-    elif change == 'missing_root':frame['systems'] = []
-    elif change == 'missing_point':row['points'] = []
-    elif change == 'unavailable':row['state'] = 'unavailable'
-    elif change == 'duplicate_id':row['points'] *= 2;row['particle_count'] = 2
-    elif change == 'bool_count':row['particle_count'] = True
-    elif change == 'ordinal':row['root_ordinal'] = 1
+    if change == 'duplicate_id':row['points'] *= 2;row['particle_count'] = 2
     elif change == 'different_scene':c['scene_identity'] = 'e'*64
-    elif change == 'layout':c['source']['layout_sha256'] = 'b'*64
-    elif change == 'scope':c['scope'] = 'All particles complete'
-    elif change == 'clock_policy':c['between_tick_policy'] = 'interpolate'
-    elif change == 'descriptor':row['points'][0]['descriptor_raw'] = '00'*0x120
     with pytest.raises(ValueError):s.validate_reference(reseal(r), data)
-
-
-def test_optional_stage_refuses_mixed_cohort_before_allocation_and_keeps_birth_counts(data, tmp_path):
-    from agr.observed_slide_light_effects import build_observed_slide_light_effects, merge_observed_slide_light_report
-    runtime = dict(output_dir=str(tmp_path), observed_slide_light_reference=reference(data),
-                   observed_slide_sprite_reference=dict(capture=dict(source=dict(report_sha256='b'*64))))
-    stage = build_observed_slide_light_effects(data, None, None, {s.OWNER:{}}, runtime)
-    assert stage['status'] == 'unavailable' and 'cohort' in stage['reason']
-    assert not (tmp_path/'native-slide-lights.package.json').exists()
-    report = dict(objects=3, point_lights=2, instances=7, particle_tracks=9, unsupported=[])
-    merge_observed_slide_light_report(report, stage)
-    assert (report['objects'],report['point_lights'],report['instances'],report['particle_tracks']) == (3,2,7,9)

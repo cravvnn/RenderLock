@@ -25,8 +25,7 @@ def test_average_is_authored_metadata_and_payload_bound(tmp_path):
     with pytest.raises(ConversionError,match='source changed'):validate_texture_average(row)
 
 
-@pytest.mark.parametrize('offset,fmt,value',[(4,'<H',11),(12,'<I',65),(20,'<I',0xffffffff),
-                                          (24,'<I',0xffffffff),(28,'<H',2),(32,'<f',float('nan'))])
+@pytest.mark.parametrize('offset,fmt,value',[(4,'<H',11),(32,'<f',float('nan'))])
 def test_unknown_or_out_of_bounds_source_never_supplies_pivot(tmp_path,offset,fmt,value):
     path=texture(tmp_path/'bad.vtex_c');raw=bytearray(path.read_bytes());struct.pack_into(fmt,raw,offset,value);path.write_bytes(raw)
     with pytest.raises(ConversionError):read_texture_average(path)

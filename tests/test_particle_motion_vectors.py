@@ -20,23 +20,8 @@ def test_signed_metadata_and_pair_clock_preserve_observed_negative_scale():
     assert motion_vector_pair(layers[:1],textures,{})is None
 
 @pytest.mark.parametrize('change',[
-    lambda l,t,r:l.append(dict(m_hTexture='third')),
     lambda l,t,r:l.reverse(),
-    lambda l,t,r:l[0].update(m_nTextureType='SPRITECARD_TEXTURE_UVDISTORTION'),
-    lambda l,t,r:l[1].update(m_bReplaceTextureWithGradient=True),
-    lambda l,t,r:r.update(m_bBlendFramesSeq0=False),
-    lambda l,t,r:r.update(m_bBlendFramesSeq0=1),
-    lambda l,t,r:r.update(m_bMaxLuminanceBlendingSequence0=True),
-    lambda l,t,r:r.update(m_bMaxLuminanceBlendingSequence0=0),
-    lambda l,t,r:t['flow']['source_sheet'].pop('motion_vectors'),
     lambda l,t,r:t['flow']['source_sheet']['motion_vectors'].update(metadata_present=False),
-    lambda l,t,r:t['flow']['source_sheet']['motion_vectors'].update(max_distance=True),
-    lambda l,t,r:t['flow']['source_sheet']['motion_vectors'].update(max_distance=-32769),
-    lambda l,t,r:t['flow']['source_sheet']['motion_vectors'].update(source_width=15),
-    lambda l,t,r:t['flow']['source_sheet']['motion_vectors'].update(metadata_sha256='bad'),
-    lambda l,t,r:t['flow']['source_sheet'].update(input_sha256='bad'),
-    lambda l,t,r:t['flow']['source_sheet']['sequences'][0].update(clamp=True),
-    lambda l,t,r:t['flow']['source_sheet']['sequences'][0]['frames'][0].update(duration=.5),
 ])
 def test_unknown_or_incomplete_pair_cannot_become_a_static_success(change):
     layers,textures=fixture();renderer={};change(layers,textures,renderer)

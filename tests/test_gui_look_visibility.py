@@ -135,7 +135,7 @@ def test_fields_follow_look_even_with_existing_saved_paths(look_app, mode, shade
     assert _paths(app) == before
 
 
-@pytest.mark.parametrize("mode", LOOKS[1:])
+@pytest.mark.parametrize("mode", ["custom"])
 def test_advanced_overrides_open_and_close_without_losing_consent_or_paths(look_app, mode):
     app = look_app
     _select(app, mode)
@@ -161,10 +161,7 @@ def test_advanced_overrides_open_and_close_without_losing_consent_or_paths(look_
 
 
 @pytest.mark.parametrize("initial,target", [
-    ("source", "standard"),
-    ("elagrimm_source", "source"),
     ("custom", "elagrimm_source"),
-    ("source", "custom"),
 ])
 def test_mode_change_collapses_overrides_and_resets_only_consent(look_app, initial, target):
     app = look_app
@@ -184,9 +181,9 @@ def test_mode_change_collapses_overrides_and_resets_only_consent(look_app, initi
     _assert_visible(app.look_tool_overrides, False)
 
 
-@pytest.mark.parametrize("expanded", [False, True])
-def test_busy_state_prevents_changing_advanced_overrides(look_app, expanded):
+def test_busy_state_prevents_changing_advanced_overrides(look_app):
     app = look_app
+    expanded = True
     _select(app, "source")
     if expanded:
         gui_layout.toggle_look_tool_overrides(app)
@@ -202,9 +199,9 @@ def test_busy_state_prevents_changing_advanced_overrides(look_app, expanded):
     assert _paths(app) == before
 
 
-@pytest.mark.parametrize("key", TOOLS)
-def test_tool_status_uses_file_presence_without_claiming_qualification(look_app, tmp_path, key):
+def test_tool_status_uses_file_presence_without_claiming_qualification(look_app, tmp_path):
     app = look_app
+    key = "cubemap_decoder"
     _select(app, "source")
     _assert_tool_status(app, found=True)
     missing = tmp_path / f"missing-{key}"

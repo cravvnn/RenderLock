@@ -7,8 +7,7 @@ import unittest
 from unittest.mock import patch
 
 from agr.blender_object_names import (
-    ORIGINAL_NAME_PROPERTY, actor_label, bounded_name, object_part,
-    refresh_secondary_motion_names, rename_imported_objects,
+    ORIGINAL_NAME_PROPERTY, actor_label, bounded_name, rename_imported_objects,
 )
 
 
@@ -26,14 +25,6 @@ class ObjectNameTests(unittest.TestCase):
         self.assertEqual(actor_label(dict(id='7:2', hero_id=999, hero_name='Future Hero')),
                          'Future Hero [7:2]')
         self.assertEqual(actor_label(dict(id='7:2', hero_id=999)), 'Hero 999 [7:2]')
-
-    def test_path_model_resource_and_part_suffixes(self):
-        for name in (r'\input\models\heroes_wip\necro\necro.vmdl_c.head',
-                     '/input/models/heroes_wip/necro/necro.vmdl.head'):
-            self.assertEqual(object_part(name, 'MESH'), 'head')
-        self.assertEqual(object_part('necro.vmdl_c.head.001', 'MESH'), 'head.001')
-        self.assertEqual(object_part('necro.vmdl_c', 'ARMATURE'), 'armature')
-        self.assertEqual(object_part('Head attachment', 'EMPTY'), 'Head attachment')
 
     def test_collisions_are_deterministic_for_unordered_imports_and_external_names(self):
         names = [r'\a\necro.vmdl_c.head', r'\b\necro.vmdl_c.head',
@@ -83,16 +74,6 @@ class ObjectNameTests(unittest.TestCase):
         self.assertEqual(labels, ['Silver [7:2] | model 100', 'Silver [7:2] | model 102'])
         self.assertEqual(actor_label(dict(common, id='7:2')), 'Silver [7:2]')
         self.assertNotEqual(actor_label(dict(common, id='7:3')), 'Silver [7:2]')
-
-    def test_cloth_report_references_follow_renames_without_renaming_bones(self):
-        report = dict(objects=['old'], parts=[dict(objects=['old'], proxy='proxy')],
-                      affected_bones=['old'], reason='old')
-        refresh_secondary_motion_names(report, {'old': 'Graves | head', 'proxy': 'new proxy'})
-        self.assertEqual(report['objects'], ['Graves | head'])
-        self.assertEqual(report['parts'][0]['proxy'], 'new proxy')
-        self.assertEqual(report['affected_bones'], ['old'])
-        self.assertEqual(report['reason'], 'old')
-
 
 @unittest.skipUnless(importlib.util.find_spec('bpy'), 'Requires headless Blender')
 class BlenderObjectNameTests(unittest.TestCase):

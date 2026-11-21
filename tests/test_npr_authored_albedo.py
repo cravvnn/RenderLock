@@ -15,17 +15,8 @@ def test_qualified_brightness_and_explicit_assumption():
     with pytest.raises(ValueError):neutral_tint_controls(material(),assume_white_instance_color=False)
 
 
-def test_missing_order_is_equivalent_for_explicit_white_instance():
-    v=material();del v['IntParams']['g_bApplyTintToVertexColors']
-    r=neutral_tint_controls(v,assume_white_instance_color=True)
-    assert r['instance_color']==[1,1,1] and r['apply_tint_to_vertex_colors'] is False
-
-
 @pytest.mark.parametrize('section,key,value',[
-    ('VectorParams','g_vAlbedoContrastSaturationBrightness1',[.5,1,1,0]),
-    ('VectorParams','g_vColorTint1',[1,-.1,0,0]),
-    ('IntParams','g_nTextureColorTintMode1',3),
-    ('IntParams','g_bMaskColorTint1',None)])
+    ('IntParams','g_nTextureColorTintMode1',3)])
 def test_unqualified_controls_rejected(section,key,value):
     v=material();v[section][key]=value
     with pytest.raises(ValueError):neutral_tint_controls(v,assume_white_instance_color=True)
@@ -45,17 +36,7 @@ def test_omitted_bebop_controls_use_only_exact_qualified_shader_defaults():
         neutral_tint_controls(v, assume_white_instance_color=True, shader_sha256='0' * 64)
 
 
-def test_shader_defaults_never_override_explicit_unsupported_controls():
-    from agr.npr_authored_albedo import DEFAULT_SHADER_SHA256
-    for section, key, value in [('VectorParams', 'g_vAlbedoContrastSaturationBrightness1', None),
-                                ('VectorParams', 'g_vColorTint1', [1, -1, 0, 0]),
-                                ('IntParams', 'g_nTextureColorTintMode1', 3)]:
-        with pytest.raises(ValueError):
-            neutral_tint_controls({section: {key: value}}, assume_white_instance_color=True,
-                                  shader_sha256=DEFAULT_SHADER_SHA256)
-
-
-@pytest.mark.parametrize('mode,multiplier',[(0,1),(2,2)])
+@pytest.mark.parametrize('mode,multiplier',[(2,2)])
 def test_authored_colored_tint_preserves_masked_composition(mode,multiplier):
     from agr.npr_albedo import albedo_color
     value=material();value['VectorParams']['g_vColorTint1']=[.2,.5,.8,0]

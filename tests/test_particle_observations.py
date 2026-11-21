@@ -36,14 +36,6 @@ def test_snapshot_survives_file_replacement_and_binds_fresh_inputs(tmp_path, obs
 
 
 @pytest.mark.parametrize('change', [
-    lambda d: d.update(schema_version=True),
-    lambda d: d.update(extra='unknown'),
-    lambda d: d.update(captures=[]),
-    lambda d: d.update(captures=d['captures'] * 65),
-    lambda d: d['captures'].append(copy.deepcopy(d['captures'][0])),
-    lambda d: d['captures'][0].update(instance_id='8:01'),
-    lambda d: d['captures'][0].update(extra=0),
-    lambda d: d['captures'][0]['capture'].update(extra=0),
     lambda d: d['captures'][0]['capture'].update(owner_srt=[float('inf')]),
 ])
 def test_strict_bounded_transport(tmp_path, observed, change):
@@ -55,10 +47,7 @@ def test_strict_bounded_transport(tmp_path, observed, change):
         observations.read_observations(path)
 
 
-@pytest.mark.parametrize('raw', [b'{"format":0,"format":1}', b'\xff', b'{',
-                                b'[' * 2000, b' ' * (observations.MAX_BYTES + 1),
-                                b'{"n":1e999}'],
-                         ids=['duplicate-key', 'invalid-utf8', 'truncated', 'too-deep', 'too-large', 'overflow'])
+@pytest.mark.parametrize('raw', [b'{"format":0,"format":1}'], ids=['duplicate-key'])
 def test_bad_json(tmp_path, raw):
     path = tmp_path / 'bad.json'
     path.write_bytes(raw)

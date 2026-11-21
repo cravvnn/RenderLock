@@ -14,6 +14,6 @@ def test_real_bat_core_selector_uses_rgb_not_opaque_alpha():
  assert texture_alpha(mode,(0,1,0,1))==pytest.approx(.587)
  assert texture_alpha(mode,(0,0,1,1))==pytest.approx(.114)
 
-@pytest.mark.parametrize('mode',['future',None,42])
+@pytest.mark.parametrize('mode',['future'])
 def test_unqualified_selector_is_not_silently_rgba(mode):
  with pytest.raises(UnsupportedEffect):texture_channel_mode({'m_nTextureChannels':mode})

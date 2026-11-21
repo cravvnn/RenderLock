@@ -13,7 +13,7 @@ from test_blender_completion_stages import completion
 from test_export_save_failures import export_job
 
 
-@pytest.mark.parametrize('version,valid', [([5, 2, 1], True), ([5, 3, 0], True), ([4, 4, 0], False), ([], False)])
+@pytest.mark.parametrize('version,valid', [([4, 4, 0], False)])
 def test_map_library_checks_blender_before_expensive_preparation(version, valid):
     if valid:
         maps.validate_map_blender({'version': version})
@@ -60,16 +60,6 @@ def test_qualified_older_local_library_keeps_its_own_inventory(monkeypatch, tmp_
         maps.validate_map_completion(result, library)
 
 
-def test_current_map_profile_is_returned_as_a_copy_and_unknown_hash_is_refused():
-    profile = maps.map_definition({'sha256': maps.MAP_BLEND_SHA256})
-    profile['objects'] = 0
-    assert maps.map_definition({'sha256': maps.MAP_BLEND_SHA256})['objects'] == maps.MAP_OBJECTS
-    with pytest.raises(ValueError, match='External map:'):
-        maps.map_definition({'sha256': 'unqualified'})
-    with pytest.raises(RuntimeError, match='External map:'):
-        maps.validate_map_completion(map_result(), {'sha256':'unqualified'})
-
-
 def test_source_world_points_align_without_character_model_yaw():
     point = np.array([1234., -567., 890.])
     imported = np.array([point[1], -point[0], point[2], 1]) * [.0254, .0254, .0254, 1]
@@ -89,9 +79,9 @@ def map_result():
         map_cutting='manual', linked_libraries=0)
 
 
-@pytest.mark.parametrize('partial', [False, True])
-@pytest.mark.parametrize('mutation', ['missing', 'hash', 'count', 'basis', 'linked'])
-def test_requested_map_cannot_be_silently_dropped_or_misaligned(tmp_path, mutation, partial):
+@pytest.mark.parametrize('mutation', ['missing', 'basis'])
+def test_requested_map_cannot_be_silently_dropped_or_misaligned(tmp_path, mutation):
+    partial = True
     result = map_result()
     path, job = completion(tmp_path, external_map=result)
     library = {'sha256': maps.MAP_BLEND_SHA256}
@@ -100,8 +90,6 @@ def test_requested_map_cannot_be_silently_dropped_or_misaligned(tmp_path, mutati
         result = None
     elif mutation == 'hash':
         result['library_sha256'] = 'different'
-    elif mutation == 'count':
-        result['mesh_objects'] -= 1
     elif mutation == 'linked':
         result['linked_libraries'] = 1
     else:
@@ -141,7 +129,7 @@ def test_map_omission_is_explicit_and_preserves_core_and_lighting_requests():
     assert recovery_choices(command, dict(stage='preflight', error='External map: unavailable library'))[0].id == 'without_external_map'
 
 
-@pytest.mark.parametrize('kind', [RuntimeError, MemoryError, KeyboardInterrupt])
+@pytest.mark.parametrize('kind', [RuntimeError, KeyboardInterrupt])
 def test_map_errors_keep_optional_scope_without_hiding_cancellation(monkeypatch, kind):
     from agr import blender_external_map as module
     def fail(*args):

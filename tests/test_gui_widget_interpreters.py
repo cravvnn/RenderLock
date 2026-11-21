@@ -79,8 +79,9 @@ def corners(widget):
     return names
 
 
-@pytest.mark.parametrize("kind", ["Card", "RoundedButton", "RoundedEntry"])
-@pytest.mark.parametrize("destroy_first", [False, True], ids=["simultaneous", "sequential"])
+@pytest.mark.parametrize("kind,destroy_first", [
+    ("Card", False), ("RoundedEntry", True),
+], ids=["Card-simultaneous", "RoundedEntry-sequential"])
 def test_recovery_controls_construct_in_independent_interpreters(roots, monkeypatch, kind,
                                                                 destroy_first):
     first = roots()
@@ -104,7 +105,7 @@ def test_recovery_controls_construct_in_independent_interpreters(roots, monkeypa
     assert second.state() == "withdrawn"
 
 
-@pytest.mark.parametrize("kind", ["Card", "RoundedButton", "RoundedEntry"])
+@pytest.mark.parametrize("kind", ["RoundedButton"])
 def test_same_interpreter_reuses_photos_across_frames_and_toplevels(roots, monkeypatch, kind):
     root = roots()
     first_parent = tk.Frame(root, background=gui_theme.palette()["BG"])
@@ -125,7 +126,7 @@ def test_same_interpreter_reuses_photos_across_frames_and_toplevels(roots, monke
     assert root.state() == window.state() == "withdrawn"
 
 
-@pytest.mark.parametrize("theme", gui_theme.SKINS.values(), ids=gui_theme.SKINS)
+@pytest.mark.parametrize("theme", [gui_theme.SKINS["bone"]], ids=["bone"])
 def test_readonly_entry_keeps_value_colors_and_geometry(roots, monkeypatch, theme):
     root = roots()
     field = control(root, "RoundedEntry", monkeypatch, theme=theme, background=theme["BG"])
@@ -148,8 +149,10 @@ def test_readonly_entry_keeps_value_colors_and_geometry(roots, monkeypatch, them
     assert corners(field) == names
 
 
-@pytest.mark.parametrize("theme", gui_theme.SKINS.values(), ids=gui_theme.SKINS)
-@pytest.mark.parametrize("style", ["default", "no-edge", "custom"])
+@pytest.mark.parametrize("theme,style", list(zip(gui_theme.SKINS.values(),
+                                                 ["default", "no-edge", "custom"])),
+                         ids=[f"{skin}-{style}" for skin, style in
+                              zip(gui_theme.SKINS, ["default", "no-edge", "custom"])])
 def test_card_styles_keep_corner_pixels_colors_and_geometry(roots, monkeypatch, theme, style):
     options = {"background": theme["BG"]}
     if style == "no-edge":

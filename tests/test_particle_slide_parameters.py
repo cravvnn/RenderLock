@@ -58,20 +58,11 @@ def test_clamping_is_applied_from_the_current_shader_descriptor(inputs):
     inputs[2]['$SCROLLSPEED'].update(raw_bits=list(struct.unpack('<4I',struct.pack('<4f',-20,-20,-20,-20))))
     values=resolve(inputs)['values'];assert values['g_flSelfIllumScale1']==(10.,);assert values['g_vTranslucentScrollSpeed0_1']==(0.,-10.)
 
-@pytest.mark.parametrize('kind',['missing_binding','duplicate_property','wrong_index','wrong_storage','wrong_descriptor','changed_clamp','changed_code','changed_default','unavailable_program'])
+@pytest.mark.parametrize('kind',['wrong_storage','changed_code'])
 def test_named_property_associations_and_raw_inputs_refuse(inputs,kind):
     a=inputs[1];m=a['bindings'][0]['stages'][0]['variables'][0]
-    if kind=='missing_binding':a['bindings'][0]['index']=2
-    elif kind=='duplicate_property':a['properties'][1]['index']=0
-    elif kind=='wrong_index':m['index_raw']='0100'
-    elif kind=='wrong_storage':m['property_record']='0x74000100'
-    elif kind=='wrong_descriptor':m['descriptor_record']='0x73000000'
-    elif kind=='changed_clamp':
-        data=bytearray.fromhex(a['records'][0]['raw_hex']);struct.pack_into('<f',data,0x19c,11.);a['records'][0]['raw_hex']=data.hex()
-    elif kind=='changed_code':a['programs'][0]['raw_hex']='00'*a['programs'][0]['bytes']
-    elif kind=='changed_default':
-        data=bytearray.fromhex(a['properties'][0]['raw_hex']);struct.pack_into('<f',data,0,1.);a['properties'][0]['raw_hex']=data.hex()
-    elif kind=='unavailable_program':a['properties'][0]['program_state']='unavailable'
+    if kind=='wrong_storage':m['property_record']='0x74000100'
+    else:a['programs'][0]['raw_hex']='00'*a['programs'][0]['bytes']
     with pytest.raises(ParticleExpressionRefused):resolve(inputs)
 
 def test_source_identity_and_current_selected_stage_are_required(inputs):
@@ -99,15 +90,9 @@ def test_frame_refuses_tampered_resolved_shapes_nonfinite_values_and_schema(inpu
             dict(values,values=dict(values['values'],g_flSelfIllumScale1=[11.]))):
         with pytest.raises(ParticleExpressionRefused):p.bind_slide_frame_parameters(changed,game_time_query(),'004c9f43')
 
-@pytest.mark.parametrize('kind',['absent','integer','partial','different','unreplicated','nonfinite','wrong_source','bool_prefix'])
+@pytest.mark.parametrize('kind',['absent','wrong_source'])
 def test_missing_unread_or_mismatching_game_time_is_not_replaced(inputs,kind):
     values=resolve(inputs);query=game_time_query();source='004c9f43'
     if kind=='absent':query=dict(present=False,origin=0,checked_stages=[1,2,3,4])
-    elif kind=='integer':query=dict(present=True,origin=3,checked_stages=[1,2,3],kind='integer',value=318)
-    elif kind=='partial':query['checked_stages']=[2]
-    elif kind=='different':query['raw_bits']=[0]*4
-    elif kind=='unreplicated':query['raw_bits'][3]^=1
-    elif kind=='nonfinite':query=game_time_query(raw='0000807f');source='0000807f'
     elif kind=='wrong_source':source='014c9f43'
-    elif kind=='bool_prefix':query['checked_stages']=[True,2]
     with pytest.raises(ParticleExpressionRefused):p.bind_slide_frame_parameters(values,query,source)

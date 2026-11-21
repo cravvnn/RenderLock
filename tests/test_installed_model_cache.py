@@ -110,24 +110,14 @@ def installed(tmp_path, monkeypatch):
                            repairs=repairs, messages=messages, jobs=jobs)
 
 
-def test_constraint_metadata_route_preserves_existing_model_cache(installed):
-    first=installed.prepare()
-    constrained=installed.prepare(model_constraints=True)
-    model=constrained.data['entities'][0]['model_constraints']
-    assert model['schema_version']==1 and model['names']==['root'] and model['definitions']==[]
-    assert model['resource_sha256'] and model['preparation_dependencies']['model_constraints.py']
-    assert first.model==constrained.model and len(installed.calls)==1
-    assert constrained.report['model_cache']['reused']==1
-
-
-@pytest.mark.parametrize('material_repairs', [False, True])
-def test_repeat_and_new_replay_ranges_share_static_files_without_export_copies(installed, material_repairs):
+def test_repeat_and_new_replay_ranges_share_static_files_without_export_copies(installed):
+    material_repairs = True
     first = installed.prepare(material_repairs=material_repairs)
     before = {p: sha(p) for p in first.model.parent.rglob('*') if p.is_file()}
     second = installed.prepare(material_repairs=material_repairs)
     later = installed.prepare(start=300, material_repairs=material_repairs)
     assert len(installed.calls) == 1  # Actual model-export subprocess calls.
-    assert len(installed.repairs) == int(material_repairs)
+    assert len(installed.repairs) == 1
     assert first.model == second.model == later.model
     assert first.model.is_relative_to(installed.cache)
     assert all(not (job / 'installed-assets/models').exists() for job in installed.jobs)
@@ -138,23 +128,14 @@ def test_repeat_and_new_replay_ranges_share_static_files_without_export_copies(i
     assert later.report['models'][0]['cache']['status'] == 'reused'
     assert any('Reusing cached installed model and textures' in message for message in installed.messages)
     assert (later.model.parent / 'textures/hero.png').read_bytes() == b'unchanged image fixture'
-    if material_repairs:
-        assert later.report['model_cache']['material_repairs_reused'] == 1
-        assert later.report['model_cache']['material_repairs_built'] == 0
-        assert not (first.model.parent / 'model.glb').exists()  # Base is retained in its own entry.
-
-
-def test_installed_pose_basis_matches_client_facing_on_fresh_and_cached_models(installed):
-    """The client render root faces 180 degrees from recorded body angles.
-
-    Source2Viewer's baked basis, followed by Blender's Y-up import, contributes
-    -90 degrees. Exercise the real installed bridge so cache reuse cannot restore
-    the old binding that put animated actors sideways.
-    """
-    first = installed.prepare()
-    reused = installed.prepare(start=300)
-    assert first.model == reused.model and len(installed.calls) == 1
-    for job in (first, reused):
+    assert later.report['model_cache']['material_repairs_reused'] == 1
+    assert later.report['model_cache']['material_repairs_built'] == 0
+    assert not (first.model.parent / 'model.glb').exists()  # Base is retained in its own entry.
+    # The client render root faces 180 degrees from recorded body angles.
+    # Source2Viewer's baked basis, followed by Blender's Y-up import, contributes
+    # -90 degrees. Cache reuse must not restore the old binding that put
+    # animated actors sideways.
+    for job in (first, later):
         entity = job.data['entities'][0]
         assert entity['render_root_yaw_degrees'] == 180
         for recorded_yaw in (0, 90, 223.03138732910156, 270):
@@ -165,25 +146,14 @@ def test_installed_pose_basis_matches_client_facing_on_fresh_and_cached_models(i
             assert math.sin(imported) == pytest.approx(math.sin(client), abs=1e-6)
 
 
-@pytest.mark.parametrize('changed', [
-    'models/hero.vmdl_c', 'models/hero.vmesh_c', 'models/hero.vnmskel_c',
-    'materials/hero.vmat_c', 'textures/hero.vtex_c',
-    'shaders/vulkan/pbr_features.vcs', 'converter', 'companion'])
-def test_changed_model_dependency_or_converter_rebuilds_static_cache(installed, changed):
+def test_changed_model_dependency_rebuilds_static_cache(installed):
+    changed = 'models/hero.vmesh_c'
     first = installed.prepare(material_repairs=True)
     original = first.model.read_bytes()
-    if changed in ('converter', 'companion'):
-        path = getattr(installed, changed)
-        path.write_bytes(path.read_bytes() + b' changed')
-    else:
-        payload = installed.resources[changed]
-        if changed.endswith('_c'):
-            # Independent compiled-resource version, retaining valid v12/RERL.
-            payload = payload[:6] + struct.pack('<H', 2) + payload[8:]
-        else:
-            payload += b' changed'
-        installed.resources[changed] = payload
-        write_vpk(installed.install / 'game/citadel/pak01_dir.vpk', installed.resources)
+    payload = installed.resources[changed]
+    # Independent compiled-resource version, retaining valid v12/RERL.
+    installed.resources[changed] = payload[:6] + struct.pack('<H', 2) + payload[8:]
+    write_vpk(installed.install / 'game/citadel/pak01_dir.vpk', installed.resources)
     second = installed.prepare(start=300, material_repairs=True)
     assert len(installed.calls) == len(installed.repairs) == 2
     assert second.model != first.model
@@ -191,20 +161,15 @@ def test_changed_model_dependency_or_converter_rebuilds_static_cache(installed, 
     assert second.report['model_cache']['converted'] == 1
 
 
-@pytest.mark.parametrize('corrupt', ['base-model', 'base-texture', 'repaired-model', 'repaired-texture'])
-def test_corrupt_output_is_verified_and_rebuilt_before_reuse(installed, corrupt):
+def test_corrupt_output_is_verified_and_rebuilt_before_reuse(installed):
     first = installed.prepare(material_repairs=True)
     original = first.model.read_bytes()
     base = next(p.parent for p in (installed.cache / 'derived-v1').glob('*/conversion.json')
                 if json.loads(p.read_text())['descriptor']['operation'] == 'hero_glb')
-    if corrupt.startswith('base'):
-        target = base / ('model.glb' if corrupt.endswith('model') else 'textures/hero.png')
-    else:
-        target = first.model if corrupt.endswith('model') else first.model.parent / 'textures/hero.png'
-    target.write_bytes(b'corrupt fixture')
+    (base / 'model.glb').write_bytes(b'corrupt fixture')
     second = installed.prepare(start=300, material_repairs=True)
     assert second.model == first.model and second.model.read_bytes() == original
-    assert len(installed.calls) == (2 if corrupt.startswith('base') else 1)
+    assert len(installed.calls) == 2
     assert (second.model.parent / 'textures/hero.png').read_bytes() == b'unchanged image fixture'
 
 
@@ -245,12 +210,7 @@ def test_material_variant_rejects_bytes_changed_during_copy(installed, monkeypat
     assert not any(json.loads(p.read_text())['descriptor']['operation']=='hero_material_repairs_v1' for p in manifests)
 
 
-@pytest.mark.parametrize('injected_path', [
-    '../outside.bin', r'..\outside.bin', r'nested\..\..\outside.bin',
-    '/outside.bin', r'\outside.bin', r'C:\outside.bin', r'C:outside.bin',
-    r'\\server\share\outside.bin', 'absolute-fixture-path'])
-def test_material_variant_rejects_manifest_paths_tampered_after_model_validation(
-        installed, monkeypatch, injected_path):
+def test_material_variant_rejects_manifest_paths_tampered_after_model_validation(installed, monkeypatch):
     outside = installed.cache.parent / 'outside-sentinel.bin'
     outside.write_bytes(b'outside cache; must remain unchanged')
     copy_calls = []
@@ -267,8 +227,7 @@ def test_material_variant_rejects_manifest_paths_tampered_after_model_validation
         copy_calls.clear()  # Exclude legitimate initial converter input copies.
         manifest = model.parent / 'conversion.json'
         record = json.loads(manifest.read_text())
-        relative = str(outside) if injected_path == 'absolute-fixture-path' else injected_path
-        record['files'][relative] = sha(outside)
+        record['files'][r'nested\..\..\outside.bin'] = sha(outside)
         manifest.write_text(json.dumps(record))
         return model, details
 

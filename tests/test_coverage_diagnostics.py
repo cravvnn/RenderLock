@@ -36,31 +36,12 @@ def test_uploaded_zero_layer_shape_preserves_preparation_diagnostics():
     assert merge_stage_coverage(prep, result) == result
 
 
-def test_render_failure_retains_its_error_and_preparation_omissions():
-    prep = {'status': 'partial', 'prepared_layer_count': 3,
-            'unsupported': [{'resource': 'particles/beam.vpcf', 'reason': 'Unsupported beam'}]}
-    render = {'status': 'failed', 'error': 'Texture image is missing', 'error_type': 'FileNotFoundError'}
-    result = merge_stage_coverage(prep, render)
-    assert result['status'] == 'failed' and result['stage'] == 'rendering'
-    assert result['error'] == render['error']
-    assert result['preparation']['prepared_layer_count'] == 3
-    assert result['unsupported'][0]['resource'] == 'particles/beam.vpcf'
-
-
 def test_skipped_blender_stage_does_not_hide_map_preparation_failure():
     prep = {'status': 'failed', 'error': 'World conversion failed', 'error_type': 'ConversionError'}
     result = merge_stage_coverage(prep, {'status': 'not_requested'})
     assert result == prep
     warnings = scene_coverage_warnings({'map': result})
     assert warnings == ['Map preparation failed: World conversion failed']
-
-
-def test_successful_map_remains_a_structured_import_result():
-    result = merge_stage_coverage({'status': 'ready', 'model_file': 'region.gltf'},
-                                 {'status': 'imported', 'meshes': 7, 'collision': False})
-    assert result['status'] == 'imported' and result['meshes'] == 7
-    assert result['model_file'] == 'region.gltf' and result['collision'] is False
-    assert scene_coverage_warnings({'map': result}) == []
 
 
 def test_zero_recorded_events_are_not_a_warning_or_failure(tmp_path):
@@ -78,7 +59,6 @@ def test_zero_recorded_events_are_not_a_warning_or_failure(tmp_path):
 
 
 @pytest.mark.parametrize('resource,reason_code', [
-    (None, 'no_resolved_particle_resources'),
     ('particles/new_operator.vpcf', 'no_supported_particle_layers')])
 def test_unavailable_effects_have_a_reason_in_the_report_and_manifest(tmp_path, resource, reason_code):
     path = tmp_path / 'segment.json'

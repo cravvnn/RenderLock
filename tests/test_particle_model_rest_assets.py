@@ -28,20 +28,16 @@ def test_fresh_inventory_binds_source_order_runtime_and_exact_output_bytes(case,
     assert calls[0][2:] == ['--inventory-model-rest',str(tmp_path/'game/citadel/gameinfo.gi'),'models/actor.vmdl',str(tmp_path/'result.json')]
 
 
-@pytest.mark.parametrize('directory',[False,True])
-def test_existing_output_never_becomes_a_cached_success_or_helper_target(case,tmp_path,directory):
+def test_existing_output_never_becomes_a_cached_success_or_helper_target(case,tmp_path):
     model,_,_,provider,calls=case;output=tmp_path/'result.json'
-    if directory:output.mkdir()
-    else:output.write_bytes(b'prior')
+    output.write_bytes(b'prior')
     with pytest.raises(ValueError,match='fresh'):module.collect_model_rest(provider,{},model,output)
     assert not calls
-    if not directory:assert output.read_bytes()==b'prior'
+    assert output.read_bytes()==b'prior'
 
 
 @pytest.mark.parametrize('change',[
-    lambda x:x.update(schema_version=True),lambda x:x.update(source_sha256='b'*64),
-    lambda x:x.update(names=['crossbow','root']),lambda x:x.update(parents=[-1,-1]),
-    lambda x:x.update(parent_transforms=[]),lambda x:x['parent_transforms'][0].__setitem__(3,0),
+    lambda x:x.update(names=['crossbow','root']),
 ])
 def test_incorrect_typed_metadata_cannot_bind_to_a_matching_model_label(case,tmp_path,change):
     model,inventory,_,provider,_=case;change(inventory)

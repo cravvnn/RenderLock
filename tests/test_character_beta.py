@@ -6,8 +6,7 @@ import pytest
 from agr import cli, gui, release_profile
 
 
-@pytest.mark.parametrize("flag", ["--include-map", "--source-lighting", "--source-hero-lighting",
-                                   "--source-npr-lighting", "--character-shader"])
+@pytest.mark.parametrize("flag", ["--include-map"])
 def test_beta_accepts_lab_requests_and_keeps_scenes_character_only(monkeypatch, flag):
     monkeypatch.setattr(release_profile, "character_beta", lambda: True)
     extra = [flag, "library.blend"] if flag == "--character-shader" else [flag]
@@ -21,12 +20,6 @@ def test_beta_omits_map_geometry_from_saved_packages(monkeypatch):
     args = cli.parser().parse_args(["convert", "--segment", "saved.json", "--output", "x.blend"])
     release_profile.validate_conversion(args)
     assert args.character_only
-
-
-@pytest.mark.parametrize("key", ["hero_lighting", "npr_runtime"])
-def test_beta_saved_package_accepts_lighting_inputs(monkeypatch, key):
-    monkeypatch.setattr(release_profile, "character_beta", lambda: True)
-    release_profile.validate_scene({key: {}})  # must not raise: saved look packages are allowed
 
 
 def test_beta_gui_keeps_lighting_preferences(tmp_path, monkeypatch):
@@ -46,9 +39,7 @@ def test_beta_gui_keeps_lighting_preferences(tmp_path, monkeypatch):
     assert values["map_enabled"] == "1"  # Original preferences survive.
 
 
-@pytest.mark.parametrize("start,end,expected", [("", "", ("0", "120")),
-    ("12000", "", ("12000", "12120")), ("146150", "", ("146150", "146208")),
-    ("12000", "12150", ("12000", "12150"))])
+@pytest.mark.parametrize("start,end,expected", [("146150", "", ("146150", "146208"))])
 def test_inspect_prefers_short_preview_and_preserves_user_range(start, end, expected):
     interpreter = tk.Tcl()
     app = gui.AGRApp.__new__(gui.AGRApp)

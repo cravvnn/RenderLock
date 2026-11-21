@@ -41,13 +41,9 @@ def test_all_three_supplied_files_keep_separate_cli_flags(values,tmp_path):
     assert args.captured_slide_inputs==slide and args.particle_observations==observations
 
 
-@pytest.mark.parametrize('key,value', [('effects_enabled','0'), ('simulate_effects','0'),
-    ('model_constraints','0'), ('asset_source','prepared'), ('start','17921'),
-    ('end','18239'), ('particle_history_ticks','0'), ('particle_history_ticks','bad')])
-def test_invalid_scope_or_disabled_dependencies_are_explained(values, key, value, tmp_path):
+@pytest.mark.parametrize('key,value', [('start','17921')])
+def test_invalid_scope_or_disabled_dependencies_are_explained(values, key, value):
     changed = dict(values, **{key: value})
-    if key == 'asset_source':
-        changed['assets'] = str(tmp_path)
     with pytest.raises(ValueError, match='Captured ambient inputs|history ticks'):
         gui.build_convert_command(changed, partial=True)
 

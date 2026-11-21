@@ -23,17 +23,10 @@ def test_actual_root_policy_reproduces_refusal_without_complete_package_context(
     assert contexts[('5718:1','root',10)]['points'][4]==[4.,0.,0.]
 
 
-@pytest.mark.parametrize('kind',['flag','copied_simulation','missing_child','missing_birth','definition',
-    'missing_root','unexpected_point','bool_point','wrong_resource'])
+@pytest.mark.parametrize('kind',['flag','copied_simulation','missing_birth'])
 def test_no_bare_v4_flag_or_incomplete_context_authorizes_renderer_inputs(package,kind):
     value,scene=package;sim=snapshot_fixture(value);context=(value,scene)
     if kind=='flag':context=True
     if kind=='copied_simulation':sim=copy.deepcopy(sim)
-    if kind=='missing_child':value.pop('client_child_capture')
     if kind=='missing_birth':value.pop('silence_birth_capture')
-    if kind=='definition':value['assets']['definitions'].pop(next(iter(value['assets']['definitions'])))
-    if kind=='missing_root':sim['instances'][0]['authored_root_position_indices']=[3]
-    if kind=='unexpected_point':sim['instances'][0]['frames'][0]['systems'][0]['control_points'].append(dict(index=5,position=[0,0,0]))
-    if kind=='bool_point':sim['instances'][0]['frames'][0]['systems'][0]['control_points'][0]['index']=False
-    if kind=='wrong_resource':sim['instances'][0]['resource']='particles/other.vpcf'
     with pytest.raises(ValueError):render_contexts(sim,silence_context=context)

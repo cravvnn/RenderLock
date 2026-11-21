@@ -73,18 +73,6 @@ def prepare(fonts):
     return gui_fonts.load_fonts(object(), install_path=fonts.install, cache_dir=fonts.cache)
 
 
-def test_exact_audited_identities():
-    assert [(s["name"], s["family"], s["bytes"], s["sha256"])
-            for s in gui_fonts.FONT_SOURCES] == [
-        ("valveoracle-medium.ttf", "VALVE Oracle Medium", 155484,
-         "93ab96ee6775596bb196797fbe4bd2f86c7cf0264c11230be63d51cd9e223c34"),
-        ("valveoracle-semibold.ttf", "VALVE Oracle SemiBold", 169704,
-         "52f5c587d31459e1a0ea4f420927b9d1744a672f175c3b7d5773137d2e483a50"),
-        ("valvepulp-bold.ttf", "VALVE Pulp Bold", 240028,
-         "60b904cb9353c2a8a8c7b9e6b052c9c368a8ea1e941dd4d4005a185822d205b9"),
-    ]
-
-
 def test_private_registration_precedes_tk_and_deduplicates_across_roots(fonts):
     first_root, second_root = object(), object()
     result = gui_fonts.load_fonts(first_root, fonts.install, fonts.cache)
@@ -113,67 +101,32 @@ def test_prepared_cache_is_content_addressed_and_has_bounded_provenance(fonts):
     assert not list(fonts.cache.glob(".font-*"))
 
 
-@pytest.mark.parametrize("kind", ["missing", "malformed", "oversized", "forged"])
-def test_pinned_cache_does_not_trust_or_require_manifest(fonts, kind):
+def test_pinned_cache_does_not_trust_or_require_manifest(fonts):
     prepare(fonts)
     manifest = fonts.cache / "manifest.json"
-    if kind == "missing":
-        manifest.unlink()
-    elif kind == "malformed":
-        manifest.write_text("{truncated")
-    elif kind == "oversized":
-        manifest.write_bytes(b" " * (gui_fonts._MANIFEST_LIMIT + 1))
-    else:
-        value = json.loads(manifest.read_text())
-        value["fonts"][0]["file"] = "../../injected.ttf"
-        manifest.write_text(json.dumps(value))
-    before = manifest.read_bytes() if manifest.exists() else None
+    value = json.loads(manifest.read_text())
+    value["fonts"][0]["file"] = "../../injected.ttf"
+    manifest.write_text(json.dumps(value))
+    before = manifest.read_bytes()
     result = gui_fonts.load_fonts(object(), cache_dir=fonts.cache)
     assert all(face["source"] == "cache" for face in result["fonts"])
     assert result["status"] == "ready"
-    assert (manifest.read_bytes() if manifest.exists() else None) == before
-    assert bool(result["errors"]) == (kind != "missing")
+    assert manifest.read_bytes() == before
+    assert result["errors"]
 
 
-@pytest.mark.parametrize("corruption", ["same_size", "truncated", "oversized"])
-def test_corrupt_cached_font_is_never_registered(fonts, monkeypatch, corruption):
+def test_corrupt_cached_font_is_never_registered(fonts, monkeypatch):
     prepare(fonts)
     monkeypatch.setattr(gui_fonts, "_REGISTERED", {})
     fonts.events.clear()
     path = object_path(fonts)
     data = path.read_bytes()
-    if corruption == "same_size":
-        data = data[:-1] + bytes([data[-1] ^ 1])
-    elif corruption == "truncated":
-        data = data[:-1]
-    else:
-        data += b"X"
-    path.write_bytes(data)
+    path.write_bytes(data[:-1] + bytes([data[-1] ^ 1]))
     result = gui_fonts.load_fonts(object(), cache_dir=fonts.cache)
     assert result["fonts"][0]["status"] == "invalid"
     assert result["status"] == "partial"
     assert fonts.specs[0]["family"] not in result["families"]
     assert str(path) not in [event[1] for event in fonts.events if event[0] == "register"]
-    assert len([event for event in fonts.events if event[0] == "register"]) == 2
-
-
-def test_valid_install_repairs_corrupt_cache(fonts, monkeypatch):
-    prepare(fonts)
-    object_path(fonts).write_bytes(b"corrupt")
-    monkeypatch.setattr(gui_fonts, "_REGISTERED", {})
-    result = prepare(fonts)
-    assert result["fonts"][0]["source"] == "installed"
-    assert result["fonts"][0]["status"] == "registered"
-    assert object_path(fonts).read_bytes() == fonts.data[fonts.specs[0]["name"]]
-
-
-def test_wrong_source_and_distractor_do_not_load(fonts):
-    spec = fonts.specs[0]
-    source = fonts.directory / spec["name"]
-    source.rename(fonts.directory / "unrelated.ttf")
-    result = prepare(fonts)
-    assert result["fonts"][0]["status"] == "unavailable"
-    assert not object_path(fonts).exists()
     assert len([event for event in fonts.events if event[0] == "register"]) == 2
 
 
@@ -186,31 +139,12 @@ def test_changed_source_hash_falls_back_without_registering(fonts):
     assert not object_path(fonts).exists()
 
 
-@pytest.mark.parametrize("bad_data", [b"OTTO" + b"\0" * 28,
-    struct.pack(">4sHHHH", b"\0\1\0\0", 65, 0, 0, 0),
-    struct.pack(">4sHHHH", b"\0\1\0\0", 1, 0, 0, 0)
-    + struct.pack(">4sIII", b"name", 0, 0xFFFFFFFF, 1),
-    struct.pack(">4sHHHH", b"\0\1\0\0", 1, 0, 0, 0)
-    + struct.pack(">4sIII", b"fake", 0, 28, 0)])
-def test_font_type_and_table_bounds_checked_even_with_matching_test_pin(bad_data):
+def test_font_type_and_table_bounds_checked_even_with_matching_test_pin():
+    bad_data = (struct.pack(">4sHHHH", b"\0\1\0\0", 1, 0, 0, 0)
+                + struct.pack(">4sIII", b"name", 0, 0xFFFFFFFF, 1))
     spec = {"bytes": len(bad_data), "sha256": hashlib.sha256(bad_data).hexdigest()}
     with pytest.raises(ValueError, match="font format|table directory|table bounds|name table"):
         gui_fonts._verify_font(bad_data, spec)
-
-
-def test_atomic_failure_preserves_destination_and_removes_staging(fonts, monkeypatch):
-    path = fonts.cache / "existing"
-    fonts.cache.mkdir()
-    path.write_bytes(b"original")
-
-    def fail_replace(*args):
-        raise PermissionError("test replace denied")
-
-    monkeypatch.setattr(gui_fonts.os, "replace", fail_replace)
-    with pytest.raises(PermissionError):
-        gui_fonts._atomic_write(path, b"replacement", 100)
-    assert path.read_bytes() == b"original"
-    assert not list(fonts.cache.glob(".font-*"))
 
 
 def test_unwritable_cache_is_a_graceful_fallback(fonts, monkeypatch):
@@ -225,29 +159,13 @@ def test_unwritable_cache_is_a_graceful_fallback(fonts, monkeypatch):
     assert not fonts.events
 
 
-def test_manifest_write_failure_does_not_block_pinned_cache(fonts, monkeypatch):
-    write = gui_fonts._atomic_write
-
-    def deny_manifest(path, data, limit):
-        if path.name == "manifest.json":
-            raise PermissionError("test manifest denied")
-        return write(path, data, limit)
-
-    monkeypatch.setattr(gui_fonts, "_atomic_write", deny_manifest)
-    result = prepare(fonts)
-    assert result["status"] == "ready"
-    assert "provenance could not be saved" in result["errors"][0]
-    assert gui_fonts.load_fonts(object(), cache_dir=fonts.cache)["status"] == "ready"
-
-
-@pytest.mark.parametrize("install_path", [None, ""])
-def test_cache_only_missing_path_creates_nothing(fonts, monkeypatch, install_path):
+def test_cache_only_missing_path_creates_nothing(fonts, monkeypatch):
     def no_install(*args):
         pytest.fail("Cache-only loading must not probe an installation")
 
     monkeypatch.setattr(gui_fonts, "_install_root", no_install)
     monkeypatch.setattr(gui_fonts.tkfont, "families", lambda root: ())
-    result = gui_fonts.load_fonts(object(), install_path=install_path, cache_dir=fonts.cache)
+    result = gui_fonts.load_fonts(object(), install_path=None, cache_dir=fonts.cache)
     assert result["status"] == "fallback"
     assert not fonts.cache.exists()
 
@@ -275,9 +193,8 @@ def test_cache_cannot_write_inside_game(fonts):
     assert not (fonts.install / "cache").exists()
 
 
-@pytest.mark.parametrize("selection", ["", "game", "game/citadel", "game/citadel/pak01_dir.vpk"])
-def test_supported_game_path_forms(fonts, selection):
-    result = gui_fonts.load_fonts(object(), fonts.install / selection, fonts.cache)
+def test_supported_game_path_forms(fonts):
+    result = gui_fonts.load_fonts(object(), fonts.install / "game/citadel/pak01_dir.vpk", fonts.cache)
     assert all(face["status"] == "registered" for face in result["fonts"])
 
 

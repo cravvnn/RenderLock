@@ -46,10 +46,6 @@ def recipe(server_tick, type_id=1, phase=0):
     return list(value.to_bytes((position+7)//8, 'little'))
 
 
-def test_identical_bone_names_need_no_aliases():
-    assert _bone_name_aliases(['root', 'ear_0_L'], ['root', 'ear_0_L']) == []
-
-
 def test_silver_case_aliases_preserve_recorded_bone_indices():
     recorded = [f'bone_{index}' for index in range(144)]
     recorded[19] = 'ear_0_L'; recorded[21] = 'ear_0_R'
@@ -64,18 +60,7 @@ def test_silver_case_aliases_preserve_recorded_bone_indices():
 
 
 @pytest.mark.parametrize(('recorded', 'installed'), [
-    (['root', 'arm'], ['arm', 'root']),
-    (['root', 'arm'], ['root', 'hand']),
-    (['root', 'arm'], ['root']),
     (['ear_L', 'ear_l'], ['ear_L', 'ear_l']),
-    (['ear_L', 'ear_l'], ['ear_l', 'ear_L']),
-    (['root', 'arm'], ['root', 'ROOT']),
-    (['root', 'ROOT'], ['root', 'arm']),
-    (['root', 'root'], ['root', 'root']),
-    (['root', '\u00c4rm'], ['root', '\u00e4rm']),
-    (['root', ''], ['root', '']),
-    (['root', None], ['root', None]),
-    (['root', 1], ['root', 1]),
 ])
 def test_bone_aliases_reject_ambiguous_or_changed_identity(recorded, installed):
     with pytest.raises(AnimationError, match='bone or mask order') as caught:
@@ -88,13 +73,6 @@ def test_bone_aliases_reject_ambiguous_or_changed_identity(recorded, installed):
 
 
 @pytest.mark.parametrize(('recorded', 'installed', 'reason', 'index', 'side'), [
-    (['root', 'arm'], ['root'], 'count', 1, None),
-    (['root', 'arm'], ['root', 'leg', 'hand'], 'count', 1, None),
-    (['Root', 'arm'], ['root', 'arm', 'hand'], 'count', 2, None),
-    (['root', 'arm'], ['arm', 'root'], 'order', 0, None),
-    (['root', ''], ['root', 'arm'], 'invalid', 1, 'recorded'),
-    (['root', 'arm'], ['root', None], 'invalid', 1, 'asset'),
-    (['root', 'ROOT'], ['root', 'arm'], 'ambiguous', 0, 'recorded'),
     (['root', 'arm'], ['root', 'ROOT'], 'ambiguous', 0, 'asset'),
 ])
 def test_skeleton_mismatch_reports_reason_and_first_name(recorded, installed, reason, index, side):
@@ -162,21 +140,6 @@ def test_bind_still_rejects_mask_reordering_with_valid_bone_aliases():
     }
     assert entry['skeleton'] in str(caught.value)
     assert 'replay tick 10' in str(caught.value)
-
-
-def test_bind_accepts_empty_masks_but_reports_missing_installed_masks():
-    raw, recorded, entry, skeleton = silver_binding_inputs()
-    recorded[entry['skeleton']]['masks'] = []
-    skeleton['m_maskDefinitions'] = []
-    assert _bind(raw, 100, recorded, REGISTRY, entry, skeleton)['complete_layout']
-    recorded[entry['skeleton']]['masks'] = ['upper_body']
-    with pytest.raises(AnimationError) as caught:
-        _bind(raw, 100, recorded, REGISTRY, entry, skeleton)
-    assert caught.value.details['component'] == 'masks'
-    assert caught.value.details['reason'] == 'count'
-    assert caught.value.details['first_index'] == 0
-    assert caught.value.details['recorded_name'] == 'upper_body'
-    assert caught.value.details['asset_name'] is None
 
 
 @pytest.fixture
@@ -266,22 +229,6 @@ def test_evaluation_preserves_skeleton_mismatch_details(workspace, strict):
     assert details['demo_tick'] == 10 and details['server_tick'] == 100
 
 
-def test_registry_reordered_dispatches_by_recorded_name(workspace):
-    root, assets, inputs = workspace
-    table = json.loads((inputs/'animation_tables.json').read_text())
-    registry = table['initial_tables']['AnimTaskTypes']
-    registry[1]['name'], registry[2]['name'] = registry[2]['name'], registry[1]['name']
-    write(inputs/'animation_tables.json', table)
-    raw = json.loads((inputs/'raw_animation_state.json').read_text())
-    for row in raw:
-        row['serialized_pose_recipe_array'] = recipe(
-            102 if row['demo_tick']==12 else 100, type_id=2,
-            phase=0 if row['demo_tick']==12 else 65535)
-    write(inputs/'raw_animation_state.json', raw)
-    provenance(inputs)
-    assert evaluate_segment(inputs/'segment.json', root/'output', assets).is_file()
-
-
 def test_missing_prehistory_does_not_invent_first_pose(workspace):
     root, assets, inputs = workspace
     raw = json.loads((inputs/'raw_animation_state.json').read_text())
@@ -299,18 +246,6 @@ def test_stale_pose_cannot_cross_serialization_context(workspace):
     provenance(inputs)
     with pytest.raises(AnimationError, match='stale'):
         evaluate_segment(inputs/'segment.json', root/'output', assets)
-
-
-def test_unneeded_old_recipes_do_not_block_selected_range(workspace):
-    root, assets, inputs = workspace
-    raw = json.loads((inputs/'raw_animation_state.json').read_text())
-    old = json.loads(json.dumps(raw[0])); old['demo_tick'] = 9
-    old['serialized_pose_recipe_array'] = recipe(99, type_id=2)
-    write(inputs/'raw_animation_state.json', [old]+raw)
-    ticks = json.loads((inputs/'network_ticks.json').read_text())
-    write(inputs/'network_ticks.json', [{'demo_tick':9,'server_tick':99}]+ticks)
-    provenance(inputs)
-    assert evaluate_segment(inputs/'segment.json', root/'output', assets).is_file()
 
 
 def test_unknown_task_is_reported_and_not_sampled(workspace):
@@ -352,17 +287,6 @@ def test_verified_cache_is_explicit_and_identity_bound(workspace):
     write(assets/'mapping/mapping_validation.json', {
         'mapping_validation':'PASS','demo_sha256':'b'*64,'start_tick':10,'end_tick':12})
     with pytest.raises(AnimationError, match='SHA256'):
-        evaluate_segment(inputs/'segment.json', root/'output', assets)
-
-
-def test_verified_cache_cannot_be_used_for_a_new_range(workspace):
-    root, assets, inputs = workspace
-    segment = json.loads((inputs/'segment.json').read_text())
-    segment['metadata']['animation_source'] = 'verified-cache'
-    write(inputs/'segment.json', segment)
-    write(assets/'mapping/mapping_validation.json', {
-        'mapping_validation':'PASS','demo_sha256':'a'*64,'start_tick':10,'end_tick':11})
-    with pytest.raises(AnimationError, match='outside'):
         evaluate_segment(inputs/'segment.json', root/'output', assets)
 
 

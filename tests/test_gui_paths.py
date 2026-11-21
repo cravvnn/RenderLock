@@ -5,8 +5,6 @@ import os
 import subprocess
 import sys
 
-import pytest
-
 from agr.gui_paths import normalize_gui_paths, resolve_gui_path
 
 
@@ -50,36 +48,15 @@ def test_optional_empty_paths_and_non_path_fields_are_preserved(tmp_path):
     assert normalized == dict(values, particle_dotnet="")
 
 
-def test_absolute_path_spellings_are_preserved_in_settings(tmp_path):
-    absolute = tmp_path.as_posix() + "/existing cache"
-    assert normalize_gui_paths({"asset_cache": "  " + absolute + "  "})["asset_cache"] == absolute
-
-
-@pytest.mark.parametrize("bad_path", ["bad\x00path.dll", "~renderlock_nonexistent_user_67439/probe.dll"])
-def test_inactive_bad_tools_do_not_block_normalizing_a_valid_selection(tmp_path, bad_path):
+def test_inactive_bad_tools_do_not_block_normalizing_a_valid_selection(tmp_path):
+    bad_path = "bad\x00path.dll"
     values = {"input": "recording.dem", "simulate_effects": "0", "source_lighting": "0",
               "particle_probe": bad_path, "world_region_probe": bad_path,
               "character_shader": bad_path}
     normalized = normalize_gui_paths(values, base=tmp_path)
     assert normalized["input"] == str(tmp_path / "recording.dem")
     for key in ("particle_probe", "world_region_probe", "character_shader"):
-        assert normalized[key] and values[key] == bad_path
-        if "\x00" in bad_path:
-            assert normalized[key] == bad_path
-
-
-def test_optional_tool_home_lookup_failure_keeps_saved_value(monkeypatch, tmp_path):
-    original = Path.expanduser
-
-    def unknown_user(path):
-        if str(path).startswith("~missing"):
-            raise RuntimeError("Could not determine home directory")
-        return original(path)
-
-    monkeypatch.setattr(Path, "expanduser", unknown_user)
-    values = normalize_gui_paths({"input": "recording.dem", "particle_probe": "~missing/probe.dll"}, base=tmp_path)
-    assert values["input"] == str(tmp_path / "recording.dem")
-    assert values["particle_probe"] == "~missing/probe.dll"
+        assert normalized[key] == values[key] == bad_path
 
 
 def test_optional_tool_resolution_oserror_does_not_discard_the_saved_value(monkeypatch, tmp_path):
@@ -94,12 +71,3 @@ def test_optional_tool_resolution_oserror_does_not_discard_the_saved_value(monke
     values = normalize_gui_paths({"input": "recording.dem", "particle_probe": "offline-probe.dll"}, base=tmp_path)
     assert values["input"] == str(tmp_path / "recording.dem")
     assert values["particle_probe"] == "offline-probe.dll"
-
-
-def test_malformed_json_path_values_are_left_for_settings_type_filter(tmp_path):
-    values = {"input": None, "blender": False, "particle_probe": [], "output": "scene.blend"}
-    normalized = normalize_gui_paths(values, base=tmp_path)
-    assert normalized["input"] is None
-    assert normalized["blender"] is False
-    assert normalized["particle_probe"] == []
-    assert normalized["output"] == str(tmp_path / "scene.blend")

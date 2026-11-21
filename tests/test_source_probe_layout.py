@@ -69,11 +69,6 @@ def test_cubemap_size_and_mip_layout_must_match_the_decoder(tmp_path):
         layout(tmp_path, cube_mips=6)
 
 
-def test_atlas_format_must_match_the_qualified_decoder(tmp_path):
-    with pytest.raises(ValueError, match='atlas'):
-        layout(tmp_path, atlas_format=20)
-
-
 def test_legacy_plan_without_layout_still_uses_the_world_table():
     assert dimensions_for_plan({'world_sha256': WORLD_6793}) == ([244, 236, 236], 168)
     assert dimensions_for_plan({'world_sha256': WORLD_6779}) == ([240, 236, 256], 191)

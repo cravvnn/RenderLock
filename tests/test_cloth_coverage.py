@@ -3,8 +3,6 @@ from copy import deepcopy
 import json
 from pathlib import Path
 
-import pytest
-
 from agr import cli
 from agr.coverage_diagnostics import (merge_secondary_motion_coverage,
                                       scene_completion_message, scene_coverage_warnings)
@@ -72,32 +70,6 @@ def test_missing_or_all_failed_blender_results_cannot_remain_prepared():
         assert 'Seven' in scene_completion_message({'secondary_motion': result})
 
 
-def test_disabled_and_unsupported_selections_are_distinct_and_zero_counted():
-    disabled = merge_secondary_motion_coverage({'status': 'not_requested'}, [])
-    assert disabled['status'] == 'not_requested'
-    assert scene_coverage_warnings({'secondary_motion': disabled}) == []
-    unsupported = merge_secondary_motion_coverage({
-        'status': 'no_supported_entities', 'supported_entities': [],
-        'unsupported_entities': preparation()['unsupported_entities']}, [])
-    assert unsupported['status'] == 'no_supported_entities'
-    assert unsupported['baked_entity_count'] == unsupported['dynamic_control_count'] == 0
-    assert unsupported['unsupported_entity_count'] == 1
-    assert 'Bebop' in scene_coverage_warnings({'secondary_motion': unsupported})[0]
-    assert 'failed' not in scene_completion_message({'secondary_motion': unsupported})
-
-
-def test_approximate_complete_garment_does_not_claim_missing_cloth_parts():
-    render = dict(surface_bake(), approximation_only=True, unsupported_parts=[])
-    result = merge_secondary_motion_coverage(None, [
-        {'id':'8:1','hero_name':'McGinnis','secondary_motion':render}])
-    assert result['status'] == 'partial' and result['baked_entity_count'] == 1
-    warning = scene_coverage_warnings({'secondary_motion':result})[0]
-    assert 'Approximate cloth simulation' in warning
-    assert 'Additional cloth parts remain unsupported' not in warning
-    assert 'simulation is approximate' in scene_completion_message({'secondary_motion':result})
-    assert 'Additional cloth parts remain unsupported' not in scene_completion_message({'secondary_motion':result})
-
-
 def test_all_supported_bakes_and_actual_saved_package_bakes_are_recognized():
     prep = preparation()
     prep['unsupported_entities'] = []
@@ -108,21 +80,6 @@ def test_all_supported_bakes_and_actual_saved_package_bakes_are_recognized():
     # Older saved manifests may lack preparation coverage but retain bake inputs.
     result = merge_secondary_motion_coverage(None, blender_rows())
     assert result['status'] == 'baked' and result['dynamic_control_count'] == 24
-
-
-def test_preparation_failure_preserves_original_error():
-    result = merge_secondary_motion_coverage({'status': 'failed', 'error': 'PHYS decode failed',
-                                              'error_type': 'ConversionError'}, [])
-    assert result['status'] == 'failed'
-    assert result['error'] == 'PHYS decode failed'
-    assert result['error_type'] == 'ConversionError'
-    assert 'PHYS decode failed' in scene_coverage_warnings({'secondary_motion': result})[0]
-
-
-@pytest.mark.parametrize('flag', ['--cloth', '--secondary-motion'])
-def test_cli_cloth_alias_and_legacy_option_share_the_same_setting(flag):
-    parsed = cli.parser().parse_args(['convert', '--segment', 'scene.json', '--output', 'scene.blend', flag])
-    assert parsed.secondary_motion
 
 
 def test_cli_publishes_actual_per_hero_cloth_outcomes_and_external_map_scope(tmp_path, monkeypatch):

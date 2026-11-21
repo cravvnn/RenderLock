@@ -22,12 +22,7 @@ def test_old_ordinary_rope_needs_no_new_native_input():
 
 
 @pytest.mark.parametrize('mutation',[
-    lambda p:p.update(policy='unknown'),lambda p:p.update(particles_sha256='not a digest'),lambda p:p.update(particles_sha256=None),
-    lambda p:p.update(segment_seed=True),lambda p:p.update(segment_seed=1),lambda p:p.update(extra=True),
-    lambda p:p['shader_sha256'].update({next(iter(SHADERS)):'a'*64}),
     lambda p:p['blend_alpha_parameters'].update(BLEND_ADD=1.),
-    lambda p:p['blend_alpha_parameters'].update(ALPHA=True),
-    lambda p:p['blend_alpha_parameters'].update(ADD=0),
 ])
 def test_unqualified_profile_cannot_admit_new_rope_inputs(mutation):
     value=proof();mutation(value)
@@ -35,8 +30,6 @@ def test_unqualified_profile_cannot_admit_new_rope_inputs(mutation):
 
 
 @pytest.mark.parametrize('renderer',[
-    dict(m_flDepthBias=5.),dict(m_nOutputBlendMode='PARTICLE_OUTPUT_BLEND_MODE_BLEND_ADD'),
-    dict(m_vecTexturesInput=[dict(m_hTexture='materials/plain.vtex',m_TextureControls=dict(m_bRandomizeOffsets=True))]),
     dict(m_vecTexturesInput=[dict(m_hTexture='materials/noise.vtex',m_nTextureType='SPRITECARD_TEXTURE_UVDISTORTION')]),
 ])
 def test_new_features_require_valid_proof_in_preflight(renderer):

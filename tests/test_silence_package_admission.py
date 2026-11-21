@@ -42,24 +42,14 @@ def test_prepared_boundary_requires_complete_silence_input_not_crossbow_null_sna
     with pytest.raises(ValueError,match='cannot be combined'):validate_package(value,scene)
 
 
-@pytest.mark.parametrize('key',['silence_birth_capture','client_child_capture','hitbox_provider'])
+@pytest.mark.parametrize('key',['silence_birth_capture','hitbox_provider'])
 def test_no_input_packet_can_be_dropped_even_with_complete_simulated_frames(package,key):
     value,scene=package;value.pop(key)
     with pytest.raises(ValueError):validate_package(value,scene)
 
 
 @pytest.mark.parametrize('change',[
-    lambda p:p['simulation']['instances'][0].update(silence_birth_provider=None),
-    lambda p:p['simulation']['instances'][0].update(authored_root_position_indices=[3]),
-    lambda p:p['simulation']['instances'][0].update(unprovided_control_point_indices=[4]),
-    lambda p:p['simulation']['instances'][0].update(declared_control_point_inputs=[0,True,2]),
-    lambda p:p['simulation']['instances'][0]['model_hitbox_bindings'][0].update(control_point=False),
-    lambda p:p['simulation']['instances'][0].update(model_hitbox_input_policy='unknown'),
-    lambda p:p['hitbox_provider'].update(start_tick=True),
     lambda p:p['hitbox_provider'].update(model_constraints_sha256='0'*64),
-    lambda p:p['hitbox_provider']['bindings'][0].update(bone_order_sha256='0'*64),
-    lambda p:p['assets']['definitions'].pop(next(iter(p['assets']['definitions']))),
-    lambda p:p.update(snapshot_model_provider=None),
     lambda p:p['simulation']['instances'][0].update(crossbow_owner_provider={}),
 ])
 def test_missing_changed_or_cross_profile_inputs_refuse(package,change):

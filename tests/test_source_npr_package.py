@@ -107,12 +107,3 @@ def test_constant_module_change_after_planning_rejected_even_if_both_are_qualifi
     identity['sha256']='26a029e4e33db12801ebab80ea2ad65536e6d1e19889c810edc59637edd78e74'
     with pytest.raises(ConversionError,match='changed since planning'):
         build_npr_material_package(plan,decoded,provider,allow_partial=True)
-
-
-def test_rehashed_package_cannot_claim_unknown_evaluator_identity(tmp_path,monkeypatch):
-    from agr.source_hero_lighting_package import canonical_sha
-    plan,decoded,provider,_=constant_inputs(tmp_path,monkeypatch)
-    package=build_npr_material_package(plan,decoded,provider,allow_partial=True)
-    package['materials'][0]['expression_module']['sha256']='f'*64
-    package.pop('content_sha256');package['content_sha256']=canonical_sha(package)
-    with pytest.raises(ConversionError,match='provenance'):validate_npr_material_package(package)

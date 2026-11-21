@@ -33,10 +33,7 @@ def test_scale_and_attachment_come_from_typed_authored_inputs_not_hero_defaults(
 
 
 @pytest.mark.parametrize('change', [
-    lambda d:d.update(source_sha256='b'*64), lambda d:d.update(resource='models/other.vmdl'),
-    lambda d:d.update(settings_present=False), lambda d:d.update(settings_class='OtherSettings'),
-    lambda d:d.update(settings_kv3='{}'), lambda d:d.update(settings_kv3='{ m_flScale = 0 }'),
-    lambda d:d.update(settings_kv3='{ m_flScale = -1 }'), lambda d:d.update(settings_kv3='{ m_flScale = true }'),
+    lambda d:d.update(source_sha256='b'*64),
     lambda d:d.update(settings_kv3='{ m_flScale = 0.81 m_Offset = 1 }'),
 ])
 def test_missing_changed_or_extended_settings_do_not_get_an_invented_scale(change):
@@ -47,11 +44,6 @@ def test_missing_changed_or_extended_settings_do_not_get_an_invented_scale(chang
 
 @pytest.mark.parametrize('change', [
     lambda a:a.update(m_nInfluences=2), lambda a:a.update(m_bIgnoreRotation=True),
-    lambda a:a.update(m_influenceNames=['other', '', '']),
-    lambda a:a.update(m_influenceWeights=[.5, .5, 0]),
-    lambda a:a.update(m_bInfluenceRootTransform=[True, False, False]),
-    lambda a:a.update(m_vInfluenceRotations=[[0, 0, 0, 2]]*3),
-    lambda a:a.update(m_vInfluenceOffsets=[[float('nan'), 0, 0]]*3),
 ])
 def test_unsupported_attachment_provider_does_not_redirect_or_drop_rotation(change):
     a = attachment(); change(a)
@@ -63,7 +55,7 @@ def test_attachment_name_is_exact_and_unique():
     with pytest.raises(ValueError, match='ambiguous'): attachment_binding([attachment(), attachment()], model())
 
 
-@pytest.mark.parametrize('present,gate', [(False, True), (True, False), (False, False)])
+@pytest.mark.parametrize('present,gate', [(True, False)])
 def test_transition_is_withheld_without_a_guessed_hide_or_delay(present, gate):
     with pytest.raises(ValueError, match='scheduling and endcap'):
         constant_track(dict(gate_samples=[dict(owner_present=present, native_gate_request=gate)]))

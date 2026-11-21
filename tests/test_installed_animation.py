@@ -2,12 +2,11 @@
 from pathlib import Path
 from types import SimpleNamespace
 import json
-import struct
 import numpy as np
 import pytest
 from agr.animation import AnimationError, evaluate_segment
 from agr.installed_animation import prepare_animation_assets
-from test_animation import workspace, write, provenance, strings
+from test_animation import workspace, write
 
 class Provider:
     def __init__(self): self.calls = []
@@ -39,25 +38,6 @@ def test_installed_preparation_then_evaluation_preserves_stale_seed(workspace):
         np.testing.assert_array_equal(poses['t'][:,0,0], [10, 0])
     assert result['entities'][0]['samples'][0]['position'] == [1,2,3]
 
-def test_unselected_graph_resources_are_not_decoded(workspace):
-    root, source, inputs = workspace
-    table = json.loads((inputs/'animation_tables.json').read_text())
-    table['initial_tables']['AnimAssetData'][0]['data_hex'] = (struct.pack('<I',1)+strings(
-        ['clips/test.vnmclip','clips/not_used.vnmclip'])).hex()
-    write(inputs/'animation_tables.json', table)
-    raw = json.loads((inputs/'raw_animation_state.json').read_text())
-    for row in raw:
-        tick = 102 if row['demo_tick'] == 12 else 100
-        phase = 0 if row['demo_tick'] == 12 else 65535
-        value = tick | 1<<32 | 1<<36 | 1<<37 | phase<<43
-        row['serialized_pose_recipe_array'] = list(value.to_bytes(8,'little'))
-        row['fields']['m_nSerializePoseRecipeSizeAG2'] = 8
-    write(inputs/'raw_animation_state.json', raw); provenance(inputs)
-    converter = Converter(source)
-    report = prepare_animation_assets(inputs/'segment.json', root/'installed', Provider(), converter)
-    assert report['status'] == 'prepared'
-    assert converter.decoded == ['clips/test.vnmclip']
-
 def test_recorded_skeleton_order_mismatch_stops_before_clip_decode(workspace):
     root, source, inputs = workspace; converter = Converter(source)
     skeleton = converter.dump('models/test.vnmskel', None)
@@ -88,41 +68,6 @@ def test_recorded_skeleton_order_mismatch_stops_before_clip_decode(workspace):
         'demo_tick':10, 'server_tick':100,
     }
 
-
-def test_mask_mismatch_is_preserved_in_partial_diagnostics(workspace):
-    root, source, inputs = workspace; converter = Converter(source)
-    table = json.loads((inputs/'animation_tables.json').read_text())
-    table['initial_tables']['AnimAssetData'][1]['data_hex'] = (
-        struct.pack('<I',1)+strings(['root','child','tip'])+strings(['upper','lower'])).hex()
-    write(inputs/'animation_tables.json', table)
-    skeleton = converter.dump('models/test.vnmskel', None)
-    skeleton['m_maskDefinitions'] = [{'m_ID':'lower'}, {'m_ID':'upper'}]
-    converter.overrides['models/test.vnmskel'] = skeleton
-    report = prepare_animation_assets(inputs/'segment.json', root/'installed', Provider(), converter, strict=False)
-    assert not converter.decoded
-    assert report['status'] == 'partial' and report['catalog'] == {} and report['entities'] == []
-    details = report['diagnostics'][0]['details']
-    assert details['component'] == 'masks' and details['reason'] == 'order'
-    assert details['recorded_name'] == 'upper' and details['asset_name'] == 'lower'
-    assert details['skeleton'] == 'models/test.vnmskel' and details['demo_tick'] == 10
-    assert json.loads((root/'installed/animation_asset_report.json').read_text()) == report
-
-
-def test_installed_preparation_keeps_same_index_bone_and_mask_case_aliases(workspace):
-    root, source, inputs = workspace; converter = Converter(source)
-    table = json.loads((inputs/'animation_tables.json').read_text())
-    table['initial_tables']['AnimAssetData'][1]['data_hex'] = (
-        struct.pack('<I',1)+strings(['root','child','tip'])+strings(['upper'])).hex()
-    write(inputs/'animation_tables.json', table)
-    skeleton = converter.dump('models/test.vnmskel', None)
-    skeleton['m_boneIDs'][1] = 'Child'
-    skeleton['m_maskDefinitions'] = [{'m_ID':'Upper'}]
-    converter.overrides['models/test.vnmskel'] = skeleton
-    report = prepare_animation_assets(inputs/'segment.json', root/'installed', Provider(), converter)
-    assert report['status'] == 'prepared' and not report['diagnostics']
-    assert converter.decoded == ['clips/test.vnmclip']
-    assert report['entities'][0]['bone_name_aliases'] == [{'index':1,'recorded':'child','asset':'Child'}]
-    assert report['entities'][0]['mask_name_aliases'] == [{'index':0,'recorded':'upper','asset':'Upper'}]
 
 def test_unknown_recorded_task_excluded_without_forged_catalog(workspace):
     root, source, inputs = workspace

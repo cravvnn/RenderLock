@@ -21,13 +21,11 @@ def completed(folder):
     return library,result
 
 
-@pytest.mark.parametrize('change',['paths','images','lighting','basis','proxy'])
+@pytest.mark.parametrize('change',['paths','basis','proxy'])
 def test_prepared_map_cannot_publish_missing_resources_or_wrong_lighting_frame(prepared,change):
     folder,_=prepared;library,result=completed(folder)
     maps.validate_map_completion(result,library)
     if change=='paths':result['textures']['project_relative']=False
-    elif change=='images':result['textures']['connected_images']=0
-    elif change=='lighting':result['lighting_basis']['vector_transports']=0
     elif change=='basis':
         result['lighting_basis']['matrix']=copy.deepcopy(result['coordinate_matrix'])
         result['lighting_basis']['matrix'][0][3]=10

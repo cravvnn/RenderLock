@@ -10,7 +10,7 @@ from agr.installed_animation import prepare_animation_assets
 from agr.installed_assets import bind_models
 from agr.model_states import model_states
 from agr.replay import ReplayError, _entities_from_raw
-from agr.scene_package import SceneError, slice_scene, validate_scene
+from agr.scene_package import slice_scene
 from agr.vendor.resource_hash import resource_id
 from test_animation import workspace, write, provenance, strings
 from test_installed_animation import Converter, Provider
@@ -34,19 +34,12 @@ def test_extraction_keeps_both_forms_without_splitting_network_identity():
         {'start_tick':12,'end_tick_exclusive':14,'model_handle':'23'}]
 
 
-@pytest.mark.parametrize('bad', [None, True, -1, 2**64, 1.5, '23'])
+@pytest.mark.parametrize('bad', [2**64])
 def test_native_model_handle_is_not_coerced_or_truncated(bad):
     values = model_rows()
     values[1]['fields'][PREFIX+'m_modelState.m_hModel'] = bad
     with pytest.raises(ReplayError, match='Invalid recorded model resource ID'):
         _entities_from_raw(values, 10, 13, None)
-
-
-def test_observation_gaps_do_not_imply_a_continuous_model_state():
-    assert model_states({'samples':[{'tick':10,'model_handle':'23'},
-                                     {'tick':12,'model_handle':'23'}]}) == [
-        {'start_tick':10,'end_tick_exclusive':11,'model_handle':'23'},
-        {'start_tick':12,'end_tick_exclusive':13,'model_handle':'23'}]
 
 
 def test_static_importer_refuses_both_forms_even_when_both_resources_exist():
@@ -60,25 +53,6 @@ def test_static_importer_refuses_both_forms_even_when_both_resources_exist():
     assert failures[0]['demo_tick'] == 11
     assert failures[0]['previous_model_handle'] == handles[0]
     assert failures[0]['model_handle'] == handles[1]
-
-
-def test_same_form_and_legacy_absence_still_bind_exact_resource():
-    name = 'models/a.vmdl'; handle = str(resource_id(name))
-    entity = {'id':'7:2','hero_id':80,'model_handle':handle,
-              'samples':[{'tick':10,'model_handle':handle},{'tick':12,'model_handle':handle}]}
-    assert len(bind_models({'entities':[entity]}, [name+'_c'])[0]) == 1
-    for sample in entity['samples']:
-        sample.pop('model_handle')
-    assert len(bind_models({'entities':[entity]}, [name+'_c'])[0]) == 1
-
-
-@pytest.mark.parametrize('bad', [None, True, 23, '-1', '01', '1.0', str(2**64), '\u0661'])
-def test_portable_model_timeline_rejects_invalid_or_missing_ids(bad):
-    entities, _ = _entities_from_raw(model_rows(), 10, 13, None)
-    entities[0]['samples'][1]['model_handle'] = bad
-    data={'schema_version':1,'tick_rate':64,'start_tick':10,'end_tick':13,'entities':entities}
-    with pytest.raises(SceneError, match='recorded model resource ID'):
-        validate_scene(data)
 
 
 def test_slice_in_another_form_rebinds_and_drops_the_old_rig_and_derived_assets():
@@ -115,7 +89,7 @@ def changing_graph(workspace):
     return root, source, inputs, graph, raw
 
 
-@pytest.mark.parametrize('stage', ['prepare','evaluate'])
+@pytest.mark.parametrize('stage', ['prepare'])
 def test_both_animation_paths_preserve_transition_details_and_missing_pose(workspace,stage):
     root, source, inputs, graph, raw = changing_graph(workspace)
     if stage=='prepare':

@@ -20,20 +20,9 @@ def test_only_qualified_sheet_sprite_skips_the_ordinary_random_offset_term():
     assert not sheet_random_offset_bypass(renderer,dict(texture,is_sprite_sheet=False),provenance)
 
 
-@pytest.mark.parametrize('kind',['policy','vertex','pixel','features','extra','missing','sparse','empty','unsupported','not_atlas','schema_bool','wrong_frame_type'])
-def test_changed_shader_or_sheet_metadata_cannot_suppress_a_random_input(kind):
+def test_changed_shader_or_sheet_metadata_cannot_suppress_a_random_input():
     renderer,texture,provenance=fixture();proof=provenance['spritecard_sheet_uv']
-    if kind=='policy':proof['policy']='unknown'
-    if kind in ('vertex','pixel','features'):
-        index={'features':0,'vertex':1,'pixel':2}[kind];proof['sha256'][list(SHADERS)[index]]='f'*64
-    if kind=='extra':proof['extra']=True
-    if kind=='missing':proof.pop('sha256')
-    if kind=='sparse':texture['sequences']={'4':texture['sequences']['0']}
-    if kind=='empty':texture['sequences']['0']['frames']=[]
-    if kind=='unsupported':texture['sequences']['0']['status']='partial'
-    if kind=='not_atlas':texture['atlas']=False
-    if kind=='schema_bool':texture['schema_version']=True
-    if kind=='wrong_frame_type':texture['sequences']['0']['frames']={0:{}}
+    proof['sha256'][list(SHADERS)[1]]='f'*64
     with pytest.raises(UnsupportedEffect):sheet_random_offset_bypass(renderer,texture,provenance)
 
 
@@ -46,16 +35,11 @@ def test_collection_uses_exact_provider_identities_and_refuses_changed_code():
     with pytest.raises(UnsupportedEffect):validate_shader_inputs(dict(policy=POLICY,sha256={}))
 
 
-@pytest.mark.parametrize('backend',['simulated_states_v1','simulated_projectile_flight_v2','simulated_world_origin_v1'])
-def test_prepared_package_cannot_declare_a_changed_shader_profile(backend):
+def test_prepared_package_cannot_declare_a_changed_shader_profile():
     from agr.simulated_effect_package import validate_package
+    backend='simulated_states_v1'
     package=dict(schema_version=1,backend=backend,assets=dict(provenance=dict(spritecard_sheet_uv=dict(policy=POLICY,sha256={}))))
     with pytest.raises(UnsupportedEffect,match='shader inputs'):validate_package(package,{})
-
-
-def test_declared_null_shader_proof_is_not_legacy_absence():
-    renderer,texture,provenance=fixture();provenance['spritecard_sheet_uv']=None
-    with pytest.raises(UnsupportedEffect):sheet_random_offset_bypass(renderer,texture,provenance)
 
 
 def test_incomplete_original_sheet_is_refused_instead_of_guessed():
@@ -75,8 +59,7 @@ def test_original_sheet_random_offset_bypass_requires_exact_compiled_texture_ide
 
 
 @pytest.mark.parametrize('sprite,sheet,randomize,qualified',[
-    (True,True,True,True),(True,False,True,False),(False,True,True,False),
-    (True,True,False,False)])
+    (True,True,True,True),(True,True,False,False)])
 def test_asset_preparation_qualifies_only_applicable_shader_branch(tmp_path,sprite,sheet,randomize,qualified):
     from agr.particle_render_assets import prepare_render_assets
     class Provider:

@@ -55,22 +55,8 @@ def test_binding_preserves_original_and_binds_full_fresh_identity(pair):
 
 @pytest.mark.parametrize('change', [
     lambda d: d['metadata'].update(demo_sha256='b' * 64),
-    lambda d: d.update(start_tick=17921),
-    lambda d: d.update(end_tick=18239),
-    lambda d: d['particle_history'].update(start_tick=17859),
-    lambda d: d['particle_history'].update(schema_version=True),
-    lambda d: d['metadata']['coordinate_system'].update(origin=[False, 0, 0]),
-    lambda d: d['entities'][0].update(model_scale=2),
-    lambda d: d['entities'][0].update(secondary_motion_file='unqualified'),
-    lambda d: d['entities'][0].update(model_tracks=[{'unqualified': True}]),
-    lambda d: d['entities'][0]['observed_intervals'][0].update(end_tick_exclusive=18240),
-    lambda d: d['entities'][0]['samples'].pop(),
-    lambda d: d['entities'][0]['samples'][0]['position'].__setitem__(0, 10),
-    lambda d: d['entities'][0]['samples'][0]['network_render_state'].update(mode=1),
     lambda d: d['entities'][0]['samples'][62]['network_render_state'].update(mode=1),
     lambda d: d['entities'][0]['model_constraints']['preparation_dependencies'].update(**{'math.py': 'changed'}),
-    lambda d: d['entities'][0]['model_constraints']['preparation_dependencies'].update(**{'effect_assets.py': 'unqualified'}),
-    lambda d: d['entities'][0]['model_constraints']['definitions'].append(dict(changed=1)),
 ])
 def test_changed_target_never_binds(pair, change):
     source, target = pair

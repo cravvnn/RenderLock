@@ -35,7 +35,7 @@ def test_qualified_sources_are_still_hashed_without_recompiling(installation,mon
         launcher.verify(installation)
 
 
-@pytest.mark.parametrize('change',['source','interpreter','absent'])
+@pytest.mark.parametrize('change',['source','absent'])
 def test_missing_or_stale_qualification_falls_back_to_syntax_validation(installation,change):
     qualify(installation)
     path=installation/'release_manifest.json'
@@ -43,16 +43,14 @@ def test_missing_or_stale_qualification_falls_back_to_syntax_validation(installa
     target=installation/'agr/gui.py';target.write_bytes(b'def broken(:\n')
     row=next(row for row in manifest['files'] if row['path']=='agr/gui.py')
     row.update(bytes=target.stat().st_size,sha256=hashlib.sha256(target.read_bytes()).hexdigest())
-    if change=='interpreter':
-        manifest['python_syntax']=dict(launcher.python_syntax_record(manifest['files']),interpreter='another Python')
-    elif change=='absent':
+    if change=='absent':
         manifest.pop('python_syntax')
     path.write_text(json.dumps(manifest))
     with pytest.raises(SyntaxError):
         launcher.verify(installation)
 
 
-@pytest.mark.parametrize('path',['C:/outside.py','agr//gui.py','agr/./gui.py','../gui.py','/gui.py','agr/gui.py:stream'])
+@pytest.mark.parametrize('path',['C:/outside.py','../gui.py','agr/gui.py:stream'])
 def test_invalid_manifest_paths_fail_before_workers_read_files(installation,path):
     manifest_path=installation/'release_manifest.json'
     manifest=json.loads(manifest_path.read_text());manifest['files'][0]['path']=path

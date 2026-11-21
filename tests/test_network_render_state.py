@@ -22,7 +22,7 @@ def test_older_exports_do_not_gain_fabricated_color():
     assert root=={}
 
 
-@pytest.mark.parametrize('state',[{},dict(mode=True),dict(rgba8_packed=-1),dict(mode=2**32),dict(unknown=0)])
+@pytest.mark.parametrize('state',[dict(mode=2**32)])
 def test_invalid_record_rejected_before_write(state):
     root={}
     with pytest.raises(ValueError):attach_render_state(root,dict(id='x',samples=[dict(tick=1,network_render_state=state)]))

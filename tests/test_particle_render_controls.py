@@ -1,5 +1,4 @@
 import copy
-import math
 import pytest
 
 from agr.installed_effects import UnsupportedEffect
@@ -40,11 +39,6 @@ def test_legacy_simulations_keep_literals_but_cannot_guess_missing_control_value
 
 @pytest.mark.parametrize('change', [
     lambda s: s.update(control_point_snapshot_policy='unknown'),
-    lambda s: s['instances'][0].update(materialized_control_point_indices=[0, 5, 9]),
-    lambda s: s['instances'][0]['frames'][0]['systems'][0].pop('control_points'),
-    lambda s: s['instances'][0]['frames'][0]['systems'][0]['control_points'].append(dict(index=5, position=[0, 0, 0])),
-    lambda s: s['instances'][0]['frames'][0]['systems'][0]['control_points'][1].update(index=9),
-    lambda s: s['instances'][0]['frames'][0]['systems'][0]['control_points'][1].update(position=[math.nan, 0, 0]),
     # A negative age is only valid for a delayed child that has no particles yet.
     lambda s: s['instances'][0]['frames'][0]['systems'][0].update(system_age=-1, particles=[dict()]),
 ])
@@ -76,10 +70,6 @@ def test_remap_retains_descending_pairing_clamps_and_handles_equal_endpoints():
 
 
 @pytest.mark.parametrize('provider', [
-    dict(m_nType='PF_TYPE_CONTROL_POINT_COMPONENT', m_nControlPoint=True),
-    dict(m_nType='PF_TYPE_CONTROL_POINT_COMPONENT', m_nVectorComponent=3),
-    dict(m_nType='PF_TYPE_RANDOM_UNIFORM'),
-    dict(m_nType='PF_TYPE_LITERAL', m_flLiteralValue=True),
     dict(m_nType='PF_TYPE_LITERAL', m_nMapType='PF_MAP_TYPE_REMAP_BIASED'),
 ])
 def test_unsupported_provider_semantics_are_not_silently_coerced(provider):

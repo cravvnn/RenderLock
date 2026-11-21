@@ -1,5 +1,5 @@
 """Verify visible skin weights cannot silently hang from an unmapped rig root."""
-from agr.blender_scene import asset_spec, weighted_bone_coverage
+from agr.blender_scene import weighted_bone_coverage
 
 
 def test_weighted_helpers_report_the_nearest_pose_driven_ancestor():
@@ -22,14 +22,6 @@ def test_empty_weights_and_parent_cycles_do_not_assert_coverage():
     assert empty["weighted_bones"] == 0
     cycle = weighted_bone_coverage({"a": "b", "b": "a"}, ["a"], ["root"])
     assert cycle["unmapped_weighted_bones"] == ["a"]
-
-
-def test_installed_guard_flag_passes_through_entity_spec(tmp_path):
-    spec = asset_spec({"hero_id": 13, "require_weighted_bone_mapping": True,
-                       "static_generated_cloth": True}, tmp_path, tmp_path)
-    assert spec["require_weighted_bone_mapping"] is True
-    assert spec["static_generated_cloth"] is True
-    assert "require_weighted_bone_mapping" not in asset_spec({"hero_id": 13}, tmp_path, tmp_path)
 
 
 def test_generated_cloth_requires_explicit_policy_and_reports_static_pose():

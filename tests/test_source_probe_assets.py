@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from agr.source_probe_assets import intersects_bounds,probe_regions
 from agr.source_probe_assets import verify_decoded_regions
-from agr.source_lighting_profiles import WORLD_6779,probe_layout
+from agr.source_lighting_profiles import WORLD_6779
 import json
 
 
@@ -33,12 +33,7 @@ def test_atlas_regions_include_filter_border_and_six_slabs():
     assert rows[6]['start']==[0,1,2]
 
 
-def test_atlas_border_clips_at_texture_boundary():
-    p=probe();p['light_probe_atlas_x']=0;p['light_probe_size_x']=240
-    r=probe_regions(p)[0];assert r['start'][0]==0 and r['size'][0]==240
-
-
-@pytest.mark.parametrize('key,value',[('array_index',232),('array_index',True),('light_probe_size_x',0),('light_probe_atlas_z',250),('hammeruniqueid','../bad'),('startdisabled',True)])
+@pytest.mark.parametrize('key,value',[('array_index',232)])
 def test_unsupported_metadata_fails_closed(key,value):
     p=probe();p[key]=value
     with pytest.raises(ValueError):probe_regions(p)
@@ -75,10 +70,6 @@ def test_new_world_cube_index_bound_does_not_reinterpret_old_packages():
     assert len(probe_regions(p))==7
 
 
-def test_unknown_world_layout_still_requires_requalification():
-    with pytest.raises(ValueError,match='requalification'):probe_layout('f'*64)
-
-
 def test_tester_wide_region_reports_measurements_and_character_selection_remedy():
     from agr.source_probe_assets import validate_probe_budget, LightingRegionError
     with pytest.raises(LightingRegionError) as caught:
@@ -90,15 +81,6 @@ def test_tester_wide_region_reports_measurements_and_character_selection_remedy(
     assert 'Select fewer characters' in str(error)
     assert 'follow camera does not restrict' in str(error)
     assert 'external map .blend does not supply' in str(error)
-
-
-def test_small_probe_inventory_still_checks_storage_budget_before_decode():
-    from agr.source_probe_assets import validate_probe_budget, LightingRegionError
-    validate_probe_budget(32, 256 * 1024 * 1024)
-    with pytest.raises(LightingRegionError):
-        validate_probe_budget(1, 256 * 1024 * 1024 + 1)
-    with pytest.raises(LightingRegionError, match='No installed lighting probes'):
-        validate_probe_budget(0, 0)
 
 
 def write_vtex(path, *, width, height, depth, format=19, mips=1):

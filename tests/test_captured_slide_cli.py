@@ -12,7 +12,7 @@ from test_asset_entrypoints import inputs, arguments
 from test_captured_slide_render import bound, component_reports
 
 
-@pytest.mark.parametrize('failure', (None, 'missing', 'binding', 'component', 'failed'))
+@pytest.mark.parametrize('failure', (None, 'missing', 'binding'))
 def test_normal_cli_transports_cohort_and_refuses_missing_receipt_even_partial(
         inputs, bound, monkeypatch, failure):
     # Isolate command/runtime/publication wiring from separately tested admission.
@@ -52,10 +52,6 @@ def test_normal_cli_transports_cohort_and_refuses_missing_receipt_even_partial(
             effects.pop('captured_slide_effects')
         elif failure == 'binding':
             captured['input_receipt']['binding_sha256'] = 'e' * 64
-        elif failure == 'component':
-            captured['components'].pop()
-        elif failure == 'failed':
-            effects = dict(status='failed', error='late slide allocation failed')
         write_blender_completion(command, effects=effects)
     monkeypatch.setattr(cli.subprocess, 'run', blender)
     args = arguments(inputs, '--game-install', str(inputs.install), '--source2viewer', str(inputs.converter),

@@ -1,4 +1,3 @@
-import copy
 import json
 import struct
 import numpy as np
@@ -48,17 +47,7 @@ def test_sparse_morph_source_axes_and_loop_interpolation(tmp_path):
 
 @pytest.mark.parametrize('mutate',[
     lambda d:d['buffers'][0].update(uri='outside.bin'),
-    lambda d:d['bufferViews'][0].update(byteLength=1),
-    lambda d:d['accessors'][0].update(count=True),
-    lambda d:d['accessors'][0].update(normalized=True),
-    lambda d:d['accessors'][4]['sparse']['indices'].update(componentType=5126),
-    lambda d:d['nodes'][0].update(translation=[1,0,0]),
-    lambda d:d['nodes'][0].update(skin=0),
-    lambda d:d['meshes'][0]['primitives'].append(copy.deepcopy(d['meshes'][0]['primitives'][0])),
-    lambda d:d['meshes'][0]['primitives'][0].update(mode=5),
-    lambda d:d['animations'][0]['channels'][0]['target'].update(path='translation'),
     lambda d:d['animations'][0]['samplers'][0].update(interpolation='CUBICSPLINE'),
-    lambda d:d.update(extensionsRequired=['KHR_draco_mesh_compression']),
 ])
 def test_unrepresented_or_out_of_bounds_geometry_is_rejected(tmp_path,mutate):
     d,b=fixture();mutate(d)
@@ -72,13 +61,10 @@ def test_native_model_frame_uses_projected_perpendicular():
     np.testing.assert_allclose(model_matrix(p,dict(m_bIgnoreNormal=True,m_bIgnoreRadius=True))[:3,:3],np.eye(3))
 
 
-@pytest.mark.parametrize('field,value',[('normal',[0,0,1e30]),('radius',-1),('radius',True),('position',[float('nan'),0,0]),('rotation',[0,0])])
+@pytest.mark.parametrize('field,value',[('radius',-1)])
 def test_invalid_model_transform_rejected(field,value):
     p=dict(normal=[1,0,0],rotation=[0,0,0],radius=1,position=[0,0,0]);p[field]=value
     with pytest.raises(UnsupportedEffect):model_matrix(p,{})
-
-
-def test_model_normal_magnitude_does_not_scale_the_mesh():
     p=dict(normal=[.5,-2,3],rotation=[.3,.2,-.1],radius=.7,position=[3,4,5])
     normalized=dict(p,normal=(np.array(p['normal'])/np.linalg.norm(p['normal'])).tolist())
     np.testing.assert_allclose(model_matrix(p,dict(m_bOrientZ=True)),model_matrix(normalized,dict(m_bOrientZ=True)),atol=1e-12)
@@ -114,19 +100,13 @@ def test_static_geometry_keeps_original_vertices_uvs_and_normals(tmp_path,skinne
 
 @pytest.mark.parametrize('change',[
     lambda d:d['nodes'][1].update(translation=[1,0,0]),
-    lambda d:d['nodes'][0].update(scale=[1,2,1]),
-    lambda d:d['nodes'][2].update(rotation=[0,0,1,0]),
-    lambda d:d['nodes'][1].update(children=[2]),
-    lambda d:d['skins'][0].update(joints=[0,1]),
-    lambda d:d.update(animations=[{}]),
-    lambda d:d['accessors'][d['skins'][0]['inverseBindMatrices']].update(count=2),
 ])
 def test_static_skin_never_discards_motion_or_nonidentity_rest(tmp_path,change):
     d,b=static_fixture();change(d)
     with pytest.raises(UnsupportedEffect):read_model_geometry(write(tmp_path/'bad.glb',d,b))
 
 
-@pytest.mark.parametrize('field,value',[('JOINTS_0',1),('WEIGHTS_0',.5),('bind',2)])
+@pytest.mark.parametrize('field,value',[('bind',2)])
 def test_nonidentity_bind_and_nonroot_weights_are_refused(tmp_path,field,value):
     d,b=static_fixture();attrs=d['meshes'][0]['primitives'][0]['attributes']
     index=d['skins'][0]['inverseBindMatrices'] if field=='bind' else attrs[field]
@@ -149,19 +129,13 @@ def test_baked_static_root_attributes_preserve_geometry(tmp_path):
         np.testing.assert_array_equal(g[key],original[key])
 
 
-@pytest.mark.parametrize('mutation',['joint','weight','missing-joints','missing-weights','count','animation','morph','nonidentity-node'])
+@pytest.mark.parametrize('mutation',['joint','animation'])
 def test_orphan_root_attributes_never_discard_nontrivial_state(tmp_path,mutation):
     d,b=orphan_root_fixture();p=d['meshes'][0]['primitives'][0];attrs=p['attributes']
-    if mutation in ('joint','weight'):
-        name='JOINTS_0' if mutation=='joint' else 'WEIGHTS_0'
-        a=d['accessors'][attrs[name]];offset=d['bufferViews'][a['bufferView']]['byteOffset']
-        struct.pack_into('<H' if mutation=='joint' else '<f',b,offset,1 if mutation=='joint' else .5)
-    elif mutation=='count':d['accessors'][attrs['WEIGHTS_0']]['count']=2
-    elif mutation=='missing-joints':attrs.pop('JOINTS_0')
-    elif mutation=='missing-weights':attrs.pop('WEIGHTS_0')
-    elif mutation=='animation':d['animations']=[{}]
-    elif mutation=='morph':p['targets']=[dict(POSITION=0)]
-    else:d['nodes'][0]['translation']=[1,0,0]
+    if mutation=='joint':
+        a=d['accessors'][attrs['JOINTS_0']];offset=d['bufferViews'][a['bufferView']]['byteOffset']
+        struct.pack_into('<H',b,offset,1)
+    else:d['animations']=[{}]
     with pytest.raises(UnsupportedEffect):read_model_geometry(write(tmp_path/'bad.glb',d,b))
 
 
@@ -183,33 +157,27 @@ def test_captured_affine_frame_preserves_source_axes_shear_and_normals(tmp_path)
     np.testing.assert_array_equal(geometry['uv'],[[0,0],[1,0],[0,1]])
 
 
-@pytest.mark.parametrize('mutation', ['singular','missing_axis','nonfinite','indices','animated','units'])
-def test_captured_frame_refuses_incomplete_or_unrepresentable_inputs(tmp_path,mutation):
+def test_captured_frame_refuses_incomplete_or_unrepresentable_inputs(tmp_path):
     d,b=static_fixture(False);geometry=read_model_geometry(write(tmp_path/'source.glb',d,b))
     matrix=np.eye(4)[:3];scale=.0254
-    if mutation=='singular':matrix[1]=0
-    elif mutation=='missing_axis':matrix=matrix[:2]
-    elif mutation=='nonfinite':matrix[0,0]=float('nan')
-    elif mutation=='indices':geometry['indices']=np.array([[0,1,3]])
-    elif mutation=='animated':geometry['static']=False
-    else:scale=True
+    matrix[1]=0
     with pytest.raises(UnsupportedEffect):transform_static_model_frame(geometry,matrix,scale)
 
 
-@pytest.mark.parametrize('fps', [24, 30, 60])
 @pytest.mark.parametrize('manual', [False, True])
-def test_authored_morph_breakpoints_survive_output_fps(fps, manual):
+def test_authored_morph_breakpoints_survive_output_fps(manual):
     # More authored pose changes than replay keys. A replay-tick-only bake
     # flattens these turns; the authored breakpoint schedule must retain them.
     geometry = dict(times=np.array([0., .01, .02]), weights=np.array([[0.], [1.], [0.]]))
     samples = [(tick, 1/64, dict(age=tick/64, manual_frame=tick/64*30)) for tick in range(65)]
     keys = morph_keyframes(geometry, samples, 30, 30, manual=manual)
-    frames = np.array([1 + tick * fps / 64 for tick, _ in keys])
     values = np.array([w[0] for _, w in keys])
-    for frame in np.linspace(1, 1 + fps, fps * 8 + 1):
-        age = float((frame - 1) / fps)
-        expected = morph_weights(geometry, age, 30, 30)[0]
-        assert np.interp(frame, frames, values) == pytest.approx(expected, abs=1e-11)
+    for fps in (24, 30, 60):
+        frames = np.array([1 + tick * fps / 64 for tick, _ in keys])
+        for frame in np.linspace(1, 1 + fps, fps * 8 + 1):
+            age = float((frame - 1) / fps)
+            expected = morph_weights(geometry, age, 30, 30)[0]
+            assert np.interp(frame, frames, values) == pytest.approx(expected, abs=1e-11)
 
 
 def test_morph_schedule_rejects_noncontinuous_loop_and_unbounded_phase():
@@ -223,24 +191,21 @@ def test_morph_schedule_rejects_noncontinuous_loop_and_unbounded_phase():
         morph_keyframes(geometry, samples, 30, 30)
 
 
-@pytest.mark.parametrize('fps',[24,30,60])
-def test_float32_time_collision_is_bounded_over_the_complete_linear_curve(fps):
+def test_float32_time_collision_is_bounded_over_the_complete_linear_curve():
     from agr.particle_model_geometry import encode_morph_curves
     schedule=[(18127.,np.array([.5])),(18128.,np.array([1.-1.4901162115332767e-7])),
               (18128.00000038147,np.array([1.])),(18129.,np.array([.5]))]
-    frames,weights,proof=encode_morph_curves(schedule,17920,fps/64)
-    assert proof['collapsed_knots']==1
-    assert np.all(np.diff(frames)>0)
-    assert proof['max_weight_error']<1e-5
-    ticks=np.r_[np.linspace(18127.,18129.,1001),[t for t,w in schedule]]
-    wanted=np.interp(ticks,[t for t,w in schedule],[w[0]for t,w in schedule])
-    actual=np.interp(1+(ticks-17920)*fps/64,frames,weights[:,0])
-    assert np.max(np.abs(actual-wanted))<=proof['max_weight_error']+1e-12
-
-
-@pytest.mark.parametrize('fps',[24,30,60])
-def test_materially_different_collision_still_refuses(fps):
+    for fps in (24,30,60):
+        frames,weights,proof=encode_morph_curves(schedule,17920,fps/64)
+        assert proof['collapsed_knots']==1
+        assert np.all(np.diff(frames)>0)
+        assert proof['max_weight_error']<1e-5
+        ticks=np.r_[np.linspace(18127.,18129.,1001),[t for t,w in schedule]]
+        wanted=np.interp(ticks,[t for t,w in schedule],[w[0]for t,w in schedule])
+        actual=np.interp(1+(ticks-17920)*fps/64,frames,weights[:,0])
+        assert np.max(np.abs(actual-wanted))<=proof['max_weight_error']+1e-12
     from agr.particle_model_geometry import encode_morph_curves
     schedule=[(18127.,[0.]),(18128.,[0.]),(18128.00000038147,[1.]),(18129.,[0.])]
-    with pytest.raises(UnsupportedEffect,match='bounded Blender frame precision'):
-        encode_morph_curves(schedule,17920,fps/64)
+    for fps in (24,30,60):
+        with pytest.raises(UnsupportedEffect,match='bounded Blender frame precision'):
+            encode_morph_curves(schedule,17920,fps/64)

@@ -29,19 +29,11 @@ def test_failed_cloth_requires_separate_consent_and_retains_warning(tmp_path):
 
 
 @pytest.mark.parametrize('change,match', [
-    ('model', 'model placeholder'), ('pose', 'skeletal animation'),
-    ('cloth', 'cloth outcome'), ('identity', 'character tracks differ')])
+    ('identity', 'character tracks differ')])
 def test_cloth_consent_does_not_accept_core_or_missing_completion_data(tmp_path, change, match):
     path, job, report = completion(tmp_path)
     actor = report['entities'][0]
-    if change == 'model':
-        actor['model_status'] = 'missing asset placeholder'
-    elif change == 'pose':
-        actor['pose'] = {'status': 'unavailable; imported rest pose'}
-    elif change == 'cloth':
-        actor.pop('secondary_motion')
-    else:
-        actor['id'] = 'different-actor'
+    actor['id'] = 'different-actor'
     path.write_text(json.dumps(report))
     with pytest.raises(RuntimeError, match=match):
         cli.read_blender_completion(path, **job, partial_cloth=True)

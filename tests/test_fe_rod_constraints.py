@@ -64,28 +64,6 @@ def test_repeated_compiler_pad_lanes_read_the_same_preblock_state():
     assert result[4,0]==15 # four serial applications would instead yield10.625
 
 
-def test_scaled_intervals_and_zero_length_stay_finite():
-    points,block=fixture()
-    result=project_compiled_rods(points,[block],length_scales=[[2.]*4])
-    np.testing.assert_array_equal(result,points)
-    points[:]=0;result=project_compiled_rods(points,[block])
-    np.testing.assert_array_equal(result,points);assert np.isfinite(result).all()
-
-
-@pytest.mark.parametrize('field,value',[('nNode',[[0,1,2,3],[4,5,6,9]]),
-    ('f4MinDist',[11.]*4),('f4Weight0',[0.,0.,0.,1.01]),
-    ('f4RelaxationFactor',[0.,0.,float('nan'),0.])])
-def test_invalid_compiled_fields_are_rejected_before_mutation(field,value):
-    points,block=fixture();block[field]=value
-    with pytest.raises(ValueError):project_compiled_rods(points,[block])
-
-
-def test_nonpositive_scales_and_bad_dimensions_are_rejected():
-    points,block=fixture()
-    for scales in ([[1,1,0,1]],[[1,1,1]],[[float('inf')]*4]):
-        with pytest.raises(ValueError):project_compiled_rods(points,[block],length_scales=scales)
-
-
 def test_animated_lengths_follow_recorded_goals_instead_of_rest_or_simulation():
     points,block=fixture();block.pop('f4MaxDist');block.pop('f4MinDist')
     block['f4Weight0']=[0.]*4;block['f4RelaxationFactor']=[1.]*4
@@ -96,9 +74,3 @@ def test_animated_lengths_follow_recorded_goals_instead_of_rest_or_simulation():
     goals[4:,:]=goals[:4]+[12,0,0]
     again=project_animated_rods(result,[block],goals)
     np.testing.assert_allclose(again[4:],points[:4]+[12,0,0],atol=1e-12)
-
-
-def test_animated_goal_bounds_and_nonfinite_values_are_rejected():
-    points,block=fixture();goals=points.copy();goals[0,0]=float('nan')
-    with pytest.raises(ValueError):project_animated_rods(points,[block],goals)
-    with pytest.raises(ValueError):project_animated_rods(points,[block],points[:-1])

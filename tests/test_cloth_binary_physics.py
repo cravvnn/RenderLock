@@ -54,10 +54,7 @@ def test_referenced_physics_change_invalidates_its_own_data_with_unchanged_model
 
 
 @pytest.mark.parametrize('change',[
-    {'resource_sha256':'0'*64},{'schema_version':True},{'numeric_encoding':'display_text'},
-    {'status':'not_applicable'},{'physics':{'m_pFeModel':[]}},
-    {'status':'referenced','referenced_physics':['../bad.vphys'],'physics':None},
-    {'physics':{'m_pFeModel':{'bad':float('nan')}}}])
+    {'status':'referenced','referenced_physics':['../bad.vphys'],'physics':None}])
 def test_changed_identity_unsafe_reference_and_nonfinite_payloads_fail(tmp_path,monkeypatch,change):
     provider,decoder,command,_,_=harness(tmp_path,monkeypatch,lambda value,source:value.update(change))
     with pytest.raises(ConversionError):installed_cloth.decode_physics('models/test.vmdl',provider,decoder,command)

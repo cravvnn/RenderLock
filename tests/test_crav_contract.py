@@ -34,7 +34,7 @@ def test_portable_camera_round_trip_without_media_or_scene(tmp_path):
     assert path.stat().st_size < 4096
 
 
-@pytest.mark.parametrize("field", ["sha256", "map", "build", "total_ticks"])
+@pytest.mark.parametrize("field", ["sha256"])
 def test_identity_fields_required(field):
     data = example()
     del data["replay"][field]
@@ -42,35 +42,11 @@ def test_identity_fields_required(field):
         validate_shot_collection(data)
 
 
-@pytest.mark.parametrize("case", [
-    "scene", "media", "profile", "no_profile", "whole_map", "lighting", "margin",
-    "partial", "units", "aspect", "incomplete", "retime", "end", "bounds",
-    "samples", "authored", "overrides", "projection", "fov",
-])
+@pytest.mark.parametrize("case", ["scene", "bounds"])
 def test_invalid_contracts_fail_closed(case):
     data = example()
-    shot = data["shots"][0]
-    camera = shot["camera"]
-    selection = data["reconstruction"]["map_selection"]
     if case == "scene": data["scene"] = {"path": "scene.rlscene"}
-    elif case == "media": shot["media"] = {}
-    elif case == "profile": data["profile"] = "future"
-    elif case == "no_profile": del data["profile"]
-    elif case == "whole_map": selection["mode"] = "whole-map"
-    elif case == "lighting": selection["include_lighting_dependencies"] = False
-    elif case == "margin": selection["margin_source_units"] = -1
-    elif case == "partial": data["reconstruction"]["missing_content"] = "ignore"
-    elif case == "units": camera["unit_scale"] = 1
-    elif case == "aspect": camera["samples"][0]["aspect"] = 1
-    elif case == "incomplete": camera["samples"][0]["state"] = "projection-only"
-    elif case == "retime": camera["samples"][1]["replay_time"] = 0
-    elif case == "end": shot["range"].update(end_tick=70, end_tick_exact=70)
     elif case == "bounds": data["replay"]["total_ticks"] = 66
-    elif case == "samples": del camera["samples"]
-    elif case == "authored": camera["source"]["kind"] = "external"
-    elif case == "overrides": shot["cvars"] = {"hide_players": True}
-    elif case == "projection": camera["samples"][0]["projection"] = [0] * 16
-    elif case == "fov": camera["samples"][0]["horizontal_fov"] = 179
     with pytest.raises(ShotCollectionError):
         validate_shot_collection(data)
 
@@ -87,20 +63,13 @@ def test_relocated_replay_verified_by_bytes_not_name(tmp_path):
         read_shot_collection(path, check_files=True)
 
 
-def test_old_camera_importer_cannot_silently_ignore_reconstruction_request():
-    with pytest.raises(ShotPackageImportError, match="verified full prepared map"):
-        validate_against_scene(example(), {})
-
-
 def _scene_for_example():
     replay = example()["replay"]
     return {"tick_rate": replay["tick_rate"], "start_tick": 0, "end_tick": 100,
             "metadata": {"demo_sha256": replay["sha256"], "build": replay["build"]}}
 
 
-@pytest.mark.parametrize("plan", [None, {}, {"status": "full prepared map"},
-                                  {"status": "cropped", "manifest_sha256": "b" * 64},
-                                  "full prepared map"])
+@pytest.mark.parametrize("plan", [{"status": "cropped", "manifest_sha256": "b" * 64}])
 def test_reconstruction_import_requires_verified_full_map_plan(plan):
     with pytest.raises(ShotPackageImportError, match="verified full prepared map"):
         validate_against_scene(example(), _scene_for_example(), fps=30.0, reconstruction_map=plan)

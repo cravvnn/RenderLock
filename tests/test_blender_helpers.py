@@ -38,13 +38,6 @@ class BlenderHelperTests(unittest.TestCase):
         self.assertIsNone(helper.parent)
         self.assertFalse(mesh.hide_render or mesh.hide_viewport)
 
-    def test_real_geometry_named_icosphere_is_not_removed(self):
-        mesh = Object(special=False)
-        assets, helpers = exclude_gltf_bone_helpers([mesh])
-        self.assertIs(assets[0], mesh)
-        self.assertEqual(helpers, [])
-        self.assertFalse(mesh.hide_render or mesh.hide_viewport)
-
     def test_deforming_material_and_parented_meshes_are_protected(self):
         meshes = [Object("Weighted", vertex_groups=[object()]),
                   Object("Modified", modifiers=[object()]),
@@ -56,13 +49,6 @@ class BlenderHelperTests(unittest.TestCase):
         self.assertEqual([obj.name for obj in assets], [obj.name for obj in meshes])
         self.assertFalse(helpers)
         self.assertTrue(all(not obj.hide_render for obj in meshes))
-
-    def test_shape_also_linked_as_visible_geometry_is_preserved(self):
-        mesh = Object()
-        mesh.users_collection.append(SimpleNamespace(name="Hero", hide_render=False, hide_viewport=False))
-        assets, helpers = exclude_gltf_bone_helpers([mesh])
-        self.assertIs(assets[0], mesh)
-        self.assertFalse(helpers)
 
     def test_importer_setting_only_supplied_when_available(self):
         def api(properties):

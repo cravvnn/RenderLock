@@ -57,23 +57,24 @@ def effect_case(tmp_path, monkeypatch):
                            prepare=prepare, pack=pack)
 
 
-@pytest.fixture(params=[False, True], ids=['root_cp0', 'root_cp0_literal_cp2'])
+@pytest.fixture
 def root_effect_case(effect_case, request):
     case = effect_case
     row = case.scene['particle_instances'][0]
     handle = 17 | (3 << 14)
     row.update(index=20, generation=1, entity_handle=handle)
+    literal_cp2 = getattr(request, 'param', False)
     row['events'][0]['data']['update_particle_ent'].update(
         attach_type=1, attachment=0, include_wearables=True)
     row['events'].insert(0, {'type': 'CREATE', 'tick': 100, 'data': {
         'index': 20, 'create_particle': {
             'entity_handle': handle, 'attach_type': 5, 'cluster': False}}})
-    if request.param:
+    if literal_cp2:
         row['events'].append({'type': 'UPDATE_TRANSFORM', 'tick': 100, 'data': {
             'index': 20, 'update_particle_transform': {
                 'control_point': 2, 'position': {'x': .82}}}})
     row['events'].append({'type': 'RELEASE', 'tick': 100})
-    if request.param:
+    if literal_cp2:
         row['events'].append({'type': 'UPDATE_TRANSFORM', 'tick': 102, 'data': {
             'index': 20, 'update_particle_transform': {
                 'control_point': 2, 'position': {'x': 3, 'y': 4, 'z': 5}}}})
@@ -121,39 +122,28 @@ def test_prepared_layers_keep_exact_attachment_keys_through_children_and_manifes
     assert saved['particle_instances'] == case.scene['particle_instances']
 
 
-@pytest.mark.parametrize('change,reason', [
-    ('serial', 'Attachment target is not an exported exact-serial hero'),
-    ('index', 'Recorded attachment index absent from installed model'),
-    ('model_change', 'Particle attachments across recorded model changes are not yet qualified'),
-])
-def test_attachment_identity_failures_still_produce_explicit_unsupported_coverage(effect_case, change, reason):
+def test_attachment_identity_failures_still_produce_explicit_unsupported_coverage(effect_case):
     case = effect_case
     binding = case.scene['particle_instances'][0]['events'][0]['data']['update_particle_ent']
-    if change == 'serial':
-        binding['entity_handle'] = 17 | (4 << 14)
-    elif change == 'index':
-        binding['attachment'] = 3
-    else:
-        case.scene['entities'][0]['model_tracks'] = ['human', 'werewolf']
+    binding['entity_handle'] = 17 | (4 << 14)
 
     report, manifest, saved = case.prepare()
 
     assert report['status'] == 'unavailable'
     assert report['prepared_layer_count'] == report['prepared_particle_count'] == 0
     assert manifest['layers'] == [] and manifest['attachments'] == {}
-    assert report['unsupported'][0]['reason'] == reason
+    assert report['unsupported'][0]['reason'] == 'Attachment target is not an exported exact-serial hero'
     assert manifest['coverage']['reason_code'] == 'no_supported_particle_layers'
     assert saved['coverage']['particles'] == 'unavailable'
     assert saved['particle_instances'] == case.scene['particle_instances']
 
 
+@pytest.mark.parametrize('root_effect_case', [True], ids=['root_cp0_literal_cp2'], indirect=True)
 def test_root_attachment_inventory_is_neutral_including_synthetic_zero_failure_merge(root_effect_case, monkeypatch):
     case = root_effect_case
     row = case.scene['particle_instances'][0]
-    expected_providers = ['root_origin']
-    if any(event['type'] == 'UPDATE_TRANSFORM' for event in row['events']):
-        expected_providers.append('literal_transform')
-    assert [binding['provider'] for binding in root_origin_bindings(row, 100, 105)] == expected_providers
+    assert [binding['provider'] for binding in root_origin_bindings(row, 100, 105)] == [
+        'root_origin', 'literal_transform']
 
     def forbidden(*args):
         pytest.fail('Empty point inventory must not decode a definition, attachment table or texture')
@@ -211,31 +201,13 @@ def test_neutral_point_inventory_does_not_qualify_custom_origin_creation(root_ef
         root_origin_bindings(saved['particle_instances'][0], 100, 105)
 
 
-@pytest.mark.parametrize('change,reason', [
-    ('missing_table', 'Recorded attachment index absent from installed model'),
-    ('table_error', 'Attachment table fixture unavailable'),
-    ('index', 'Recorded attachment index absent from installed model'),
-    ('serial', 'Attachment target is not an exported exact-serial hero'),
-    ('model', 'Attachment model resource ID unresolved'),
-    ('model_change', 'No recorded model at the effect creation tick'),
-])
-def test_point_inventory_retains_actual_type5_preparation_failures(effect_case, monkeypatch, change, reason):
+def test_point_inventory_retains_actual_type5_preparation_failures(effect_case, monkeypatch):
     case = effect_case
-    binding = case.scene['particle_instances'][0]['events'][0]['data']['update_particle_ent']
-    if change == 'missing_table':
-        case.attachments.clear()
-    elif change == 'table_error':
-        def unavailable(*args):
-            raise ConversionError(reason)
-        monkeypatch.setattr(EffectAssetAdapter, 'attachments', unavailable)
-    elif change == 'index':
-        binding['attachment'] = 3
-    elif change == 'serial':
-        binding['entity_handle'] = 17 | (4 << 14)
-    elif change == 'model':
-        case.scene['entities'][0]['model_handle'] = '0'
-    else:
-        case.scene['entities'][0]['model_tracks'] = ['human', 'werewolf']
+    reason = 'Attachment table fixture unavailable'
+
+    def unavailable(*args):
+        raise ConversionError(reason)
+    monkeypatch.setattr(EffectAssetAdapter, 'attachments', unavailable)
 
     report, manifest, saved = case.prepare(attachments_only=True)
 

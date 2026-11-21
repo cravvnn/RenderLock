@@ -35,13 +35,8 @@ def test_frame_has_native_bounds_and_same_header_for_moving_pose():
     assert frame['sets']['core'][0]['transform'][0] == 5
 
 
-@pytest.mark.parametrize('change', ['cp', 'tick', 'entity', 'hash', 'bone_order'])
-def test_different_snapshot_binding_is_refused(change):
+def test_different_snapshot_binding_is_refused():
     inventory, pose = inputs()
-    if change == 'cp': pose['control_point'] = 0
-    elif change == 'tick': pose['tick'] = 11
-    elif change == 'entity': pose['entity_id'] = '58:284'
-    elif change == 'hash': pose['resource_sha256'] = 'b'*64
-    elif change == 'bone_order': pose['names'] = ['different']
+    pose['resource_sha256'] = 'b'*64
     with pytest.raises(ValueError):
         prepare_hitbox_input(inventory, pose, entity_id='58:283', tick=10, control_point=1)

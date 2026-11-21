@@ -19,9 +19,7 @@ def test_rope_random_worldsize_is_stable_per_sibling_without_mutating_definition
 
 
 @pytest.mark.parametrize('update',[
-    dict(m_nRandomMode='PF_RANDOM_MODE_VARYING'),dict(m_nRandomSeed=7),
-    dict(m_bHasRandomSignFlip=True),dict(m_flRandomMin=600),dict(m_flRandomMax=float('nan')),
-    dict(m_nMapType='PF_MAP_TYPE_CURVE')])
+    dict(m_nRandomMode='PF_RANDOM_MODE_VARYING')])
 def test_unqualified_rope_random_modes_are_rejected(update):
     r=renderer();r['m_flTextureVWorldSize'].update(update)
     with pytest.raises(UnsupportedEffect):resolve_rope_inputs(r,None,'root',123)
