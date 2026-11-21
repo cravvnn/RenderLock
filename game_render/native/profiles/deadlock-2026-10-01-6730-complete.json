@@ -1,0 +1,234 @@
+{
+  "validation": "Build6730 offline compatibility review. New-build live validation pending.",
+  "client": {
+    "client_sha256": "5c5ef78cf648066d78cf0f8155647eb3521bf31c3cf9607e4c304b121fec6647",
+    "file_size": 58023064,
+    "timestamp": 1790879009,
+    "size_of_image": 68132864,
+    "preferred_image_base": "0x180000000",
+    "main_view_setup_rva": "0x189af30",
+    "main_view_setup_end_rva": "0x189aff9",
+    "main_view_setup_prologue_32": "48 89 5c 24 08 48 89 74 24 10 57 48 83 ec 20 48 8b f1 c6 81 30 13 00 00 01 b9 ff ff ff ff e8 4d",
+    "main_view_setup_sha256": "1ec12cacbc880f99e72dfe81953105e80d649e61b5c570702493a5fbd3e33bc8",
+    "matrix_setup_rva": "0x1894920",
+    "matrix_setup_end_rva": "0x1894ad6",
+    "matrix_setup_sha256": "4fe9b9944c72e9f092dd7e27fdb3a843da5100d270796d9cd2b302b919b8dc8c",
+    "primary_vtable_rva": 39999440,
+    "view_setup_this_offset": "0x10",
+    "origin_offset": "0x4a0",
+    "angles_offset": "0x4b8",
+    "fov_offset": "0x498",
+    "aspect_offset": "0x4d4",
+    "view_flag_byte_offset": "0x551",
+    "alternate_projection_bit": "0x2",
+    "viewport_width_offset": "0x430",
+    "viewport_height_offset": "0x438",
+    "viewport_unscaled_width_offset": "0x434",
+    "viewport_unscaled_height_offset": "0x43c",
+    "auxiliary_origin_offset": "0x554",
+    "auxiliary_angles_offset": "0x560",
+    "extra_origin_offset": "0x56c",
+    "call_site_rva": 25774398,
+    "call_site_bytes": "ff 90 88 00 00 00",
+    "view_setup_delegate_rva": "0x5cefd0",
+    "camera_layout_revision": 1,
+    "view_setup_abi": {
+      "platform": "Microsoft x64",
+      "arguments": "RCX=CViewRender*. Wrapper does not consume incoming RDX; preserve opaque integer argument.",
+      "return": "No defined return value consumed by matrix caller; void-compatible.",
+      "caller_return_rva": "0x1894944",
+      "call_kind": "virtual",
+      "vtable_byte_offset": "0x88",
+      "direct_call_sites": [],
+      "evidence_limit": "Static reviewed exact build. Runtime cadence and visual behavior unverified."
+    },
+    "aspect_scaling": {
+      "helper_rva": "0x2137760",
+      "original_call_rva": "0x5cf25b",
+      "aspect_source_interface_pointer_rva": "0x3bc3d78",
+      "aspect_source_virtual_offset": "0x2c0",
+      "aspect_source_call_rva": "0x5cf23a",
+      "scale_constant_rva": "0x24e939c",
+      "formula": "2 * degrees(atan(tan(radians(fov)/2) * scale))",
+      "scale": "effective_aspect * 0.75"
+    },
+    "globals": {
+      "pointer_rva": "0x3237a60",
+      "fallback_rva": "0x3237a00",
+      "current_time_offset": "0x30",
+      "interval_offset": "0x54",
+      "replay_clock_review": null
+    },
+    "camera_layout_review": {
+      "client_sha256": "5c5ef78cf648066d78cf0f8155647eb3521bf31c3cf9607e4c304b121fec6647",
+      "validation": "Build6730 offline review: the reviewed 6728 camera chain relocates byte-identically (wrapper/cache/consumer/producer anchors, matrix slot, globals and REFS). Live verification pending.",
+      "client_mode_class": "ClientModeCitadelNormal",
+      "client_mode_vtable_rva": "0x2625638",
+      "client_mode_slot": "0x78",
+      "client_mode_array_rva": "0x35fd318",
+      "client_mode_object_rva": "0x35fd290",
+      "cache": {
+        "origin": "0x3bce240",
+        "angles": "0x3bce250",
+        "forward": "0x3bce260",
+        "right": "0x3bce270",
+        "up": "0x3bce280",
+        "basis": "0x21269f0"
+      },
+      "functions": {
+        "wrapper": {
+          "rva": "0x189af30",
+          "end_rva": "0x189aff9",
+          "sha256": "1ec12cacbc880f99e72dfe81953105e80d649e61b5c570702493a5fbd3e33bc8"
+        },
+        "matrix": {
+          "rva": "0x1894920",
+          "end_rva": "0x1894ad6",
+          "sha256": "4fe9b9944c72e9f092dd7e27fdb3a843da5100d270796d9cd2b302b919b8dc8c"
+        },
+        "producer": {
+          "rva": "0x5cefd0",
+          "end_rva": "0x5cf27d",
+          "sha256": "d3641fe02aba5efe2e11795842098680ec8835892f4322d41f9e20999a90e7a0"
+        },
+        "cache_basis": {
+          "rva": "0x21269f0",
+          "end_rva": "0x2126b68",
+          "sha256": "34deeb4999986f77704e98d895c5404025fdfcb6838ad7a4506aec77b88b73d4"
+        },
+        "matrix_consumer": {
+          "rva": "0xbfc8f0",
+          "end_rva": "0xbfcaf5",
+          "sha256": "f9f06d3e2b3adcfa208b6ac34c2d308ec20e8abacc66c0c6260af0523949751e"
+        },
+        "aux_consumer": {
+          "rva": "0x17b56a0",
+          "end_rva": "0x17b58fc",
+          "sha256": "34e8692730fc8e46c7aaf92893506a009046bf410ba07e4623edb1ae61ccdd80"
+        }
+      }
+    }
+  },
+  "engine": {
+    "sha256": "8b846736ddbd833fcc85c943dccc7b7fe3cd13eeef772d1ca375c2961f51a53e",
+    "image_size": "0x906000",
+    "timestamp": "0x6abe6764",
+    "addresses": {
+      "engine_client_vtable": "0x4e2790",
+      "demo_player_pointer": "0x5b92b0",
+      "demo_player_default_object": "0x631d78",
+      "demo_player_vtable": "0x4d7e88",
+      "demo_file_vtable": "0x4d7fe0",
+      "network_client_service_pointer": "0x62e698",
+      "network_client_service_vtable": "0x51f9e8",
+      "aspect_cvar_object": "0x633c00"
+    },
+    "functions": {
+      "engine_get_aspect_ratio": {
+        "rva": "0x73690",
+        "slot": 88,
+        "abi": "float(void* this,int width,int height)",
+        "first16": "4883ec28488d0d65055c00e8c084fcff"
+      },
+      "engine_is_playing_demo": {
+        "rva": "0x732c0",
+        "slot": 42,
+        "abi": "bool(void* this)",
+        "first16": "48833de8fa830000740e488b0ddf5f54"
+      },
+      "engine_get_demo_filename": {
+        "rva": "0x73310",
+        "slot": 43,
+        "abi": "const char*(void* this)",
+        "first16": "4883ec2848833d94fa830000742c488b"
+      },
+      "demo_get_file": {
+        "rva": "0x242c0",
+        "slot": 1,
+        "abi": "void*(void* this)",
+        "first16": "488d4120c3cccccccccccccccccccccc"
+      },
+      "demo_get_start_tick": {
+        "rva": "0x34ed0",
+        "slot": 2,
+        "abi": "int(void* this)",
+        "first16": "8b8104020000c3cccccccccccccccccc"
+      },
+      "demo_get_tick": {
+        "rva": "0x34ee0",
+        "slot": 3,
+        "abi": "int(void* this)",
+        "first16": "40534883ec20488bd9488b0da8975f00"
+      },
+      "demo_is_playing": {
+        "rva": "0x2d590",
+        "slot": 11,
+        "abi": "bool(void* this)",
+        "first16": "0fb68130120000c3cccccccccccccccc"
+      },
+      "demo_is_paused": {
+        "rva": "0x34ea0",
+        "slot": 12,
+        "abi": "bool(void* this)",
+        "first16": "80b93012000000741a83b92802000000"
+      },
+      "demo_is_seeking": {
+        "rva": "0x28b40",
+        "slot": 14,
+        "abi": "bool(void* this)",
+        "first16": "80b93012000000740c83b908020000ff"
+      },
+      "demo_get_playback_scale": {
+        "rva": "0x34f30",
+        "slot": 17,
+        "abi": "float(void* this)",
+        "first16": "f30f108114020000c3cccccccccccccc"
+      },
+      "demo_file_get_filename": {
+        "rva": "0x24180",
+        "slot": 3,
+        "abi": "const char*(void* this)",
+        "first16": "488b5108488d05a4f14a004885d2480f"
+      },
+      "network_service_get_tick": {
+        "rva": "0x1d4e10",
+        "slot": 57,
+        "abi": "int(void* this)",
+        "first16": "8b8190000000c3cccccccccccccccccc"
+      }
+    },
+    "validated_by": "6728 exact RTTI vtables (CDemoPlayer, CEngineClient, CDemoFile, CNetworkClientService) at the reviewed 6726 addresses; every reviewed accessor kept its RVA and CFG-equal body. Only the module identity changed.",
+    "notes": [
+      "The reviewed CDemoPlayer/CEngineClient layout is unchanged; the engine2 update touched unrelated code."
+    ]
+  },
+  "tier0": {
+    "sha256": "6793cc7306ff40283ba038a784fe96f99f6d38f93c825571ee93ab6b9d9d5332",
+    "size_of_image": "0x401000",
+    "interface": "VEngineCvar007",
+    "vtable_rva": "0x313208",
+    "find_cvar": {
+      "slot": 11,
+      "rva": "0x6c6b0",
+      "abi": "void*(void* cvar,uint64* return_storage,const char* name,int allow_defensive)"
+    },
+    "get_data": {
+      "slot": 41,
+      "rva": "0x6c5f0",
+      "abi": "void*(void* cvar,uint64 reference)"
+    },
+    "set_value": {
+      "rva": "0x20fd40",
+      "abi": "void(ConVarRefAbstract*,int slot,const CVValue* new_value,CVValue* current_value,void* context)",
+      "first16": "4c8944241848894c2408555657415441"
+    },
+    "data_offsets": {
+      "name": "0x0",
+      "type_int16": "0x28",
+      "change_count": "0x2c",
+      "flags": "0x30",
+      "scalar_value": "0x58"
+    },
+    "validated_by": "6726 CCvar RTTI slots11/41 and existing setter/getter instructions checked against retained6723 review; offsets unchanged."
+  }
+}

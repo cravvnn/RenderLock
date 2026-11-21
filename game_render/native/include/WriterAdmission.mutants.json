@@ -1,0 +1,22 @@
+[
+  {
+    "name": "let start exception escape",
+    "replace": [
+      [
+        "CatchStart == TRUE",
+        "CatchStart == FALSE"
+      ]
+    ],
+    "expect": "NoEscape"
+  },
+  {
+    "name": "omit provisional close",
+    "replace": [
+      [
+        "Retire == TRUE",
+        "Retire == FALSE"
+      ]
+    ],
+    "expect": "Retired"
+  }
+]

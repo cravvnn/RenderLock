@@ -1,0 +1,225 @@
+{
+  "format": 1,
+  "game_build": 6807,
+  "source": "Installed completed Steam build26097978 current3depot content mappings independently SHA1/size verified; unchanged stock payloads. Citadel defaults take priority over same-name core fallback.",
+  "files": {
+    "citadel_1v1_match.cfg": {
+      "sha256": "8bf7a24b20354b22632d488212f1fa992e5d05e1bedba590df5856f8cecb9616",
+      "stock_path": "game/citadel/cfg/citadel_1v1_match.cfg",
+      "depot": "1422456_3910018851167511568",
+      "depot_sha1": "6027fed7362414e626e36b16da917706ab141444"
+    },
+    "citadel_audio.cfg": {
+      "sha256": "7e876796b5fa37294ec7717be727dcc17f2f0d3bcb29786b5c349214b611339d",
+      "stock_path": "game/citadel/cfg/citadel_audio.cfg",
+      "depot": "1422456_3910018851167511568",
+      "depot_sha1": "c2f436dfc3f1a17a42e2a6271d78f8af972bb192"
+    },
+    "citadel_botmatch_2v2_test.cfg": {
+      "sha256": "20a3dba868c3ab8f8d441d971997a936961a2487e4e4bc7972b2a67641961afb",
+      "stock_path": "game/citadel/cfg/citadel_botmatch_2v2_test.cfg",
+      "depot": "1422456_3910018851167511568",
+      "depot_sha1": "5d623f4c7ccbf79a3f35547cdb33fc2fd705261f"
+    },
+    "citadel_botmatch_6v6_spectator.cfg": {
+      "sha256": "7118d7b4a8e0181f2d73a26a40503dc3921769306943510a9e4c91d8b75cd082",
+      "stock_path": "game/citadel/cfg/citadel_botmatch_6v6_spectator.cfg",
+      "depot": "1422456_3910018851167511568",
+      "depot_sha1": "bcf9e1fe3470429007e2ac22b4b1fa0075d0eec9"
+    },
+    "citadel_botmatch_build_test.cfg": {
+      "sha256": "d6d24758ee9f9fd3545b5ad022f837e6e598e91880206f93c313ca097b858292",
+      "stock_path": "game/citadel/cfg/citadel_botmatch_build_test.cfg",
+      "depot": "1422456_3910018851167511568",
+      "depot_sha1": "df9ac26d41c9783c6cf25347aa93937fc0c51879"
+    },
+    "citadel_botmatch_player_vs_bot.cfg": {
+      "sha256": "e7b250a2b14afb79ad0921858c8f2026fce81fd86686343f9942a02df51cbe23",
+      "stock_path": "game/citadel/cfg/citadel_botmatch_player_vs_bot.cfg",
+      "depot": "1422456_3910018851167511568",
+      "depot_sha1": "df549cacd3955105c3fca6c68bb07d4924501464"
+    },
+    "citadel_botmatch_practice_1v1.cfg": {
+      "sha256": "e7b250a2b14afb79ad0921858c8f2026fce81fd86686343f9942a02df51cbe23",
+      "stock_path": "game/citadel/cfg/citadel_botmatch_practice_1v1.cfg",
+      "depot": "1422456_3910018851167511568",
+      "depot_sha1": "df549cacd3955105c3fca6c68bb07d4924501464"
+    },
+    "citadel_botmatch_practice_2v2_guided.cfg": {
+      "sha256": "7d4eade94cbd2259752b3211988f35c858b40a92d99b155d72ea45e1ee5a10d1",
+      "stock_path": "game/citadel/cfg/citadel_botmatch_practice_2v2_guided.cfg",
+      "depot": "1422456_3910018851167511568",
+      "depot_sha1": "335d0dbfb4a7f654f51fbc65fc16c196c1b10623"
+    },
+    "citadel_botmatch_practice_6v6.cfg": {
+      "sha256": "bf6411f11d2adbf4b8b7a8c7b45a40f7421f8163317ff5c08a20bc7771313968",
+      "stock_path": "game/citadel/cfg/citadel_botmatch_practice_6v6.cfg",
+      "depot": "1422456_3910018851167511568",
+      "depot_sha1": "6332ea5eebe7a34eda03f60b65d20086aab4840b"
+    },
+    "citadel_botmatch_test.cfg": {
+      "sha256": "583d1f5aa723b67795567473b1fa5575286852e009e46cc47531127f0a0f8ae1",
+      "stock_path": "game/citadel/cfg/citadel_botmatch_test.cfg",
+      "depot": "1422456_3910018851167511568",
+      "depot_sha1": "5489090d7e9398afb83de3a36b6e3cd5890c4c9f"
+    },
+    "citadel_dev_intro_test.cfg": {
+      "sha256": "871ae082be7230e2968b679c415549d1a59c5a7169c0b82958f01147e1ce8bc6",
+      "stock_path": "game/citadel/cfg/citadel_dev_intro_test.cfg",
+      "depot": "1422456_3910018851167511568",
+      "depot_sha1": "64ae5ecfa8b757c993f19cc6c2c0b92d02a9d48c"
+    },
+    "citadel_hideout.cfg": {
+      "sha256": "eff9eaa4288980aaa927b688e5b64cc987ce24930e4912c68ed45ed8b78a90b7",
+      "stock_path": "game/citadel/cfg/citadel_hideout.cfg",
+      "depot": "1422456_3910018851167511568",
+      "depot_sha1": "544b92025565fb1ddc9160ae43c774ebfbae5b84"
+    },
+    "citadel_local_botmatch.cfg": {
+      "sha256": "0389f09fbeb1c152a34f1c2875017a4c690d144c66e41d8d2c189aed90d9aa3c",
+      "stock_path": "game/citadel/cfg/citadel_local_botmatch.cfg",
+      "depot": "1422456_3910018851167511568",
+      "depot_sha1": "78da97bbf5227d0abcf090919f2bce0b2df2dd4f"
+    },
+    "citadel_sandbox_match.cfg": {
+      "sha256": "09bca679377d0211baa49e0cc913dc7906119949cac0eeed77d267b93b26186e",
+      "stock_path": "game/citadel/cfg/citadel_sandbox_match.cfg",
+      "depot": "1422456_3910018851167511568",
+      "depot_sha1": "83e5e1632fc999816dfd1fc5562084e77a83181e"
+    },
+    "citadel_server.cfg": {
+      "sha256": "88bf013ba485f9b48951b0960d9bd97634f76c10b34298e77fc7b42653102ca7",
+      "stock_path": "game/citadel/cfg/citadel_server.cfg",
+      "depot": "1422456_3910018851167511568",
+      "depot_sha1": "4d358f570cca5901096234f6fdca36e31cb4cd6e"
+    },
+    "configdefaults.linux.vcfg": {
+      "sha256": "fa60b2d30c0c8de3c994396c000f92dd3676445a138350acce96a7c767c51e20",
+      "stock_path": "game/citadel/cfg/configdefaults.linux.vcfg",
+      "depot": "1422456_3910018851167511568",
+      "depot_sha1": "c3e875e6eb5d69b91a73b002bee141ff3f57392c"
+    },
+    "configdefaults.osx.vcfg": {
+      "sha256": "fa60b2d30c0c8de3c994396c000f92dd3676445a138350acce96a7c767c51e20",
+      "stock_path": "game/citadel/cfg/configdefaults.osx.vcfg",
+      "depot": "1422456_3910018851167511568",
+      "depot_sha1": "c3e875e6eb5d69b91a73b002bee141ff3f57392c"
+    },
+    "configdefaults.pc.vcfg": {
+      "sha256": "fa60b2d30c0c8de3c994396c000f92dd3676445a138350acce96a7c767c51e20",
+      "stock_path": "game/citadel/cfg/configdefaults.pc.vcfg",
+      "depot": "1422456_3910018851167511568",
+      "depot_sha1": "c3e875e6eb5d69b91a73b002bee141ff3f57392c"
+    },
+    "configschema.vcfg": {
+      "sha256": "aff963336c173c85e0584010f8338298435c8ebd9a358872de2b9985962396e7",
+      "stock_path": "game/citadel/cfg/configschema.vcfg",
+      "depot": "1422456_3910018851167511568",
+      "depot_sha1": "e065a0114f61cf7dc7067f2d13bd8204fe428e1d"
+    },
+    "machine_convars_default.vcfg": {
+      "sha256": "10e8c6d9d81c95a70c93b7adc79a8bd0da32004c198821778b4bba614726ccdf",
+      "stock_path": "game/citadel/cfg/machine_convars_default.vcfg",
+      "depot": "1422456_3910018851167511568",
+      "depot_sha1": "17c558bc0ac002145f01da819a2bc73c6427d1ce"
+    },
+    "ps5_controller_mapping.vdf": {
+      "sha256": "1a862464b3e9cd9535e8b427e5b4c81f2816458aa534866989236c361a08a1c2",
+      "stock_path": "game/citadel/cfg/ps5_controller_mapping.vdf",
+      "depot": "1422456_3910018851167511568",
+      "depot_sha1": "3d3aa5e63620e9272ea200d766bfbb84cbc097bb"
+    },
+    "ps5_controller_mapping_gyro.vdf": {
+      "sha256": "2bce785c886137a3be6a923d2aeb590fa4fe0d67ba1918ba3a5f7ce00f4aefdc",
+      "stock_path": "game/citadel/cfg/ps5_controller_mapping_gyro.vdf",
+      "depot": "1422456_3910018851167511568",
+      "depot_sha1": "8ede2afaf233858b2e1f9404f0a91624afa662d6"
+    },
+    "ps5_controller_mapping_gyro_flickstick.vdf": {
+      "sha256": "65efcd518d7ae173eb5706c82bd3e52b55eebb5b70db67a204860b42aee0d007",
+      "stock_path": "game/citadel/cfg/ps5_controller_mapping_gyro_flickstick.vdf",
+      "depot": "1422456_3910018851167511568",
+      "depot_sha1": "7688b786c2c520817f52876b6e45a08955f14cf2"
+    },
+    "steam_input_manifest.vdf": {
+      "sha256": "14b86846124c08f7a13204324f64fcc066c7f3d2ce2e99245ca14e51f3003011",
+      "stock_path": "game/citadel/cfg/steam_input_manifest.vdf",
+      "depot": "1422456_3910018851167511568",
+      "depot_sha1": "56813fe55b9b085b9364b60f13eae14c6c13fa7c"
+    },
+    "steamdeck_mapping.vdf": {
+      "sha256": "71b2bc17bfd5e4751e70834948e6168f19ab1cdf5eec432cd2893d22299b18dd",
+      "stock_path": "game/citadel/cfg/steamdeck_mapping.vdf",
+      "depot": "1422456_3910018851167511568",
+      "depot_sha1": "8cb848708a0a00775e121951b0d9bec368752c48"
+    },
+    "steamdeck_mapping_gyro.vdf": {
+      "sha256": "3df4ff50a556d73850014ea3b57d0549c80f061379edd736127c9da3bd14c758",
+      "stock_path": "game/citadel/cfg/steamdeck_mapping_gyro.vdf",
+      "depot": "1422456_3910018851167511568",
+      "depot_sha1": "2e2c12d9cd49cdc429c304719b1f7cadd543f390"
+    },
+    "steamdeck_mapping_gyro_flickstick.vdf": {
+      "sha256": "b29b57cdc9bf9c29eb56b4410c744e6adcb988408e5cd1fcba380d70ce968b76",
+      "stock_path": "game/citadel/cfg/steamdeck_mapping_gyro_flickstick.vdf",
+      "depot": "1422456_3910018851167511568",
+      "depot_sha1": "1e72675a088e2ef6d821db8758c58c2fd408738e"
+    },
+    "switch_pro_mapping.vdf": {
+      "sha256": "a6cd3d5b00f01e3179322e2e632b8f53193041f4c606aaeafd8016f7a9b007fc",
+      "stock_path": "game/citadel/cfg/switch_pro_mapping.vdf",
+      "depot": "1422456_3910018851167511568",
+      "depot_sha1": "da68686700e9c0cef09e63b5323fb401dbcd0fe1"
+    },
+    "switch_pro_mapping_gyro.vdf": {
+      "sha256": "7a4c6abc5275aa28a177caa0a7ee72f910f6e6c6b0aee5204e105a690e060563",
+      "stock_path": "game/citadel/cfg/switch_pro_mapping_gyro.vdf",
+      "depot": "1422456_3910018851167511568",
+      "depot_sha1": "602deee67a3bb12601ea5e9a7bb28a7dba7af639"
+    },
+    "switch_pro_mapping_gyro_flickstick.vdf": {
+      "sha256": "e2ef8f18ee4cd6319004cc266c830ccffb1de20594810b2bf4aa69f8ab5794dc",
+      "stock_path": "game/citadel/cfg/switch_pro_mapping_gyro_flickstick.vdf",
+      "depot": "1422456_3910018851167511568",
+      "depot_sha1": "cfa6cf124123dcde2cc170d6d1904b8ddd5f3744"
+    },
+    "user_keys_default.vcfg": {
+      "sha256": "df2bfef74ebb433cbcd58259f029436a9c33f371f0833c107f105a0b1e04340b",
+      "stock_path": "game/citadel/cfg/user_keys_default.vcfg",
+      "depot": "1422456_3910018851167511568",
+      "depot_sha1": "9f3557f8fb657edbaaa43e410040e9c62512b714"
+    },
+    "user_keys_dev_default.vcfg": {
+      "sha256": "2599decffaf3193b55e9c91fab40bb3c8b6b8162a06cc89f55169577a972a830",
+      "stock_path": "game/citadel/cfg/user_keys_dev_default.vcfg",
+      "depot": "1422456_3910018851167511568",
+      "depot_sha1": "81b118b88f0f3ef7a12cd086e32476b47f7acd95"
+    },
+    "xbox_360_mapping.vdf": {
+      "sha256": "8be5f677097ebd97f1a6ff0e521283212af11e71ba5c48f939573f40425ea468",
+      "stock_path": "game/citadel/cfg/xbox_360_mapping.vdf",
+      "depot": "1422456_3910018851167511568",
+      "depot_sha1": "21d0c306db67f4d46256e621d6dc2143df01d7a2"
+    },
+    "xbox_one_mapping.vdf": {
+      "sha256": "d10e187d37caeae6a8f4f85b3b98d9b2dffc793a5d91e2aeacee4f129bd2b3e7",
+      "stock_path": "game/citadel/cfg/xbox_one_mapping.vdf",
+      "depot": "1422456_3910018851167511568",
+      "depot_sha1": "d0fbb6004a63b86192ebfa760980c2aeb052a97f"
+    },
+    "sfm_default_animation_groups.vcfg": {
+      "sha256": "8f47123d3b5188e294d61cabbbdff2c7dddb47ed8766e92f701438e0439f6cd2",
+      "stock_path": "game/core/cfg/sfm_default_animation_groups.vcfg",
+      "depot": "1422456_3910018851167511568",
+      "depot_sha1": "0f5112698b482f8c1190c89192a4c0c8b0e50198"
+    },
+    "autoexec.cfg": {
+      "sha256": "18236f052fbb33edad71983e645a381b377eb1a9a7cf2b1f9ed6b185f1a89193",
+      "owner": "Dolly session-only empty startup script"
+    },
+    "config.cfg": {
+      "sha256": "dedfaed3640de453ae01b45454d6e33f78ee1d740a042c34ead5bcd84f52508a",
+      "owner": "Dolly session-only empty startup script"
+    }
+  }
+}

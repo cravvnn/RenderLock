@@ -1,0 +1,34 @@
+--- a/build_compat.cpp
++++ b/build_compat.cpp
+@@ -50,6 +50,7 @@
+ static bool g_6807_server=false;
+ static bool g_6810_server=false;
+ static bool g_6812_server=false;
++static bool g_6813_server=false;
+ static bool g_6779_server=false;
+ static HMODULE g_real_server=nullptr;
+ static DollyCvarProxy g_proxy;
+@@ -134,17 +135,20 @@
+     g_6807_server=server_hash=="5197333b5da46d3825c1cd80d66963eb2143d3b08acd962299cf20da1e25ca3f";
+     g_6810_server=server_hash=="a5fe0b3d3735de7a892027d432956b04edeb29ed277ef0cc120ecbfcf03eb658";
+     g_6812_server=server_hash=="44cc89e23aea9c7686730260a65cb3744a6294cc4b993b7507645f8130041312";
+-    if (tier6726 != (g_6726_server || g_6728_server || g_6730_server || g_6731_server || g_6739_server || g_6742_server || g_6745_server || g_6746_server || g_6753_server || g_6757_server || g_6759_server || g_6762_server || g_6763_server || g_6765_server || g_6766_server || g_6769_server || g_6774_server || g_6779_server || g_6793_server || g_6801_server || g_6805_server || g_6806_server || g_6807_server || g_6810_server || g_6812_server)) return false;
++    g_6813_server=server_hash=="5bb81f638097cdcde8b1c870b80f3faf66faa933fbd3b84d665dc063dc5c8055";
++    if (tier6726 != (g_6726_server || g_6728_server || g_6730_server || g_6731_server || g_6739_server || g_6742_server || g_6745_server || g_6746_server || g_6753_server || g_6757_server || g_6759_server || g_6762_server || g_6763_server || g_6765_server || g_6766_server || g_6769_server || g_6774_server || g_6779_server || g_6793_server || g_6801_server || g_6805_server || g_6806_server || g_6807_server || g_6810_server || g_6812_server || g_6813_server)) return false;
+     if (tier6793 != g_6793_server) return false;
+-    if (tier6801 != (g_6801_server || g_6805_server || g_6806_server || g_6807_server || g_6810_server || g_6812_server)) return false;
++    if (tier6801 != (g_6801_server || g_6805_server || g_6806_server || g_6807_server || g_6810_server || g_6812_server || g_6813_server)) return false;
+     if (tier6779 != g_6779_server) return false;
+-    return g_6812_server || g_6810_server || g_6807_server || g_6806_server || g_6805_server || g_6801_server || g_6793_server || g_6779_server || g_6774_server || g_6769_server || g_6766_server || g_6765_server || g_6763_server || g_6762_server || g_6759_server || g_6757_server || g_6753_server || g_6746_server || g_6745_server || g_6742_server || g_6739_server || g_6731_server || g_6730_server || g_6728_server || g_6726_server || g_latest_server || g_hotfix_server || server_hash=="cb480d4091735abe7b74695c8c8077a882528aaaaa9f457d81fbca886b6c9bd8";
++    return g_6813_server || g_6812_server || g_6810_server || g_6807_server || g_6806_server || g_6805_server || g_6801_server || g_6793_server || g_6779_server || g_6774_server || g_6769_server || g_6766_server || g_6765_server || g_6763_server || g_6762_server || g_6759_server || g_6757_server || g_6753_server || g_6746_server || g_6745_server || g_6742_server || g_6739_server || g_6731_server || g_6730_server || g_6728_server || g_6726_server || g_latest_server || g_hotfix_server || server_hash=="cb480d4091735abe7b74695c8c8077a882528aaaaa9f457d81fbca886b6c9bd8";
+ }
+ bool DollyVerifyServerConfig(void* config) {
+     if(!config) return false;
+     if(!g_new_build) return true;
+     auto base=reinterpret_cast<std::uintptr_t>(g_real_server);
+     auto table=*static_cast<std::uintptr_t**>(config);
++    if (g_6813_server)
++        return reinterpret_cast<std::uintptr_t>(table)==base+0x2b591b0 && table[0]==base+0x99d7e4 && table[1]==base+0x99d7f0 && table[13]==base+0x99a940;
+     if (g_6812_server)
+         return reinterpret_cast<std::uintptr_t>(table)==base+0x2b591b0 && table[0]==base+0x99d7d4 && table[1]==base+0x99d7e0 && table[13]==base+0x99a930;
+     if (g_6810_server)

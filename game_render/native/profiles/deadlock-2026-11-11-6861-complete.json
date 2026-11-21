@@ -1,0 +1,270 @@
+{
+  "validation": "6861: complete/scoped camera consumers, named schema, indexed globals and changed stock call sites reviewed against installed modules. Generated verification and native/source checks pass. Bounded live startup, seeking, camera movement/path playback and short Color, paired Depth/EXR and Players exports pass; this is not exhaustive game coverage.",
+  "client": {
+    "client_sha256": "d0341ce77398614af905ef8669d328fd4d45958282acef66789a250492e466b5",
+    "file_size": 60612248,
+    "timestamp": 1794243969,
+    "size_of_image": 71380992,
+    "preferred_image_base": "0x180000000",
+    "main_view_setup_rva": "0x1a120a0",
+    "main_view_setup_end_rva": "0x1a12169",
+    "main_view_setup_prologue_32": "48 89 5c 24 08 48 89 74 24 10 57 48 83 ec 20 48 8b f1 c6 81 30 13 00 00 01 b9 ff ff ff ff e8 3d",
+    "main_view_setup_sha256": "9fd0fa87f9acf0b74cb1447afb0cf8747f4a55d7848587dc079a5f22fc49f2d6",
+    "matrix_setup_rva": "0x1a0baa0",
+    "matrix_setup_end_rva": "0x1a0bc56",
+    "matrix_setup_sha256": "ff37c9e1cc0d6101984105ca662c4609fd92224378e04b5ed5c7f360eda67d7b",
+    "primary_vtable_rva": "0x27b8a90",
+    "view_setup_this_offset": "0x10",
+    "origin_offset": "0x4a0",
+    "angles_offset": "0x4b8",
+    "fov_offset": "0x498",
+    "aspect_offset": "0x4d4",
+    "view_flag_byte_offset": "0x551",
+    "alternate_projection_bit": "0x2",
+    "viewport_width_offset": "0x430",
+    "viewport_height_offset": "0x438",
+    "viewport_unscaled_width_offset": "0x434",
+    "viewport_unscaled_height_offset": "0x43c",
+    "auxiliary_origin_offset": "0x554",
+    "auxiliary_angles_offset": "0x560",
+    "extra_origin_offset": "0x56c",
+    "call_site_rva": "0x1a0babe",
+    "call_site_bytes": "ff 90 88 00 00 00",
+    "view_setup_delegate_rva": "0x5ee490",
+    "camera_layout_revision": 1,
+    "view_setup_abi": {
+      "platform": "Microsoft x64",
+      "arguments": "RCX=CViewRender*. Wrapper does not consume incoming RDX; preserve opaque integer argument.",
+      "return": "No defined return value consumed by matrix caller; void-compatible.",
+      "caller_return_rva": "0x1a0bac4",
+      "call_kind": "virtual",
+      "vtable_byte_offset": "0x88",
+      "direct_call_sites": [],
+      "evidence_limit": "Static reviewed exact build. Runtime cadence and visual behavior unverified."
+    },
+    "aspect_scaling": {
+      "helper_rva": "0x22b80c0",
+      "original_call_rva": "0x5ee71b",
+      "aspect_source_interface_pointer_rva": "0x3ead6a0",
+      "aspect_source_virtual_offset": "0x2c0",
+      "aspect_source_call_rva": "0x5ee6fa",
+      "scale_constant_rva": "0x26765dc",
+      "formula": "2 * degrees(atan(tan(radians(fov)/2) * scale))",
+      "scale": "effective_aspect * 0.75"
+    },
+    "globals": {
+      "pointer_rva": "0x3472cc0",
+      "fallback_rva": "0x3472d60",
+      "current_time_offset": "0x30",
+      "interval_offset": "0x54",
+      "replay_clock_review": {
+        "client_sha256": "d0341ce77398614af905ef8669d328fd4d45958282acef66789a250492e466b5",
+        "render_fraction_offset": "0x38",
+        "time_source": "(engine replay tick + client render fraction) * interval_per_tick",
+        "validation": "6861 exact installed-image offline review, re-derived from the 6860 review by normalised instruction shape: CSource2Client RTTI vtable0x2c44038 slot11 SetGlobals0x197b710 pins globals pointer0x3472cc0; unique consumer0x1732cd0 loads int tick+0x44/float fraction+0x38 into normalizer0x21a5440, which stores and normalizes the pair (wrap constant 1.0); unique render-time consumer0x780650 scales fraction by interval+0x54. No 6861 runtime cadence or replay-tick alignment claim yet; isolated CRAV qualification only.",
+        "reviewed_functions": [
+          {
+            "name": "CSource2Client.SetGlobals",
+            "rva": "0x197b710",
+            "end_rva": "0x197b752",
+            "sha256": "0f4786b61fcfb5f1a8beb050080f61dbc81d5e70981f59b58bc39574542548e1"
+          },
+          {
+            "name": "fractional_time_consumer",
+            "rva": "0x1732cd0",
+            "end_rva": "0x1732d4d",
+            "sha256": "2a732ad0a52ab437eef8a6cbf31ed7780daf7cc1ad8b9ec52039e124be8de097"
+          },
+          {
+            "name": "tick_fraction_normalizer",
+            "rva": "0x21a5440",
+            "end_rva": "0x21a54f7",
+            "sha256": "ea92c25fcf9109c456cd59a20e5287ed5dd48b0d285f44a1146ddca2718b7fe1"
+          },
+          {
+            "name": "render_time_consumer",
+            "rva": "0x780650",
+            "end_rva": "0x7806d4",
+            "sha256": "1d6094351f8538a3331eb3bc1bd7cf81bbb1498228b9fc0c51b76738954ffbb2"
+          }
+        ]
+      }
+    },
+    "camera_layout_review": {
+      "client_sha256": "d0341ce77398614af905ef8669d328fd4d45958282acef66789a250492e466b5",
+      "validation": "6861: complete/scoped camera consumers, named schema, indexed globals and changed stock call sites reviewed against installed modules. Generated verification and native/source checks pass. Bounded live startup, seeking, camera movement/path playback and short Color, paired Depth/EXR and Players exports pass; this is not exhaustive game coverage.",
+      "client_mode_class": "ClientModeCitadelNormal",
+      "client_mode_vtable_rva": "0x27ba238",
+      "client_mode_slot": "0x78",
+      "client_mode_array_rva": "0x384a0b8",
+      "client_mode_object_rva": "0x384a030",
+      "cache": {
+        "origin": "0x3eb7370",
+        "angles": "0x3eb7380",
+        "forward": "0x3eb7390",
+        "right": "0x3eb73a0",
+        "up": "0x3eb73b0",
+        "basis": "0x22a7d00"
+      },
+      "functions": {
+        "wrapper": {
+          "rva": "0x1a120a0",
+          "end_rva": "0x1a12169",
+          "sha256": "9fd0fa87f9acf0b74cb1447afb0cf8747f4a55d7848587dc079a5f22fc49f2d6"
+        },
+        "matrix": {
+          "rva": "0x1a0baa0",
+          "end_rva": "0x1a0bc56",
+          "sha256": "ff37c9e1cc0d6101984105ca662c4609fd92224378e04b5ed5c7f360eda67d7b"
+        },
+        "producer": {
+          "rva": "0x5ee490",
+          "end_rva": "0x5ee73d",
+          "sha256": "5c90c2c03c427e95cc388be4f17a456c226e4bbf789bd484fea8bacd1a5d6c3a"
+        },
+        "cache_basis": {
+          "rva": "0x22a84d0",
+          "end_rva": "0x22a8648",
+          "sha256": "97c91f4ed3f43b13a799bf03681907fe5b7f621a7b7d9fd5899bc03ff41c79a8"
+        },
+        "matrix_consumer": {
+          "rva": "0xc2dcf0",
+          "end_rva": "0xc2def5",
+          "sha256": "ad6ae7992dd958c47c1b5f4594e6263980fd9b031998934b5187cc1ac57fd24c"
+        },
+        "aux_consumer": {
+          "rva": "0x192c3a0",
+          "end_rva": "0x192c5fc",
+          "sha256": "5a80ce2e357fe02144246ebdea5e094f260334c3185b0d887e8d5eec2ba170de"
+        }
+      }
+    },
+    "camera_signature": {
+      "client_sha256": "d0341ce77398614af905ef8669d328fd4d45958282acef66789a250492e466b5",
+      "bytes": "48895c24084889742410574883ec20488bf1c6813013000001b9ffffffffe83d8fbffe488bc8488b104c8b4278488d561041ffd0488b0dc5b54902448b864c0400008b9644040000488b01ff90c00200004c8d0db8524a02f30f1186d01c00004c8d0599524a02488d1582524a02488d8ec8040000e8b6638900f20f1086b0040000488b5c2430f20f110541524a028b86b804000089053d524a02f20f1086c8040000f20f110535524a028b86d0040000890531524a02c6863013000000488b7424384883c4205fc3cccccccccccccc40555356574157488bec4881ec800000004d8bf88bda488bf9e8b2b2b100488bf04885c00f84ba0100004c89a424b00000004c89ac24b80000004533ed4c89b424c00000004c8b7708410fb74e28e87d",
+      "mask": "010101010101010101010101010101010101010101010101010101010101010000000001010101010101010101010101010101010101010000000001010101010101010101010101010101010101010101010101000000000101010101010101010101000000000101010000000001010101010101010000000001010101010101010101010101010101010000000001010101010101010000000001010101010101010101010100000000010101010101010100000000010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101000000000101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101"
+    }
+  },
+  "engine": {
+    "sha256": "cd066b699ac8cc2d74371f45d2854e562f52c9b66d8ccf1ed1b50cf49f8bd010",
+    "image_size": "0x905000",
+    "timestamp": "0x6af1fdc6",
+    "addresses": {
+      "engine_client_vtable": "0x4e27f0",
+      "demo_player_pointer": "0x5b8430",
+      "demo_player_default_object": "0x630ec8",
+      "demo_player_vtable": "0x4d7e88",
+      "demo_file_vtable": "0x4d7fe0",
+      "network_client_service_pointer": "0x62d7f8",
+      "network_client_service_vtable": "0x51fa48",
+      "aspect_cvar_object": "0x632d50"
+    },
+    "functions": {
+      "engine_get_aspect_ratio": {
+        "rva": "0x73660",
+        "slot": 88,
+        "abi": "float(void* this,int width,int height)",
+        "first16": "4883ec28488d0de5f65b00e8c084fcff"
+      },
+      "engine_is_playing_demo": {
+        "rva": "0x73290",
+        "slot": 42,
+        "abi": "bool(void* this)",
+        "first16": "48833d68ec830000740e488b0d8f5154"
+      },
+      "engine_get_demo_filename": {
+        "rva": "0x732e0",
+        "slot": 43,
+        "abi": "const char*(void* this)",
+        "first16": "4883ec2848833d14ec830000742c488b"
+      },
+      "demo_get_file": {
+        "rva": "0x24290",
+        "slot": 1,
+        "abi": "void*(void* this)",
+        "first16": "488d4120c3cccccccccccccccccccccc"
+      },
+      "demo_get_start_tick": {
+        "rva": "0x34ea0",
+        "slot": 2,
+        "abi": "int(void* this)",
+        "first16": "8b8104020000c3cccccccccccccccccc"
+      },
+      "demo_get_tick": {
+        "rva": "0x34eb0",
+        "slot": 3,
+        "abi": "int(void* this)",
+        "first16": "40534883ec20488bd9488b0d38895f00"
+      },
+      "demo_is_playing": {
+        "rva": "0x2d560",
+        "slot": 11,
+        "abi": "bool(void* this)",
+        "first16": "0fb68130120000c3cccccccccccccccc"
+      },
+      "demo_is_paused": {
+        "rva": "0x34e70",
+        "slot": 12,
+        "abi": "bool(void* this)",
+        "first16": "80b93012000000741a83b92802000000"
+      },
+      "demo_is_seeking": {
+        "rva": "0x28b10",
+        "slot": 14,
+        "abi": "bool(void* this)",
+        "first16": "80b93012000000740c83b908020000ff"
+      },
+      "demo_get_playback_scale": {
+        "rva": "0x34f00",
+        "slot": 17,
+        "abi": "float(void* this)",
+        "first16": "f30f108114020000c3cccccccccccccc"
+      },
+      "demo_file_get_filename": {
+        "rva": "0x24150",
+        "slot": 3,
+        "abi": "const char*(void* this)",
+        "first16": "488b5108488d05d4f14a004885d2480f"
+      },
+      "network_service_get_tick": {
+        "rva": "0x1d4fa0",
+        "slot": 57,
+        "abi": "int(void* this)",
+        "first16": "8b8190000000c3cccccccccccccccccc"
+      }
+    },
+    "validated_by": "6861: twelve named slot/body proofs and independently mapped globals; startup, exact seeks and short camera/export workflows also observed live.",
+    "notes": [
+      "All twelve named getters and required globals independently relocated."
+    ]
+  },
+  "tier0": {
+    "sha256": "29eae7e1e78245c64da8cb8ee7102df05cfc9c0c3181105d65c547f66e48bdf2",
+    "size_of_image": "0x3fa000",
+    "interface": "VEngineCvar007",
+    "vtable_rva": "0x313208",
+    "find_cvar": {
+      "slot": 11,
+      "rva": "0x6c710",
+      "abi": "void*(void* cvar,uint64* return_storage,const char* name,int allow_defensive)"
+    },
+    "get_data": {
+      "slot": 41,
+      "rva": "0x6c650",
+      "abi": "void*(void* cvar,uint64 reference)"
+    },
+    "set_value": {
+      "rva": "0x20fe50",
+      "abi": "void(ConVarRefAbstract*,int slot,const CVValue* new_value,CVValue* current_value,void* context)",
+      "first16": "4c8944241848894c2408555657415441"
+    },
+    "data_offsets": {
+      "name": "0x0",
+      "type_int16": "0x28",
+      "change_count": "0x2c",
+      "flags": "0x30",
+      "scalar_value": "0x58"
+    },
+    "validated_by": "6861 named CCvar table; all fourteen adapter methods and lookup/data/setter reviewed. Padding/branch encoding changes only; member layout retained. Offline only."
+  }
+}

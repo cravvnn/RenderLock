@@ -1,0 +1,45 @@
+--- a/build_compat.cpp
++++ b/build_compat.cpp
+@@ -44,6 +44,7 @@
+ static bool g_6769_server=false;
+ static bool g_6774_server=false;
+ static bool g_6793_server=false;
++static bool g_6801_server=false;
+ static bool g_6779_server=false;
+ static HMODULE g_real_server=nullptr;
+ static DollyCvarProxy g_proxy;
+@@ -85,9 +86,10 @@
+ bool DollyVerifyUnlockerBuild(void* real_server_module) {
+     auto tier=GetModuleHandleW(L"tier0.dll");
+     const auto hash=ModuleHash(tier);
++    const bool tier6801=hash=="666c9022739190d571a67161646d1a55511e130b62c3a93f8c95b47beaede433";
+     const bool tier6793=hash=="ec99a83124781f051cfdc74f536a6462d92cb1fb5d3b7053fe7d1427fa01d45b";
+     const bool tier6779=hash=="784e692b1391809ba31c8fd8fddc121ad1950c36241411d198c2f1cbbb2c2eb6";
+-    const bool tier6726=tier6793 || tier6779 || hash=="6793cc7306ff40283ba038a784fe96f99f6d38f93c825571ee93ab6b9d9d5332";
++    const bool tier6726=tier6801 || tier6793 || tier6779 || hash=="6793cc7306ff40283ba038a784fe96f99f6d38f93c825571ee93ab6b9d9d5332";
+     g_new_build=tier6726 || hash=="493bf3ca610bac0eec1369d19aa67f4c279c6ae1c8f1243b3bad0974c6a8db82";
+     // Existing reviewed legacy builds continue to use the original SDK directly.
+     if(!g_new_build && hash!="b4300eb0abfe73e1e877516ab6b8bdd1a1bdb4ffc47c7515a349d0623b852f69" &&
+@@ -121,16 +123,20 @@
+     g_6774_server=server_hash=="9a97830b33a1b53dd766902c185d83e53c44924a5da60732331433c28dba0ba2";
+     g_6779_server=server_hash=="10b577ce6eb0bc6df849d121dd39d51e5f594c2e61abf9b457562faf0e2cdf3f";
+     g_6793_server=server_hash=="deba4a4f7742839763b2877ee8d490a0cadb4b626e4af7c85c3ac7ba4bc61a66";
+-    if (tier6726 != (g_6726_server || g_6728_server || g_6730_server || g_6731_server || g_6739_server || g_6742_server || g_6745_server || g_6746_server || g_6753_server || g_6757_server || g_6759_server || g_6762_server || g_6763_server || g_6765_server || g_6766_server || g_6769_server || g_6774_server || g_6779_server || g_6793_server)) return false;
++    g_6801_server=server_hash=="402e32de2e702973eb92920261ecde5c850930dcc06c10d5bbd429a69cc92788";
++    if (tier6726 != (g_6726_server || g_6728_server || g_6730_server || g_6731_server || g_6739_server || g_6742_server || g_6745_server || g_6746_server || g_6753_server || g_6757_server || g_6759_server || g_6762_server || g_6763_server || g_6765_server || g_6766_server || g_6769_server || g_6774_server || g_6779_server || g_6793_server || g_6801_server)) return false;
+     if (tier6793 != g_6793_server) return false;
++    if (tier6801 != g_6801_server) return false;
+     if (tier6779 != g_6779_server) return false;
+-    return g_6793_server || g_6779_server || g_6774_server || g_6769_server || g_6766_server || g_6765_server || g_6763_server || g_6762_server || g_6759_server || g_6757_server || g_6753_server || g_6746_server || g_6745_server || g_6742_server || g_6739_server || g_6731_server || g_6730_server || g_6728_server || g_6726_server || g_latest_server || g_hotfix_server || server_hash=="cb480d4091735abe7b74695c8c8077a882528aaaaa9f457d81fbca886b6c9bd8";
++    return g_6801_server || g_6793_server || g_6779_server || g_6774_server || g_6769_server || g_6766_server || g_6765_server || g_6763_server || g_6762_server || g_6759_server || g_6757_server || g_6753_server || g_6746_server || g_6745_server || g_6742_server || g_6739_server || g_6731_server || g_6730_server || g_6728_server || g_6726_server || g_latest_server || g_hotfix_server || server_hash=="cb480d4091735abe7b74695c8c8077a882528aaaaa9f457d81fbca886b6c9bd8";
+ }
+ bool DollyVerifyServerConfig(void* config) {
+     if(!config) return false;
+     if(!g_new_build) return true;
+     auto base=reinterpret_cast<std::uintptr_t>(g_real_server);
+     auto table=*static_cast<std::uintptr_t**>(config);
++    if (g_6801_server)
++        return reinterpret_cast<std::uintptr_t>(table)==base+0x2b58210 && table[0]==base+0x99d7e4 && table[1]==base+0x99d7f0 && table[13]==base+0x99a940;
+     if (g_6793_server)
+         return reinterpret_cast<std::uintptr_t>(table)==base+0x2b215e8 && table[0]==base+0x995a64 && table[1]==base+0x995a70 && table[13]==base+0x995f00;
+     if (g_6779_server)

@@ -1,0 +1,32 @@
+{
+  "profile_format": 1,
+  "module": "scenesystem.dll",
+  "sha256": "22a37a9ec40f8960a2f3749ce9687f80e2ff35a932ea8dce03bf2db8b77acdb4",
+  "size_of_image": "0x9c6000",
+  "producer": {
+    "rva": "0x5c9a0",
+    "end_rva": "0x5da0b",
+    "sha256": "d5ead72ef62dde27414b0fc9e0ee37d36862f8157a6bae5483850fd04c21c613",
+    "prologue": "488bc44c8948204c89401848895010488948085553488d68e84881ec08010000",
+    "arguments": 10,
+    "return_value": "signed 32-bit record index",
+    "return": "int instance index"
+  },
+  "layout": {
+    "object": "0x955e80",
+    "vtable": "0x61e880",
+    "frame": "0x957618",
+    "stack": "0x957da8",
+    "records": "0x957ea0",
+    "capacity": "0x957ea8",
+    "ids": "0x957d08",
+    "transforms": "0x957e00",
+    "cpu_transforms": "0x957da0",
+    "owner_offset": "0xd8",
+    "record_stride": 32,
+    "mesh_cache": "inline packed uint64 at mesh+0x40, lock inline+0x48",
+    "renderer_gpu_buffer_offset": "0x70",
+    "renderer_gpu_buffer_evidence": "6801 offline: reviewed6782/6785 renderer .text/.data/.pdata byte-exact; complete1531-byte CreateBuffer at0x824a0 unchanged, its0x825e1 output references wrapper+0x70."
+  },
+  "validation": "6853 offline complete producer and named layout review; no live capture claim."
+}

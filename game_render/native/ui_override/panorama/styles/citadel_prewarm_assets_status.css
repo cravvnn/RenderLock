@@ -1,0 +1,193 @@
+/* Prettified by Source 2 Viewer 20.0.0.0 - https://valveresourceformat.github.io */
+
+CitadelPrewarmAssetsStatus.StatusNotification
+{
+	visibility: collapse;
+	margin: 0px;
+}
+
+CitadelPrewarmAssetsStatus.StatusNotification.Prewarming
+{
+	visibility: visible;
+}
+
+CitadelPrewarmAssetsStatus.StatusNotification .IconContainer
+{
+	visibility: collapse;
+}
+
+CitadelPrewarmAssetsStatus.StatusNotification .Details
+{
+	opacity: 0.12;
+	width: fit-children;
+	horizontal-align: right;
+	margin-right: 8px;
+}
+
+CitadelPrewarmAssetsStatus.StatusNotification .Title
+{
+	font-size: 18px;
+	text-align: right;
+	opacity: 0.6;
+}
+
+CitadelPrewarmAssetsStatus.StatusNotification .Desc
+{
+	text-align: right;
+	horizontal-align: right;
+	font-size: 16px;
+}
+
+
+/* Private loading experiment. The stock engine-owned Prewarming class remains
+   the only visibility gate. This does not indicate Dolly replay readiness.
+   Look: Kara's redesign, Figma [design reference] (card 420 x 112 on the 1920 x 1080
+   screen [design reference]; hud_hideout.xml keeps it centred 16% down, 420 px wide).
+   Inter is not in the game, so its labels use the stock sans (Retail Demo);
+   the title uses the stock oracle (VALVE Oracle) like the design. */
+CitadelPrewarmAssetsStatus.StatusNotification.DollyLoadingProbeV2
+{
+    width: 420px;
+    height: 112px;
+    margin: 0px;
+    padding: 0px;
+    flow-children: none;
+    background-color: #0f1012;
+    border: 1px solid #29292d;
+    border-radius: 6px;
+    box-shadow: #00000073 0px 8px 24px 0px;
+}
+/* Figma pads 20 px inside its 1 px stroke, so the content starts 21 px in:
+   16 brand + 6 + 26 title row + 6 + 16 desc fills the 112 px card. */
+CitadelPrewarmAssetsStatus.StatusNotification.DollyLoadingProbeV2 .Details
+{
+    opacity: 1;
+    width: 100%;
+    height: 100%;
+    margin: 0px;
+    padding: 21px;
+    horizontal-align: left;
+    vertical-align: top;
+    flow-children: down;
+}
+CitadelPrewarmAssetsStatus.StatusNotification.DollyLoadingProbeV2 .DollyBrand
+{
+    font-family: sans;
+    font-size: 12px;
+    font-weight: medium;
+    line-height: 16px;
+    height: 16px;
+    letter-spacing: 0px;
+    text-transform: none;
+    color: #a6a6a6;
+    margin: 0px;
+}
+CitadelPrewarmAssetsStatus.StatusNotification.DollyLoadingProbeV2 .DollyTitleRow
+{
+    flow-children: right;
+    height: 26px;
+    margin: 6px 0px 0px 0px;
+}
+/* The stock card hides its 64 px icon slot; the redesign shows Rem's (familiar)
+   "helpers" ability icon there, 26 x 26, untinted (the game texture is 137 px). */
+CitadelPrewarmAssetsStatus.StatusNotification.DollyLoadingProbeV2 .IconContainer
+{
+    visibility: visible;
+    width: 26px;
+    height: 26px;
+    margin: 0px;
+}
+CitadelPrewarmAssetsStatus.StatusNotification.DollyLoadingProbeV2 .IconContainer .Icon
+{
+    width: 26px;
+    height: 26px;
+    background-image: url("s2r://panorama/images/hud/abilities/familiar/familiar_helpers_psd.vtex");
+    background-size: 26px 26px;
+    background-repeat: no-repeat;
+    background-position: center;
+    wash-color: none;
+    transform-origin: 50% 50%;
+    transform: translate3d( 0px, 0px, 0px ) rotateZ( 0deg );
+}
+/* Boil like RenderLock's hero tags (Figma [design reference]): every 800 ms the icon snaps
+   to the next held pose, 0 > 3 > 1 > 5 > 2 > 4 > 0, on a 4.8 s loop. Each pose is
+   held until a switch 0.01% (0.5 ms) long, the stock 59.99% / 60% trick, so
+   there is no visible tween. Figma tilts counter-clockwise for a positive angle;
+   rotateZ turns clockwise, so the signs flip (pose 1: Figma 0.4 = -0.4deg).
+   Nudges are the variants' centre offsets. */
+@keyframes 'DollyFamiliarBoil'
+{
+    0% { transform: translate3d( 0px, 0px, 0px ) rotateZ( 0deg ); }
+    16.66% { transform: translate3d( 0px, 0px, 0px ) rotateZ( 0deg ); }
+    16.67% { transform: translate3d( -0.5px, 0.5px, 0px ) rotateZ( -0.3deg ); }
+    33.32% { transform: translate3d( -0.5px, 0.5px, 0px ) rotateZ( -0.3deg ); }
+    33.33% { transform: translate3d( 0.5px, 0px, 0px ) rotateZ( -0.4deg ); }
+    49.99% { transform: translate3d( 0.5px, 0px, 0px ) rotateZ( -0.4deg ); }
+    50% { transform: translate3d( -0.5px, -0.5px, 0px ) rotateZ( -0.5deg ); }
+    66.66% { transform: translate3d( -0.5px, -0.5px, 0px ) rotateZ( -0.5deg ); }
+    66.67% { transform: translate3d( 0px, -0.5px, 0px ) rotateZ( 0.5deg ); }
+    83.32% { transform: translate3d( 0px, -0.5px, 0px ) rotateZ( 0.5deg ); }
+    83.33% { transform: translate3d( 0.5px, 0.5px, 0px ) rotateZ( 0.35deg ); }
+    100% { transform: translate3d( 0.5px, 0.5px, 0px ) rotateZ( 0.35deg ); }
+}
+/* Runs only while the engine shows the card, and starts again from rest each time. */
+CitadelPrewarmAssetsStatus.StatusNotification.DollyLoadingProbeV2.Prewarming .IconContainer .Icon
+{
+    animation-name: DollyFamiliarBoil;
+    animation-duration: 4.8s;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+}
+CitadelPrewarmAssetsStatus.StatusNotification.DollyLoadingProbeV2 .Title
+{
+    font-family: oracle;
+    font-size: 21px;
+    font-weight: semi-bold;
+    line-height: 26px;
+    height: 26px;
+    text-transform: none;
+    text-align: left;
+    horizontal-align: left;
+    vertical-align: top;
+    color: #ffffff;
+    opacity: 1;
+    margin: 0px 0px 0px 5px;
+}
+CitadelPrewarmAssetsStatus.StatusNotification.DollyLoadingProbeV2 .Desc
+{
+    font-family: sans;
+    font-size: 12px;
+    font-weight: normal;
+    line-height: 16px;
+    height: 16px;
+    text-transform: none;
+    text-align: left;
+    horizontal-align: left;
+    color: #a6a6a6;
+    opacity: 1;
+    margin: 6px 0px 0px 0px;
+}
+/* The design's faint chalk doodle (Figma "Chalk07": the game's own hideout
+   chalk_doodle07, 768 x 420): its right-hand crop at 0.512 scale in a 124.5 x 215
+   frame, tilted 5.75 degrees counter-clockwise, 4% opacity, drawn over the card
+   and cut off at the card's edges like the design's clipping frame. */
+CitadelPrewarmAssetsStatus.StatusNotification.DollyLoadingProbeV2 .DollyChalkClip
+{
+    width: 100%;
+    height: 100%;
+    overflow: clip;
+}
+CitadelPrewarmAssetsStatus.StatusNotification.DollyLoadingProbeV2 .DollyChalk
+{
+    width: 124.5px;
+    height: 215px;
+    position: 298.5px -90.3px 0px;
+    border-radius: 34px;
+    background-image: url("s2r://panorama/images/hideout/chalk_doodle07_psd.vtex");
+    background-size: 393.1px 215px;
+    background-position: -268.2px 0px;
+    background-repeat: no-repeat;
+    opacity: 0.04;
+    transform-origin: 50% 50%;
+    transform: rotateZ( -5.75deg );
+}

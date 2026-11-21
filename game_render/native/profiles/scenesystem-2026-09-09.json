@@ -1,0 +1,27 @@
+{
+  "profile_format": 1,
+  "module": "scenesystem.dll",
+  "sha256": "e480a7f28ae073dd4a83833bfee8db44bfff22f097147f2f697a109b2ea2de4b",
+  "size_of_image": "0x925000",
+  "producer": {
+    "rva": "0x564b0",
+    "prologue": "488bc44c89482048895010488948085553488d68e84881ec08010000488970e8",
+    "arguments": 9,
+    "return": "int instance index"
+  },
+  "layout": {
+    "object": "0x8cd2e0",
+    "vtable": "0x5d4fe8",
+    "frame": "0x8ce9b8",
+    "stack": "0x8cfce8",
+    "records": "0x8cfde0",
+    "capacity": "0x8cfde8",
+    "ids": "0x8cfc50",
+    "transforms": "0x8cfd40",
+    "cpu_transforms": "0x8cfce0",
+    "owner_offset": "0xc0",
+    "renderer_gpu_buffer_offset": "0x60",
+    "record_stride": 32
+  },
+  "validation": "Retained reviewed legacy layout and 9-argument ABI from the existing capture implementation; no new output certification."
+}

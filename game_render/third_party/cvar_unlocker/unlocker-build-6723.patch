@@ -1,0 +1,29 @@
+--- a/build_compat.cpp
++++ b/build_compat.cpp
+@@ -25,6 +25,7 @@
+ extern "C" { bool* __imp_g_bUpdateStringTokenDatabase=&g_NoTokenDatabase; }
+ static bool g_new_build=false;
+ static bool g_hotfix_server=false;
++static bool g_latest_server=false;
+ static HMODULE g_real_server=nullptr;
+ static DollyCvarProxy g_proxy;
+ static constexpr DollyCvarSlot kSlots[]={
+@@ -78,13 +79,17 @@
+     if (!g_new_build) return true;
+     const auto server_hash=ModuleHash(g_real_server);
+     g_hotfix_server=server_hash=="d8039b48395c79a5332939bfa25038732b14ab6fce541eefebb82f05c4a9abe0";
+-    return g_hotfix_server || server_hash=="cb480d4091735abe7b74695c8c8077a882528aaaaa9f457d81fbca886b6c9bd8";
++    g_latest_server=server_hash=="afd91d195ebcba6ecd8dd13aaf1f80973f58136d4b01365f92cf10b3d3fa1ccb";
++    return g_latest_server || g_hotfix_server || server_hash=="cb480d4091735abe7b74695c8c8077a882528aaaaa9f457d81fbca886b6c9bd8";
+ }
+ bool DollyVerifyServerConfig(void* config) {
+     if(!config) return false;
+     if(!g_new_build) return true;
+     auto base=reinterpret_cast<std::uintptr_t>(g_real_server);
+     auto table=*static_cast<std::uintptr_t**>(config);
++    if (g_latest_server)
++        return reinterpret_cast<std::uintptr_t>(table)==base+0x2995cc0 &&
++               table[0]==base+0x97ba84 && table[1]==base+0x97ba90 && table[13]==base+0x97c570;
+     if (g_hotfix_server)
+         return reinterpret_cast<std::uintptr_t>(table)==base+0x2994d20 &&
+                table[0]==base+0x97b5e4 && table[1]==base+0x97b5f0 && table[13]==base+0x97c0d0;

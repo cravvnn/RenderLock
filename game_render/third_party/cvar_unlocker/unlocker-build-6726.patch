@@ -1,0 +1,39 @@
+--- a/build_compat.cpp
++++ b/build_compat.cpp
+@@ -26,6 +26,7 @@
+ static bool g_new_build=false;
+ static bool g_hotfix_server=false;
+ static bool g_latest_server=false;
++static bool g_6726_server=false;
+ static HMODULE g_real_server=nullptr;
+ static DollyCvarProxy g_proxy;
+ static constexpr DollyCvarSlot kSlots[]={
+@@ -66,7 +67,8 @@
+ bool DollyVerifyUnlockerBuild(void* real_server_module) {
+     auto tier=GetModuleHandleW(L"tier0.dll");
+     const auto hash=ModuleHash(tier);
+-    g_new_build=hash=="493bf3ca610bac0eec1369d19aa67f4c279c6ae1c8f1243b3bad0974c6a8db82";
++    const bool tier6726=hash=="6793cc7306ff40283ba038a784fe96f99f6d38f93c825571ee93ab6b9d9d5332";
++    g_new_build=tier6726 || hash=="493bf3ca610bac0eec1369d19aa67f4c279c6ae1c8f1243b3bad0974c6a8db82";
+     // Existing reviewed legacy builds continue to use the original SDK directly.
+     if(!g_new_build && hash!="b4300eb0abfe73e1e877516ab6b8bdd1a1bdb4ffc47c7515a349d0623b852f69" &&
+        hash!="b3192eac3cb8c54ac3f9c7aaf7c725ddfcc2dc46d99ba13d16177b6ebf736ebc") return false;
+@@ -80,13 +82,17 @@
+     const auto server_hash=ModuleHash(g_real_server);
+     g_hotfix_server=server_hash=="d8039b48395c79a5332939bfa25038732b14ab6fce541eefebb82f05c4a9abe0";
+     g_latest_server=server_hash=="afd91d195ebcba6ecd8dd13aaf1f80973f58136d4b01365f92cf10b3d3fa1ccb";
+-    return g_latest_server || g_hotfix_server || server_hash=="cb480d4091735abe7b74695c8c8077a882528aaaaa9f457d81fbca886b6c9bd8";
++    g_6726_server=server_hash=="1c8bd4615c494796b05826bd5fc55fed78cfcfc7a0b75a571145f6b34e6c3065";
++    if (tier6726 != g_6726_server) return false;
++    return g_6726_server || g_latest_server || g_hotfix_server || server_hash=="cb480d4091735abe7b74695c8c8077a882528aaaaa9f457d81fbca886b6c9bd8";
+ }
+ bool DollyVerifyServerConfig(void* config) {
+     if(!config) return false;
+     if(!g_new_build) return true;
+     auto base=reinterpret_cast<std::uintptr_t>(g_real_server);
+     auto table=*static_cast<std::uintptr_t**>(config);
++    if (g_6726_server)
++        return reinterpret_cast<std::uintptr_t>(table)==base+0x299b388 && table[0]==base+0x97c91c && table[1]==base+0x97c928 && table[13]==base+0x97f000;
+     if (g_latest_server)
+         return reinterpret_cast<std::uintptr_t>(table)==base+0x2995cc0 &&
+                table[0]==base+0x97ba84 && table[1]==base+0x97ba90 && table[13]==base+0x97c570;

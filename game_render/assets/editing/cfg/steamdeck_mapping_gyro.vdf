@@ -1,0 +1,4133 @@
+"controller_mappings"
+{
+	"version"		"3"
+	"revision"		"112"
+	"major_revision"		"3"
+	"minor_revision"		"116"
+	"Timestamp"		"1733272721"
+	"title"		"Gyro"
+	"description"		"Standard Controls plus Gyro Aiming"
+	"controller_type"		"controller_neptune"
+	"actions"
+	{
+		"GameControls"
+		{
+			"title"		"#InGame_Controls"
+			"legacy_set"		"0"
+			"StickPadGyro"
+			{
+				"Move"
+				{
+					"title"					"#Move"
+					"input_mode"			"joystick_move"
+				}
+				"JoystickCamera"
+				{
+					"title"					"#Camera"
+					"input_mode"			"joystick_to_camera_angles"
+				}
+				"FlickStick"
+				{
+					"title"					"#FlickStick"
+					"input_mode"			"flickstick_to_camera_angles"
+				}
+				"GyroCamera"
+				{
+					"title"					"#Camera"
+					"input_mode"			"gyro_to_camera_angles"
+				}
+				"TouchPadCamera"
+				{
+					"title"					"#Camera"
+					"input_mode"			"touchpad_to_camera_angles"
+				}
+				"RadialMenu"
+				{
+					"title"					"#RadialMenu"
+					"input_mode"			"joystick_move"
+				}
+			}
+			"Button"
+			{
+				"AbilityMelee"				"#AbilityMelee"
+
+				"Ability1"					"#Ability1"
+				"Ability2"					"#Ability2"
+				"Ability3"					"#Ability3"
+				"Ability4"					"#Ability4"
+
+				"Item1"						"#Item1"
+				"Item2"						"#Item2"
+				"Item3"						"#Item3"
+				"Item4"						"#Item4"
+
+				"Mantle"					"#JumpMantle"
+
+				"OpenHeroSheet" 			"#OpenHeroSheet"
+				"PurchaseQuickbuy"			"#PurchaseQuickbuy"
+
+				"Roll"						"#Roll"
+				"Crouch"					"#Crouch"
+				"CrouchToggle"				"#CrouchToggle"
+				"Scoreboard"				"#Scoreboard"
+				"Reload"					"#Reload"
+				"ExtraInfo"					"#ExtraInfo"
+				"AltCast"					"#AltCast"
+				"ReplayDeath"				"#ReplayDeath"
+				"MoveForward"				"#MoveForward"
+				"MoveBackwards"				"#MoveBackwards"
+				"MoveLeft"					"#MoveLeft"
+				"MoveRight"					"#MoveRight"
+				"MoveUp"					"#MoveUp"
+				"MoveDown"					"#MoveDown"
+
+				"Attack"					"#Attack"
+				"ADS"						"#ADS"
+				"ResetCamera"				"#ResetCamera"
+
+				"Ping"						"#Ping"
+				"InstantPing"				"#InstantPing"
+
+				"MouseWheel"				"#MouseWheel"
+				"MinimapZoomIn"				"#MinimapZoomIn"
+				"MinimapZoomOut"			"#MinimapZoomOut"
+				
+				"PingOption1"				"#PingOption1"
+				"PingOption2"				"#PingOption2"
+				"PingOption3"				"#PingOption3"
+				"PingOption4"				"#PingOption4"
+				"PingOption5"				"#PingOption5"
+
+				"HeldItem"					"#HeldItem"
+
+				"SwitchPlayerCam1"			"#SwitchPlayerCam1"
+				"SwitchPlayerCam2"			"#SwitchPlayerCam2"
+				"SwitchPlayerCam3"			"#SwitchPlayerCam3"
+				"SwitchPlayerCam4"			"#SwitchPlayerCam4"
+				"SwitchPlayerCam5"			"#SwitchPlayerCam5"
+
+				"AbilityUpgrade1"			"#AbilityUpgrade1"
+				"AbilityUpgrade2"			"#AbilityUpgrade2"
+				"AbilityUpgrade3"			"#AbilityUpgrade3"
+				"AbilityUpgrade4"			"#AbilityUpgrade4"
+				"AbilityUpgradeRadial"		"#AbilityUpgradeRadial"
+
+				"ItemQuickCastMode"			"#ItemQuickCastMode"
+				"AbilityQuickCastMode1"		"#AbilityQuickCastMode1"
+				"AbilityQuickCastMode2"		"#AbilityQuickCastMode2"
+				"AbilityQuickCastMode3"		"#AbilityQuickCastMode3"
+				"AbilityQuickCastMode4"		"#AbilityQuickCastMode4"
+
+				"Pause"						"#Pause"
+
+				"PushToTalk"				"#PushToTalk"
+				"PushToTalkParty"			"#PushToTalkParty"
+				"ToggleMute"				"#ToggleMute"
+
+				"Chat"						"#Chat"
+				"ChatTeam"					"#ChatTeam"
+
+				"Zipline"					"#Zipline"
+				"Interact"					"#Interact"
+				"Cosmetic1"					"#Cosmetic1"
+				"CancelAbility"				"#CancelAbility"
+
+				"OpenMainMenu" 				"#Action_OpenMainMenu, key_press ESC"
+
+				"HideoutNews"				"#HideoutNews"
+				"HideoutCancelMatchmaking"	"#HideoutCancelMatchmaking"
+				"HideoutAcceptRequest"		"#HideoutAcceptRequest"
+				"HideoutRejectRequest"		"#HideoutRejectRequest"
+				"HideoutSurveyOption1"		"#HideoutSurveyOption1"
+				"HideoutSurveyOption2"		"#HideoutSurveyOption2"
+				"HideoutSurveyOption3"		"#HideoutSurveyOption3"
+				"HideoutSurveyOption4"		"#HideoutSurveyOption4"
+				"HideoutSurveyOption5"		"#HideoutSurveyOption5"
+				"HideoutSurveySkip"			"#HideoutSurveySkip"
+			}
+		}
+		"MenuControls"
+		{
+			"title"							"#MenuControls"
+			"legacy_set"					"0"
+			"StickPadGyro"
+			{
+				"Mouse"
+				{
+					"title"					"#Mouse"
+					"input_mode"			"absolute_mouse"
+					"os_mouse"				"1"
+				}
+				"Scroll"
+				{
+					"title"					"#Scroll"
+					"input_mode"			"joystick_move"
+				}
+			}
+			"Button"
+			{
+				"PurchaseQuickbuy"			"#PurchaseQuickbuy"
+
+				"CursorSelect"				"#Action_CursorSelect"
+				"CursorContext"				"#Action_CursorContext"
+				"CursorMiddle"				"#Action_CursorMiddle"
+				"OpenMainMenu" 				"#Action_OpenMainMenu, key_press ESC"
+				"MenuBack"					"#Action_MenuBack, key_press ESC"
+				"MenuUp"					"#Action_MenuUp"
+				"MenuDown"					"#Action_MenuDown"
+				"MenuLeft"					"#Action_MenuLeft"
+				"MenuRight"					"#Action_MenuRight"
+				"PostGameScoreboard"		"#Action_PostGameScoreboard"
+				"PostGameGraphs"			"#Action_PostGameGraphs"
+			}
+		}
+		"SpectatorControls"
+		{
+			"title"							"#SpectatorControls"
+			"legacy_set"					"0"
+			"StickPadGyro"
+			{
+				"Move"
+				{
+					"title"					"#Move"
+					"input_mode"			"joystick_move"
+				}
+				"JoystickCamera"
+				{
+					"title"					"#Camera"
+					"input_mode"			"joystick_to_camera_angles"
+				}
+				"FlickStick"
+				{
+					"title"					"#FlickStick"
+					"input_mode"			"flickstick_to_camera_angles"
+				}
+				"GyroCamera"
+				{
+					"title" 				"#Camera"
+					"input_mode" 			"gyro_to_camera_angles"
+				}
+				"TouchPadCamera"
+				{
+					"title" 				"#Camera"
+					"input_mode" 			"touchpad_to_camera_angles"
+				}
+			}
+			"Button"
+			{
+				"ResetCamera"				"#ResetCamera"
+				"Roll"						"#FastMove"
+
+				"ToggleSpectatorCamera"		"#ToggleSpectatorCamera"
+				"ToggleSpectatorPlayerPerspective"	"#ToggleSpectatorPlayerPerspective"
+				"ToggleSpectatorTeam"		"#ToggleSpectatorTeam"
+				"SpectatorNextTarget"		"#SpectatorNextTarget"
+				"SpectatorPrevTarget"		"#SpectatorPrevTarget"
+				"SpectatorFlyUp"			"#MoveUp"
+				"SpectatorFlyDown"			"#MoveDown"
+				"SpectatorChase"			"#SpectatorChase"
+				"SpectatorInEye"			"#SpectatorInEye"
+
+				"SpectatorToggleFreeCursor"	"#SpectatorToggleFreeCursor"
+				"SpectatorFOWTeamAmber"		"#SpectatorFOWTeamAmber"
+				"SpectatorFOWTeamSapphire"	"#SpectatorFOWTeamSapphire"
+				"SpectatorFOWTeamBoth"		"#SpectatorFOWTeamBoth"
+				"SpectatorFOWTeamTarget"	"#SpectatorFOWTeamTarget"
+
+				"OpenHeroSheet"				"#OpenMenu"
+
+				"PushToTalk"				"#PushToTalk"
+				"PushToTalkParty"			"#PushToTalkParty"
+				"ToggleMute"				"#ToggleMute"
+
+				"OpenMainMenu" 				"#Action_OpenMainMenu, key_press ESC"
+				"Scoreboard"				"#Scoreboard"
+				"ExtraInfo"					"#ExtraInfo"
+
+				"Chat"						"#Chat"
+				"ChatTeam"					"#ChatTeam"
+			}
+		}
+		"ReplayControls"
+		{
+			"title"							"#ReplayControls"
+			"legacy_set"					"0"
+			"StickPadGyro"
+			{
+				"Move"
+				{
+					"title"					"#Move"
+					"input_mode"			"joystick_move"
+				}
+				"JoystickCamera"
+				{
+					"title"					"#Camera"
+					"input_mode"			"joystick_to_camera_angles"
+				}
+				"FlickStick"
+				{
+					"title"					"#FlickStick"
+					"input_mode"			"flickstick_to_camera_angles"
+				}
+				"GyroCamera"
+				{
+					"title"					"#Camera"
+					"input_mode"				"gyro_to_camera_angles"
+				}
+				"TouchPadCamera"
+				{
+					"title"					"#Camera"
+					"input_mode"			"touchpad_to_camera_angles"
+				}
+				"RadialMenu"
+				{
+					"title"					"#RadialMenu"
+					"input_mode"			"joystick_move"
+				}
+			}
+			"Button"
+			{
+				"ResetCamera"				"#ResetCamera"
+				"Roll"						"#FastMove"
+
+				"CursorSelect"				"#Action_CursorSelect"
+				"CursorContext"				"#Action_CursorContext"
+				"CursorMiddle"				"#Action_CursorMiddle"
+				"OpenMainMenu" 				"#Action_OpenMainMenu, key_press ESC"
+				"MenuBack"					"#Action_MenuBack, key_press ESC"
+				"MenuUp"					"#Action_MenuUp"
+				"MenuDown"					"#Action_MenuDown"
+				"MenuLeft"					"#Action_MenuLeft"
+				"MenuRight"					"#Action_MenuRight"
+				"PostGameScoreboard"		"#Action_PostGameScoreboard"
+				"PostGameGraphs"			"#Action_PostGameGraphs"
+
+				"ReplayTogglePause"			"#ReplayTogglePause"
+				"ReplayIncreaseSpeed"		"#ReplayIncreaseSpeed"
+				"ReplayDecreaseSpeed"		"#ReplayDecreaseSpeed"
+
+				"ToggleSpectatorCamera"		"#ToggleSpectatorCamera"
+				"ToggleSpectatorTeam"		"#ToggleSpectatorTeam"
+				"SpectatorNextTarget"		"#SpectatorNextTarget"
+				"SpectatorPrevTarget"		"#SpectatorPrevTarget"
+				"SpectatorFlyUp"			"#MoveUp"
+				"SpectatorFlyDown"			"#MoveDown"
+				"SpectatorChase"			"#SpectatorChase"
+				"SpectatorInEye"			"#SpectatorInEye"
+
+				"SpectatorToggleFreeCursor"	"#SpectatorToggleFreeCursor"
+				"SpectatorFOWTeamAmber"		"#SpectatorFOWTeamAmber"
+				"SpectatorFOWTeamSapphire"	"#SpectatorFOWTeamSapphire"
+				"SpectatorFOWTeamBoth"		"#SpectatorFOWTeamBoth"
+				"SpectatorFOWTeamTarget"	"#SpectatorFOWTeamTarget"
+			}
+		}
+	}
+	"action_layers"
+	{
+	}
+	"localization"
+	{
+		"english"
+		{
+			"MenuControls"						"Menu Controls"
+			"InGame_Controls"					"In-Game Controls"
+			"ReplayControls"					"Replay Controls"
+			"SpectatorControls"					"Spectator Controls"
+			"Mouse"								"Move Cursor"
+			"Scroll"							"Scroll"
+			"Move"								"Move"
+			"Camera"							"Camera"
+			"RadialMenu"						"RadialMenu"
+			"FlickStick"						"FlickStick Camera"
+			"AbilityMelee"						"Melee"
+			"Ability1"							"Ability 1"
+			"Ability2"							"Ability 2"
+			"Ability3"							"Ability 3"
+			"Ability4"							"Ability 4"
+			"Item1"								"Item 1"
+			"Item2"								"Item 2"
+			"Item3"								"Item 3"
+			"Item4"								"Item 4"
+			"JumpMantle"						"Jump/Mantle"
+			"Zipline"							"Zipline (Hold)"
+			"Interact"							"Use"
+			"Cosmetic1"							"Cosmetic1"
+			"CancelAbility"						"Cancel Ability"
+			"OpenHeroSheet"						"Open Buy Menu"
+			"PurchaseQuickbuy"					"Purchase Quick Buy"
+			"Roll"								"Roll"
+			"Crouch"							"Crouch"
+			"CrouchToggle"						"Crouch Toggle"
+			"PushToTalk"						"Push-to-Talk"
+			"PushToTalkParty"					"Push-to-Talk (Party)"
+			"ToggleMute"						"Toggle Mute"
+			"Scoreboard"						"Scoreboard"
+			"Reload"							"Reload"
+			"ExtraInfo"							"Extra Info"
+			"AltCast"							"Alternate Cast"
+			"ReplayDeath"						"Replay Death"
+			"MoveForward"						"Move Forward"
+			"MoveBackwards"						"Move Backward"
+			"MoveLeft"							"Move Left"
+			"MoveRight"							"Move Right"
+			"MoveUp"							"Fly Up"
+			"MoveDown"							"Fly Down"
+			"Attack"							"Fire"
+			"ADS"								"Zoom/Alternate Fire"
+			"ResetCamera"						"Reset Camera"
+			"Chat"								"Chat"
+			"ChatTeam"							"Team Chat"
+			"Ping"								"Ping"
+			"InstantPing"						"Instant Ping"
+			"QuickResponse"						"Quick Response"
+			"MouseWheel"						"Chat Wheel"
+			"MinimapZoomIn"						"Minimap Zoom In"
+			"MinimapZoomOut"					"Minimap Zoom Out"
+			"PingOption1"						"Ping Option 1"
+			"PingOption2"						"Ping Option 2"	
+			"PingOption3"						"Ping Option 3"
+			"PingOption4"						"Ping Option 4"
+			"PingOption5"						"Ping Option 5"
+			"HeldItem"							"Parry/Drop Urn"
+			"SwitchPlayerCam1"					"Switch to Player 1 Camera"
+			"SwitchPlayerCam2"					"Switch to Player 2 Camera"
+			"SwitchPlayerCam3"					"Switch to Player 3 Camera"
+			"SwitchPlayerCam4"					"Switch to Player 4 Camera"
+			"SwitchPlayerCam5"					"Switch to Player 5 Camera"
+			"AbilityUpgrade1"					"Upgrade Ability 1"
+			"AbilityUpgrade2"					"Upgrade Ability 2"
+			"AbilityUpgrade3"					"Upgrade Ability 3"
+			"AbilityUpgrade4"					"Upgrade Ability 4"
+			"AbilityUpgradeRadial"				"Ability Upgrade Radial"
+			"ItemQuickCastMode"					"Quick Cast Item Mode"
+			"AbilityQuickCastMode1"				"Quick Cast Ability 1"
+			"AbilityQuickCastMode2"				"Quick Cast Ability 2"
+			"AbilityQuickCastMode3"				"Quick Cast Ability 3"
+			"AbilityQuickCastMode4"				"Quick Cast Ability 4"
+			"ToggleSpectatorCamera"				"Toggle Camera"
+			"ToggleSpectatorPlayerPerspective"	"Toggle Player Perspective"
+			"ToggleSpectatorTeam"				"Toggle Team"
+			"SpectatorNextTarget"				"Next Target"
+			"SpectatorPrevTarget"				"Previous Target"
+			"SpectatorChase"					"Chase Camera"
+			"SpectatorInEye"					"First-Person View"
+			"SpectatorToggleFreeCursor"			"Toggle Free Cursor"
+			"SpectatorFOWTeamAmber"				"FOW Team Amber"
+			"SpectatorFOWTeamSapphire"			"FOW Team Sapphire"
+			"SpectatorFOWTeamBoth"				"FOW Both Teams"
+			"SpectatorFOWTeamTarget"			"FOW Target Team"
+			"ReplayIncreaseSpeed"				"Increase Replay Speed"
+			"ReplayDecreaseSpeed"				"Decrease Replay Speed"
+			"ReplayTogglePause"					"Toggle Replay Pause"
+			"DevConsole"						"Developer Console"
+			"Pause"								"Pause"
+			"FastMove"							"Increase Speed"
+			"OpenMenu"							"Buy"
+			"Action_CursorSelect"				"Select"
+			"Action_CursorContext"				"Make Preferred"
+			"Action_CursorMiddle"				"Options"
+			"Action_MenuBack"					"Back"			
+			"Action_OpenMainMenu"				"Game Menu"
+			"Action_MenuUp"						"Menu Up"
+			"Action_MenuDown"					"Menu Down"
+			"Action_MenuLeft"					"Menu Left"
+			"Action_MenuRight"					"Menu Right"
+			"Action_PostGameScoreboard"			"Post Game Scoreboard"
+			"Action_PostGameGraphs"				"Post Game Graphs"
+
+			"HideoutNews"						"News"
+			"HideoutCancelMatchmaking"			"Cancel Matchmaking"
+			"HideoutAcceptRequest"				"Accept Invite Request"
+			"HideoutRejectRequest"				"Reject Invite Request"
+			"HideoutSurveyOption1"				"Survey Option 1"
+			"HideoutSurveyOption2"				"Survey Option 2"
+			"HideoutSurveyOption3"				"Survey Option 3"
+			"HideoutSurveyOption4"				"Survey Option 4"
+			"HideoutSurveyOption5"				"Survey Option 5"
+			"HideoutSurveySkip"					"SkipSurvey"
+		}
+	}
+	"group"
+	{
+		"id"		"12"
+		"mode"		"four_buttons"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+	}
+	"group"
+	{
+		"id"		"28"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+	}
+	"group"
+	{
+		"id"		"29"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+	}
+	"group"
+	{
+		"id"		"34"
+		"mode"		"absolute_mouse"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+			"sensitivity"		"201"
+			"invert_y"		"1"
+			"rotation"		"-1"
+			"mouse_smoothing"		"18"
+			"deadzone_outer_radius"		"1663"
+		}
+	}
+	"group"
+	{
+		"id"		"36"
+		"mode"		"dpad"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"requires_click"		"0"
+			"layout"		"3"
+			"haptic_intensity_override"		"0"
+		}
+	}
+	"group"
+	{
+		"id"		"38"
+		"mode"		"joystick_move"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"41"
+		"mode"		"joystick_move"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"79"
+		"mode"		"four_buttons"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"83"
+		"mode"		"four_buttons"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"91"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"92"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"93"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"94"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"95"
+		"mode"		"joystick_move"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"96"
+		"mode"		"joystick_move"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"97"
+		"mode"		"absolute_mouse"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+			"layer"		"1"
+			"invert_y"		"1"
+			"acceleration"		"2"
+		}
+	}
+	"group"
+	{
+		"id"		"98"
+		"mode"		"absolute_mouse"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+			"layer"		"1"
+			"invert_y"		"1"
+			"acceleration"		"2"
+		}
+	}
+	"group"
+	{
+		"id"		"101"
+		"mode"		"joystick_move"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"102"
+		"mode"		"joystick_move"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"106"
+		"mode"		"four_buttons"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+	}
+	"group"
+	{
+		"id"		"107"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+	}
+	"group"
+	{
+		"id"		"108"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+	}
+	"group"
+	{
+		"id"		"109"
+		"mode"		"dpad"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"requires_click"		"0"
+			"layout"		"3"
+			"haptic_intensity_override"		"0"
+		}
+	}
+	"group"
+	{
+		"id"		"110"
+		"mode"		"dpad"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"requires_click"		"0"
+		}
+	}
+	"group"
+	{
+		"id"		"111"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"113"
+		"mode"		"four_buttons"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"114"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"115"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"116"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"117"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"119"
+		"mode"		"four_buttons"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"120"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"121"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"122"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"123"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"124"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"125"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"126"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"127"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"128"
+		"mode"		"joystick_move"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"129"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"130"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"131"
+		"mode"		"joystick_move"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"132"
+		"mode"		"joystick_move"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"133"
+		"mode"		"absolute_mouse"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"134"
+		"mode"		"absolute_mouse"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"135"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"136"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"137"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"138"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"139"
+		"mode"		"joystick_move"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"140"
+		"mode"		"joystick_move"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"141"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"142"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"143"
+		"mode"		"absolute_mouse"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"144"
+		"mode"		"absolute_mouse"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"145"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"146"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"147"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"148"
+		"mode"		"absolute_mouse"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"149"
+		"mode"		"absolute_mouse"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"151"
+		"mode"		"four_buttons"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"button_a"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls Mantle, , "
+						}
+					}
+					"chord"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls Ability2, , "
+						}
+						"settings"
+						{
+							"chord_button"		"1"
+							"interruptable"		"0"
+						}
+					}
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls Zipline, , "
+						}
+					}
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls MoveUp, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_b"
+			{
+				"activators"
+				{
+					"chord"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls Ability3, , "
+						}
+						"settings"
+						{
+							"chord_button"		"1"
+							"interruptable"		"0"
+						}
+					}
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls MoveDown, , "
+						}
+					}
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls CrouchToggle, , "
+						}
+					}
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls HideoutCancelMatchmaking, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_x"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls Reload, , "
+						}
+					}
+						"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls Interact, , "
+						}
+					}
+					"chord"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls Ability1, , "
+						}
+						"settings"
+						{
+							"chord_button"		"1"
+							"interruptable"		"0"
+						}
+					}
+					"Long_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls ResetCamera, , "
+						}
+						"settings"
+						{
+							"long_press_time"		"225"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_y"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls HeldItem, , "
+						}
+					}
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls HideoutNews, , "
+						}
+					}
+					"chord"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls Ability4, , "
+						}
+						"settings"
+						{
+							"chord_button"		"1"
+						}
+					}
+					"Long_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls CancelAbility, , "
+						}
+						"settings"
+						{
+							"long_press_time"		"225"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"152"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"edge"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls ADS, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"2"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"153"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"edge"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls Attack, Attack, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"2"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"155"
+		"mode"		"four_buttons"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"button_a"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action MenuControls CursorSelect, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_b"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action MenuControls MenuBack, , "
+						}
+						"settings"
+						{
+							"delay_start"		"150"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_x"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action MenuControls CursorContext, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_y"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action MenuControls PurchaseQuickbuy, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"156"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"edge"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action MenuControls CursorContext, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"2"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+		"settings"
+		{
+			"adaptive_threshold"		"0"
+		}
+	}
+	"group"
+	{
+		"id"		"157"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"edge"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action MenuControls CursorSelect, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"2"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+		"settings"
+		{
+			"adaptive_threshold"		"0"
+		}
+	}
+	"group"
+	{
+		"id"		"161"
+		"mode"		"joystick_mouse"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls AbilityMelee, Melee, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+		"settings"
+		{
+			"output_joystick"		"2"
+		}
+	}
+	"group"
+	{
+		"id"		"162"
+		"mode"		"joystick_move"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls HeldItem, Parry/Throw Held Item, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"2"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+		}
+		"gameactions"
+		{
+			"GameControls"		"Move"
+		}
+	}
+	"group"
+	{
+		"id"		"163"
+		"mode"		"joystick_move"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls Roll, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+		}
+		"gameactions"
+		{
+			"GameControls"		"Move"
+		}
+	}
+	"group"
+	{
+		"id"		"164"
+		"mode"		"dpad"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"dpad_north"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls Item4, , "
+						}
+					}
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls HideoutAcceptRequest, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"dpad_south"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls Item2, , "
+						}
+					}
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls HideoutRejectRequest, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"dpad_east"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls Item3, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"dpad_west"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls Item1, Item 1, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+		"settings"
+		{
+			"requires_click"		"0"
+			"haptic_intensity_override"		"0"
+		}
+	}
+	"group"
+	{
+		"id"		"165"
+		"mode"		"joystick_move"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls AbilityMelee, Melee, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+		}
+		"gameactions"
+		{
+			"GameControls"		"JoystickCamera"
+		}
+	}
+	"group"
+	{
+		"id"		"166"
+		"mode"		"joystick_mouse"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"output_joystick"		"2"
+			"sensitivity"		"94"
+		}
+		"gameactions"
+		{
+			"MenuControls"		"Mouse"
+		}
+	}
+	"group"
+	{
+		"id"		"167"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+	}
+	"group"
+	{
+		"id"		"168"
+		"mode"		"single_button"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Soft_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls Reload, Reload, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"169"
+		"mode"		"single_button"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+	}
+	"group"
+	{
+		"id"		"172"
+		"mode"		"mouse_joystick"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+		}
+		"gameactions"
+		{
+			"GameControls"		"JoystickCamera"
+		}
+	}
+	"group"
+	{
+		"id"		"173"
+		"mode"		"joystick_mouse"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"output_joystick"		"2"
+		}
+		"gameactions"
+		{
+			"MenuControls"		"Mouse"
+		}
+	}
+	"group"
+	{
+		"id"		"175"
+		"mode"		"four_buttons"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"button_a"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action SpectatorControls SpectatorFlyUp, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_b"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action SpectatorControls SpectatorFlyDown, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_x"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action SpectatorControls ToggleSpectatorCamera, , "
+						}
+					}
+					"Long_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action SpectatorControls ResetCamera, , "
+						}
+						"settings"
+						{
+							"long_press_time"		"225"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_y"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action SpectatorControls ToggleSpectatorTeam, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"176"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+	}
+	"group"
+	{
+		"id"		"177"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"edge"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action SpectatorControls Roll, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"2"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"178"
+		"mode"		"absolute_mouse"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+			"gyro_natural_sensitivity"		"600"
+			"invert_y"		"1"
+		}
+		"gameactions"
+		{
+			"GameControls"		"GyroCamera"
+		}
+	}
+	"group"
+	{
+		"id"		"180"
+		"mode"		"joystick_mouse"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action SpectatorControls SpectatorInEye, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+		"settings"
+		{
+			"output_joystick"		"2"
+		}
+	}
+	"group"
+	{
+		"id"		"182"
+		"mode"		"four_buttons"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"button_a"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls Ability1, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_b"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls Ability2, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_x"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls Ability3, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_y"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls Ability4, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+		"settings"
+		{
+			"haptic_intensity_override"		"0"
+		}
+	}
+	"group"
+	{
+		"id"		"183"
+		"mode"		"gyro_to_mouse"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"gyro_natural_sensitivity"		"400"
+			"gyro_vertical_horizontal_ratio"		"300"
+			"gyro_to_2d_conversion_style"		"4"
+			"gyro_ratchet_button_mask"		"0"
+		}
+	}
+	"group"
+	{
+		"id"		"185"
+		"mode"		"absolute_mouse"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Soft_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action MenuControls CursorSelect, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"1"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+		"settings"
+		{
+			"sensitivity"		"250"
+		}
+		"gameactions"
+		{
+			"MenuControls"		"Mouse"
+		}
+	}
+	"group"
+	{
+		"id"		"187"
+		"mode"		"gyro_to_mouse"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"gyro_natural_sensitivity"		"400"
+			"gyro_vertical_horizontal_ratio"		"300"
+			"gyro_to_2d_conversion_style"		"6"
+			"gyro_button_invert"		"0"
+		}
+	}
+	"group"
+	{
+		"id"		"189"
+		"mode"		"flickstick"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls AbilityMelee, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"2"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+		"settings"
+		{
+			"deadzone_inner_radius"		"56"
+			"flickstick_snap_tightness"		"56"
+			"flickstick_depression_speed"		"80"
+			"haptic_intensity"		"0"
+		}
+	}
+	"group"
+	{
+		"id"		"191"
+		"mode"		"four_buttons"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"button_a"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls AbilityUpgrade2, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_b"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls AbilityUpgrade3, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_x"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls AbilityUpgrade1, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_y"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls AbilityUpgrade4, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"193"
+		"mode"		"single_button"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Soft_Press"
+					{
+						"bindings"
+						{
+							"binding"		"mouse_button LEFT, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"touch"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls Scoreboard, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"194"
+		"mode"		"single_button"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Soft_Press"
+					{
+						"bindings"
+						{
+							"binding"		"controller_action CHANGE_PRESET 3 0 0, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"196"
+		"mode"		"single_button"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+	}
+	"group"
+	{
+		"id"		"198"
+		"mode"		"gyro_to_mouse"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+			"gyro_natural_sensitivity"		"400"
+			"gyro_vertical_horizontal_ratio"		"300"
+			"gyro_to_2d_conversion_style"		"4"
+			"gyro_ratchet_button_mask"		"0"
+		}
+		"gameactions"
+		{
+			"GameControls"		"GyroCamera"
+		}
+	}
+	"group"
+	{
+		"id"		"200"
+		"mode"		"gyro_to_mouse"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"gyro_natural_sensitivity"		"300"
+			"gyro_to_2d_conversion_style"		"4"
+			"gyro_ratchet_button_mask"		"0"
+			"gyro_button_invert"		"0"
+			"mouse_trigger_clamp_amount"		"50"
+		}
+	}
+	"group"
+	{
+		"id"		"201"
+		"mode"		"absolute_mouse"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"sensitivity"		"300"
+			"invert_y"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"202"
+		"mode"		"absolute_mouse"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Soft_Press"
+					{
+						"bindings"
+						{
+							"binding"		"mouse_button LEFT, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"touch"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"key_press TAB, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"1"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+		"settings"
+		{
+			"sensitivity"		"250"
+		}
+	}
+	"group"
+	{
+		"id"		"203"
+		"mode"		"absolute_mouse"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Soft_Press"
+					{
+						"bindings"
+						{
+							"binding"		"mouse_button LEFT, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"touch"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"key_press TAB, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"1"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"205"
+		"mode"		"four_buttons"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"button_a"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action ReplayControls SpectatorFlyUp, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_b"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action ReplayControls SpectatorFlyDown, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_x"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action ReplayControls ToggleSpectatorCamera, , "
+						}
+					}
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action ReplayControls ResetCamera, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_y"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action ReplayControls ToggleSpectatorTeam, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"206"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+	}
+	"group"
+	{
+		"id"		"207"
+		"mode"		"trigger"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+	}
+	"group"
+	{
+		"id"		"209"
+		"mode"		"single_button"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Soft_Press"
+					{
+						"bindings"
+						{
+							"binding"		"key_press ESCAPE, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"211"
+		"mode"		"absolute_mouse"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Soft_Press"
+					{
+						"bindings"
+						{
+							"binding"		"mouse_button LEFT, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"1"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"touch"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action SpectatorControls Scoreboard, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"1"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+		"settings"
+		{
+			"sensitivity"		"250"
+		}
+	}
+	"group"
+	{
+		"id"		"213"
+		"mode"		"joystick_move"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+	}
+	"group"
+	{
+		"id"		"215"
+		"mode"		"gyro_to_camera_angles"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+			"gyro_natural_sensitivity"		"300"
+			"gyro_to_2d_conversion_style"		"4"
+			"gyro_ratchet_button_mask"		"64"
+			"gyro_button_invert"		"2"
+		}
+		"gameactions"
+		{
+			"SpectatorControls"		"GyroCamera"
+		}
+	}
+	"group"
+	{
+		"id"		"217"
+		"mode"		"joystick_move"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+	}
+	"group"
+	{
+		"id"		"218"
+		"mode"		"joystick_move"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+	}
+	"group"
+	{
+		"id"		"220"
+		"mode"		"joystick_move"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+		}
+		"gameactions"
+		{
+			"SpectatorControls"		"Move"
+		}
+	}
+	"group"
+	{
+		"id"		"222"
+		"mode"		"gyro_to_camera_angles"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+			"gyro_natural_sensitivity"		"400"
+			"gyro_vertical_horizontal_ratio"		"260"
+			"gyro_speed_deadzone"		"0"
+			"gyro_precision_speed"		"600"
+			"gyro_ratchet_button_mask"		"64"
+			"gyro_button_invert"		"0"
+		}
+		"gameactions"
+		{
+			"GameControls"		"GyroCamera"
+		}
+	}
+	"group"
+	{
+		"id"		"224"
+		"mode"		"joystick_to_camera_angles"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+			"output_joystick"		"2"
+		}
+		"gameactions"
+		{
+			"ReplayControls"		"JoystickCamera"
+		}
+	}
+	"group"
+	{
+		"id"		"226"
+		"mode"		"flickstick_to_camera_angles"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls AbilityMelee, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"2"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+		}
+		"gameactions"
+		{
+			"GameControls"		"FlickStick"
+		}
+	}
+	"group"
+	{
+		"id"		"227"
+		"mode"		"flickstick"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+	}
+	"group"
+	{
+		"id"		"228"
+		"mode"		"joystick_to_camera_angles"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls AbilityMelee, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+			"output_joystick"		"2"
+		}
+		"gameactions"
+		{
+			"GameControls"		"JoystickCamera"
+		}
+	}
+	"group"
+	{
+		"id"		"230"
+		"mode"		"joystick_to_camera_angles"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+			"output_joystick"		"2"
+		}
+		"gameactions"
+		{
+			"SpectatorControls"		"JoystickCamera"
+		}
+	}
+	"group"
+	{
+		"id"		"231"
+		"mode"		"joystick_move"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+		}
+		"gameactions"
+		{
+			"ReplayControls"		"Move"
+		}
+	}
+	"group"
+	{
+		"id"		"232"
+		"mode"		"joystick_to_camera_angles"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+			"output_joystick"		"2"
+		}
+		"gameactions"
+		{
+			"ReplayControls"		"JoystickCamera"
+		}
+	}
+	"group"
+	{
+		"id"		"233"
+		"mode"		"touchpad_to_camera_angles"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Soft_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls AbilityMelee, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+		}
+		"gameactions"
+		{
+			"GameControls"		"TouchPadCamera"
+		}
+	}
+	"group"
+	{
+		"id"		"234"
+		"mode"		"absolute_mouse"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Soft_Press"
+					{
+						"bindings"
+						{
+							"binding"		"mouse_button LEFT, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"touch"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls Scoreboard, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"1"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+		"settings"
+		{
+			"sensitivity"		"300"
+		}
+	}
+	"group"
+	{
+		"id"		"235"
+		"mode"		"gyro_to_mouse"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"gyro_vertical_horizontal_ratio"		"260"
+			"gyro_ratchet_button_mask"		"140737489928192"
+		}
+		"gameactions"
+		{
+			"MenuControls"		"Mouse"
+		}
+	}
+	"group"
+	{
+		"id"		"236"
+		"mode"		"dpad"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"requires_click"		"0"
+			"haptic_intensity_override"		"0"
+		}
+	}
+	"group"
+	{
+		"id"		"237"
+		"mode"		"dpad"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"requires_click"		"0"
+			"haptic_intensity_override"		"0"
+		}
+	}
+	"group"
+	{
+		"id"		"238"
+		"mode"		"absolute_mouse"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Soft_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action MenuControls CursorContext, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+		"settings"
+		{
+			"sensitivity"		"250"
+		}
+		"gameactions"
+		{
+			"MenuControls"		"Mouse"
+		}
+	}
+	"group"
+	{
+		"id"		"239"
+		"mode"		"gyro_to_camera_angles"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+			"gyro_natural_sensitivity"		"400"
+			"gyro_vertical_horizontal_ratio"		"260"
+			"gyro_speed_deadzone"		"0"
+			"gyro_precision_speed"		"600"
+			"gyro_ratchet_button_mask"		"64"
+		}
+		"gameactions"
+		{
+			"ReplayControls"		"GyroCamera"
+		}
+	}
+	"group"
+	{
+		"id"		"240"
+		"mode"		"touchpad_to_camera_angles"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+		}
+		"gameactions"
+		{
+			"ReplayControls"		"TouchPadCamera"
+		}
+	}
+	"group"
+	{
+		"id"		"241"
+		"mode"		"touchpad_to_camera_angles"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+		}
+		"gameactions"
+		{
+			"SpectatorControls"		"TouchPadCamera"
+		}
+	}
+	"group"
+	{
+		"id"		"242"
+		"mode"		"touchpad_to_camera_angles"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+		}
+		"gameactions"
+		{
+			"SpectatorControls"		"TouchPadCamera"
+		}
+	}
+	"group"
+	{
+		"id"		"243"
+		"mode"		"absolute_mouse"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"click"
+			{
+				"activators"
+				{
+					"Soft_Press"
+					{
+						"bindings"
+						{
+							"binding"		"mouse_button LEFT, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"touch"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action SpectatorControls Scoreboard, , "
+						}
+						"settings"
+						{
+							"haptic_intensity"		"1"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"246"
+		"mode"		"joystick_move"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+		}
+		"settings"
+		{
+			"virtual_mode"		"1"
+		}
+		"gameactions"
+		{
+			"GameControls"		"RadialMenu"
+		}
+	}
+	"group"
+	{
+		"id"		"11"
+		"mode"		"switches"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"button_capture"
+			{
+				"activators"
+				{
+					"release"
+					{
+						"bindings"
+						{
+							"binding"		"controller_action system_key_1, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"always_on_action"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"controller_action ts_n, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"78"
+		"mode"		"switches"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"button_capture"
+			{
+				"activators"
+				{
+					"release"
+					{
+						"bindings"
+						{
+							"binding"		"controller_action system_key_1, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+		"settings"
+		{
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"82"
+		"mode"		"switches"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"button_capture"
+			{
+				"activators"
+				{
+					"release"
+					{
+						"bindings"
+						{
+							"binding"		"controller_action system_key_1, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+		"settings"
+		{
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"105"
+		"mode"		"switches"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"button_capture"
+			{
+				"activators"
+				{
+					"release"
+					{
+						"bindings"
+						{
+							"binding"		"controller_action system_key_1, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"112"
+		"mode"		"switches"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"button_capture"
+			{
+				"activators"
+				{
+					"release"
+					{
+						"bindings"
+						{
+							"binding"		"controller_action system_key_1, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+		"settings"
+		{
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"118"
+		"mode"		"switches"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"button_capture"
+			{
+				"activators"
+				{
+					"release"
+					{
+						"bindings"
+						{
+							"binding"		"controller_action system_key_1, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+		"settings"
+		{
+			"layer"		"1"
+		}
+	}
+	"group"
+	{
+		"id"		"150"
+		"mode"		"switches"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"button_escape"
+			{
+				"activators"
+				{
+					"release"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls OpenHeroSheet, , "
+						}
+						"settings"
+						{
+							"delay_start"		"25"
+						}
+					}
+					"Long_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls OpenMainMenu, Game Menu, , "
+						}
+						"settings"
+						{
+							"long_press_time"		"800"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_menu"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls Scoreboard, , "
+						}
+					}
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"mode_shift button_diamond 191"
+						}
+						"settings"
+						{
+							"interruptable"		"0"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"left_bumper"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls ExtraInfo, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"right_bumper"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls Ping, , "
+						}
+					}
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action GameControls AltCast, , "
+						}
+					}
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"mode_shift right_joystick 246"
+						}
+						"settings"
+						{
+							"interruptable"		"0"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"always_on_action"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"controller_action set_led 0 64 255 100 100 1, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"154"
+		"mode"		"switches"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"button_back_left"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action MenuControls CursorContext, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_back_right"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action MenuControls CursorSelect, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_back_left_upper"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action MenuControls PurchaseQuickbuy, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_back_right_upper"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action MenuControls MenuBack, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"always_on_action"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"controller_action set_led 0 255 13 100 100 1, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"174"
+		"mode"		"switches"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"button_escape"
+			{
+				"activators"
+				{
+					"release"
+					{
+						"bindings"
+						{
+							"binding"		"game_action SpectatorControls OpenHeroSheet, , "
+						}
+						"settings"
+						{
+							"interruptable"		"1"
+						}
+					}
+					"Long_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action SpectatorControls OpenMainMenu, Game Menu, , "
+						}
+						"settings"
+						{
+							"long_press_time"		"800"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_menu"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action SpectatorControls Scoreboard, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"left_bumper"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action SpectatorControls SpectatorPrevTarget, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"right_bumper"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action SpectatorControls SpectatorNextTarget, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"button_a"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"mode_shift joystick 218"
+						}
+						"settings"
+						{
+							"interruptable"		"0"
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"always_on_action"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"controller_action set_led 255 0 0 100 100 1, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"group"
+	{
+		"id"		"204"
+		"mode"		"switches"
+		"name"		""
+		"description"		""
+		"inputs"
+		{
+			"button_escape"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action ReplayControls OpenMainMenu, Game Menu, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"left_bumper"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action ReplayControls SpectatorPrevTarget, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+			"right_bumper"
+			{
+				"activators"
+				{
+					"Full_Press"
+					{
+						"bindings"
+						{
+							"binding"		"game_action ReplayControls SpectatorNextTarget, , "
+						}
+					}
+				}
+				"disabled_activators"
+				{
+				}
+			}
+		}
+	}
+	"preset"
+	{
+		"id"		"0"
+		"name"		"GameControls"
+		"group_source_bindings"
+		{
+			"150"		"switch active"
+			"151"		"button_diamond active"
+			"182"		"button_diamond inactive modeshift"
+			"191"		"button_diamond active modeshift"
+			"163"		"joystick active"
+			"152"		"left_trigger active"
+			"153"		"right_trigger active"
+			"161"		"right_joystick inactive"
+			"165"		"right_joystick inactive"
+			"189"		"right_joystick inactive"
+			"226"		"right_joystick inactive"
+			"227"		"right_joystick inactive"
+			"228"		"right_joystick active"
+			"172"		"gyro inactive"
+			"246"		"right_joystick active modeshift"
+			"178"		"gyro inactive"
+			"183"		"gyro inactive"
+			"198"		"gyro inactive"
+			"200"		"gyro inactive"
+			"222"		"gyro active"
+			"162"		"dpad inactive"
+			"164"		"dpad active"
+			"169"		"left_trackpad inactive"
+			"193"		"left_trackpad inactive"
+			"201"		"left_trackpad inactive"
+			"209"		"left_trackpad inactive"
+			"234"		"left_trackpad active"
+			"168"		"right_trackpad inactive"
+			"202"		"right_trackpad inactive"
+			"233"		"right_trackpad active"
+		}
+	}
+	"preset"
+	{
+		"id"		"1"
+		"name"		"MenuControls"
+		"group_source_bindings"
+		{
+			"154"		"switch active"
+			"155"		"button_diamond active"
+			"173"		"joystick active"
+			"156"		"left_trigger active"
+			"157"		"right_trigger active"
+			"167"		"right_trigger inactive modeshift"
+			"166"		"right_joystick active"
+			"187"		"gyro inactive"
+			"235"		"gyro active"
+			"194"		"left_trackpad inactive"
+			"203"		"left_trackpad inactive"
+			"238"		"left_trackpad active"
+			"185"		"right_trackpad active"
+		}
+	}
+	"preset"
+	{
+		"id"		"2"
+		"name"		"SpectatorControls"
+		"group_source_bindings"
+		{
+			"174"		"switch active"
+			"175"		"button_diamond active"
+			"213"		"joystick inactive"
+			"217"		"joystick inactive modeshift"
+			"218"		"joystick inactive modeshift"
+			"220"		"joystick active"
+			"176"		"left_trigger active"
+			"177"		"right_trigger active"
+			"180"		"right_joystick inactive"
+			"230"		"right_joystick active"
+			"215"		"gyro active"
+			"236"		"dpad active"
+			"196"		"left_trackpad inactive"
+			"241"		"left_trackpad inactive"
+			"243"		"left_trackpad active"
+			"211"		"right_trackpad inactive"
+			"242"		"right_trackpad active"
+		}
+	}
+	"preset"
+	{
+		"id"		"3"
+		"name"		"ReplayControls"
+		"group_source_bindings"
+		{
+			"204"		"switch active"
+			"205"		"button_diamond active"
+			"224"		"joystick inactive"
+			"231"		"joystick active"
+			"206"		"left_trigger active"
+			"207"		"right_trigger active"
+			"232"		"right_joystick active"
+			"239"		"gyro active"
+			"237"		"dpad active"
+			"240"		"right_trackpad active"
+		}
+	}
+	"settings"
+	{
+		"left_trackpad_mode"		"0"
+		"right_trackpad_mode"		"0"
+		"action_set_trigger_cursor_show"		"0"
+		"action_set_trigger_cursor_hide"		"0"
+	}
+}

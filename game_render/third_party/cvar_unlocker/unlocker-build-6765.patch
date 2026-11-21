@@ -1,0 +1,30 @@
+--- a/build_compat.cpp
++++ b/build_compat.cpp
+@@ -39,6 +39,7 @@
+ static bool g_6759_server=false;
+ static bool g_6762_server=false;
+ static bool g_6763_server=false;
++static bool g_6765_server=false;
+ static HMODULE g_real_server=nullptr;
+ static DollyCvarProxy g_proxy;
+ static constexpr DollyCvarSlot kSlots[]={
+@@ -107,14 +108,17 @@
+     g_6759_server=server_hash=="40a89bbeec5bef8d9029c5f42e8a9dbfa017a230818bdf9c0ee60e312eeea38c";
+     g_6762_server=server_hash=="af555c0f54c184b50ba66b492ffed342ba59d0836c1eeb81141180b3de6beaa6";
+     g_6763_server=server_hash=="7f6b64356c5c82da36f02f98127a498fdd3fd33149bd9f355ac0eaddbdaa5134";
+-    if (tier6726 != (g_6726_server || g_6728_server || g_6730_server || g_6731_server || g_6739_server || g_6742_server || g_6745_server || g_6746_server || g_6753_server || g_6757_server || g_6759_server || g_6762_server || g_6763_server)) return false;
+-    return g_6763_server || g_6762_server || g_6759_server || g_6757_server || g_6753_server || g_6746_server || g_6745_server || g_6742_server || g_6739_server || g_6731_server || g_6730_server || g_6728_server || g_6726_server || g_latest_server || g_hotfix_server || server_hash=="cb480d4091735abe7b74695c8c8077a882528aaaaa9f457d81fbca886b6c9bd8";
++    g_6765_server=server_hash=="f304c46b52a414802ffdeb4e7bf1c9e303a4e764ecf3ff8a6e1d4aaf16d0e6dc";
++    if (tier6726 != (g_6726_server || g_6728_server || g_6730_server || g_6731_server || g_6739_server || g_6742_server || g_6745_server || g_6746_server || g_6753_server || g_6757_server || g_6759_server || g_6762_server || g_6763_server || g_6765_server)) return false;
++    return g_6765_server || g_6763_server || g_6762_server || g_6759_server || g_6757_server || g_6753_server || g_6746_server || g_6745_server || g_6742_server || g_6739_server || g_6731_server || g_6730_server || g_6728_server || g_6726_server || g_latest_server || g_hotfix_server || server_hash=="cb480d4091735abe7b74695c8c8077a882528aaaaa9f457d81fbca886b6c9bd8";
+ }
+ bool DollyVerifyServerConfig(void* config) {
+     if(!config) return false;
+     if(!g_new_build) return true;
+     auto base=reinterpret_cast<std::uintptr_t>(g_real_server);
+     auto table=*static_cast<std::uintptr_t**>(config);
++    if (g_6765_server)
++        return reinterpret_cast<std::uintptr_t>(table)==base+0x2a1ae80 && table[0]==base+0x987744 && table[1]==base+0x987750 && table[13]==base+0x987be0;
+     if (g_6763_server)
+         return reinterpret_cast<std::uintptr_t>(table)==base+0x2a1aeb8 && table[0]==base+0x987704 && table[1]==base+0x987710 && table[13]==base+0x987ba0;
+     if (g_6762_server)

@@ -1,0 +1,30 @@
+--- a/build_compat.cpp
++++ b/build_compat.cpp
+@@ -42,6 +42,7 @@
+ static bool g_6765_server=false;
+ static bool g_6766_server=false;
+ static bool g_6769_server=false;
++static bool g_6774_server=false;
+ static HMODULE g_real_server=nullptr;
+ static DollyCvarProxy g_proxy;
+ static constexpr DollyCvarSlot kSlots[]={
+@@ -113,14 +114,17 @@
+     g_6765_server=server_hash=="f304c46b52a414802ffdeb4e7bf1c9e303a4e764ecf3ff8a6e1d4aaf16d0e6dc";
+     g_6766_server=server_hash=="72b843001bafdc45fa4e20547c6368f83cb9ab34da452bbfe37aa71695173c50";
+     g_6769_server=server_hash=="4a7ec82fbabeb6632c68a54dc4f332f87f7eefd39164236baf8674506ddeb3a2";
+-    if (tier6726 != (g_6726_server || g_6728_server || g_6730_server || g_6731_server || g_6739_server || g_6742_server || g_6745_server || g_6746_server || g_6753_server || g_6757_server || g_6759_server || g_6762_server || g_6763_server || g_6765_server || g_6766_server || g_6769_server)) return false;
+-    return g_6769_server || g_6766_server || g_6765_server || g_6763_server || g_6762_server || g_6759_server || g_6757_server || g_6753_server || g_6746_server || g_6745_server || g_6742_server || g_6739_server || g_6731_server || g_6730_server || g_6728_server || g_6726_server || g_latest_server || g_hotfix_server || server_hash=="cb480d4091735abe7b74695c8c8077a882528aaaaa9f457d81fbca886b6c9bd8";
++    g_6774_server=server_hash=="9a97830b33a1b53dd766902c185d83e53c44924a5da60732331433c28dba0ba2";
++    if (tier6726 != (g_6726_server || g_6728_server || g_6730_server || g_6731_server || g_6739_server || g_6742_server || g_6745_server || g_6746_server || g_6753_server || g_6757_server || g_6759_server || g_6762_server || g_6763_server || g_6765_server || g_6766_server || g_6769_server || g_6774_server)) return false;
++    return g_6774_server || g_6769_server || g_6766_server || g_6765_server || g_6763_server || g_6762_server || g_6759_server || g_6757_server || g_6753_server || g_6746_server || g_6745_server || g_6742_server || g_6739_server || g_6731_server || g_6730_server || g_6728_server || g_6726_server || g_latest_server || g_hotfix_server || server_hash=="cb480d4091735abe7b74695c8c8077a882528aaaaa9f457d81fbca886b6c9bd8";
+ }
+ bool DollyVerifyServerConfig(void* config) {
+     if(!config) return false;
+     if(!g_new_build) return true;
+     auto base=reinterpret_cast<std::uintptr_t>(g_real_server);
+     auto table=*static_cast<std::uintptr_t**>(config);
++    if (g_6774_server)
++        return reinterpret_cast<std::uintptr_t>(table)==base+0x2a5efc0 && table[0]==base+0x989e24 && table[1]==base+0x989e30 && table[13]==base+0x98a2c0;
+     if (g_6769_server)
+         return reinterpret_cast<std::uintptr_t>(table)==base+0x2a5efc0 && table[0]==base+0x989e24 && table[1]==base+0x989e30 && table[13]==base+0x98a2c0;
+     if (g_6766_server)

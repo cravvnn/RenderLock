@@ -1,0 +1,34 @@
+--- a/build_compat.cpp
++++ b/build_compat.cpp
+@@ -53,6 +53,7 @@
+ static bool g_6813_server=false;
+ static bool g_6814_server=false;
+ static bool g_6815_server=false;
++static bool g_6817_server=false;
+ static bool g_6779_server=false;
+ static HMODULE g_real_server=nullptr;
+ static DollyCvarProxy g_proxy;
+@@ -140,17 +141,20 @@
+     g_6813_server=server_hash=="5bb81f638097cdcde8b1c870b80f3faf66faa933fbd3b84d665dc063dc5c8055";
+     g_6814_server=server_hash=="1f5644e3ed72db1995b8165c64f4943df2c36d6210f0150f3977747e567772ab";
+     g_6815_server=server_hash=="12c54351d5116abae35abca674956775b7f4dd9331105e314c75fcee62740dc4";
+-    if (tier6726 != (g_6726_server || g_6728_server || g_6730_server || g_6731_server || g_6739_server || g_6742_server || g_6745_server || g_6746_server || g_6753_server || g_6757_server || g_6759_server || g_6762_server || g_6763_server || g_6765_server || g_6766_server || g_6769_server || g_6774_server || g_6779_server || g_6793_server || g_6801_server || g_6805_server || g_6806_server || g_6807_server || g_6810_server || g_6812_server || g_6813_server || g_6814_server || g_6815_server)) return false;
++    g_6817_server=server_hash=="135e2bfe9a704278228d4729e382f299fc846ae35ffa36e5336ba4dc22ce3fee";
++    if (tier6726 != (g_6726_server || g_6728_server || g_6730_server || g_6731_server || g_6739_server || g_6742_server || g_6745_server || g_6746_server || g_6753_server || g_6757_server || g_6759_server || g_6762_server || g_6763_server || g_6765_server || g_6766_server || g_6769_server || g_6774_server || g_6779_server || g_6793_server || g_6801_server || g_6805_server || g_6806_server || g_6807_server || g_6810_server || g_6812_server || g_6813_server || g_6814_server || g_6815_server || g_6817_server)) return false;
+     if (tier6793 != g_6793_server) return false;
+-    if (tier6801 != (g_6801_server || g_6805_server || g_6806_server || g_6807_server || g_6810_server || g_6812_server || g_6813_server || g_6814_server || g_6815_server)) return false;
++    if (tier6801 != (g_6801_server || g_6805_server || g_6806_server || g_6807_server || g_6810_server || g_6812_server || g_6813_server || g_6814_server || g_6815_server || g_6817_server)) return false;
+     if (tier6779 != g_6779_server) return false;
+-    return g_6815_server || g_6814_server || g_6813_server || g_6812_server || g_6810_server || g_6807_server || g_6806_server || g_6805_server || g_6801_server || g_6793_server || g_6779_server || g_6774_server || g_6769_server || g_6766_server || g_6765_server || g_6763_server || g_6762_server || g_6759_server || g_6757_server || g_6753_server || g_6746_server || g_6745_server || g_6742_server || g_6739_server || g_6731_server || g_6730_server || g_6728_server || g_6726_server || g_latest_server || g_hotfix_server || server_hash=="cb480d4091735abe7b74695c8c8077a882528aaaaa9f457d81fbca886b6c9bd8";
++    return g_6817_server || g_6815_server || g_6814_server || g_6813_server || g_6812_server || g_6810_server || g_6807_server || g_6806_server || g_6805_server || g_6801_server || g_6793_server || g_6779_server || g_6774_server || g_6769_server || g_6766_server || g_6765_server || g_6763_server || g_6762_server || g_6759_server || g_6757_server || g_6753_server || g_6746_server || g_6745_server || g_6742_server || g_6739_server || g_6731_server || g_6730_server || g_6728_server || g_6726_server || g_latest_server || g_hotfix_server || server_hash=="cb480d4091735abe7b74695c8c8077a882528aaaaa9f457d81fbca886b6c9bd8";
+ }
+ bool DollyVerifyServerConfig(void* config) {
+     if(!config) return false;
+     if(!g_new_build) return true;
+     auto base=reinterpret_cast<std::uintptr_t>(g_real_server);
+     auto table=*static_cast<std::uintptr_t**>(config);
++    if (g_6817_server)
++        return reinterpret_cast<std::uintptr_t>(table)==base+0x2b5a1b0 && table[0]==base+0x99d9e4 && table[1]==base+0x99d9f0 && table[13]==base+0x99ab40;
+     if (g_6815_server)
+         return reinterpret_cast<std::uintptr_t>(table)==base+0x2b5a1b0 && table[0]==base+0x99d7e4 && table[1]==base+0x99d7f0 && table[13]==base+0x99a940;
+     if (g_6814_server)

@@ -1,0 +1,82 @@
+[
+  {
+    "name": "old finalization publishes lost frames",
+    "replace": [
+      [
+        "RejectLoss == TRUE",
+        "RejectLoss == FALSE"
+      ]
+    ],
+    "expect": "NoIncompleteSuccess"
+  },
+  {
+    "name": "fixed timeout falls through to drop",
+    "replace": [
+      [
+        "StopOnOverflow == TRUE",
+        "StopOnOverflow == FALSE"
+      ]
+    ],
+    "expect": "FixedTimeoutStops"
+  },
+  {
+    "name": "publish cancelled take",
+    "replace": [
+      [
+        "CancelSeen == IF ReReadCancel THEN cancelled ELSE decided",
+        "CancelSeen == FALSE"
+      ]
+    ],
+    "expect": "NoCancelledSuccess"
+  },
+  {
+    "name": "release/acquire barrier (buffered ready store)",
+    "replace": [
+      [
+        "SeqCstBarrier == TRUE",
+        "SeqCstBarrier == FALSE"
+      ]
+    ],
+    "expect": "NoUncountedFrame"
+  },
+  {
+    "name": "encoder skips producer_active wait",
+    "replace": [
+      [
+        "pc = \"quiesce\" /\\ active = 0 /\\ pc' = \"decide\"",
+        "pc = \"quiesce\" /\\ pc' = \"decide\""
+      ]
+    ],
+    "expect": "NoUncountedFrame"
+  },
+  {
+    "name": "producer skips ready check",
+    "replace": [
+      [
+        "IF ready THEN ppc' = \"admitted\"",
+        "IF TRUE THEN ppc' = \"admitted\""
+      ]
+    ],
+    "expect": "NoUncountedFrame"
+  },
+  {
+    "name": "re-read cancel",
+    "replace": [
+      [
+        "ReReadCancel == FALSE",
+        "ReReadCancel == TRUE"
+      ]
+    ],
+    "expect": "OutcomeAgrees"
+  },
+  {
+    "name": "capture fault outside the producer gate",
+    "replace": [
+      [
+        "CaptureFault == /\\ ppc = \"admitted\" /\\ ~error",
+        "CaptureFault == /\\ pc # \"done\" /\\ ~error"
+      ]
+    ],
+    "expect": "OutcomeAgrees"
+  }
+]

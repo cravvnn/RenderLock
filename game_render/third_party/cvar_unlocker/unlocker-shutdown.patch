@@ -1,0 +1,90 @@
+diff --git a/cvars.cpp b/cvars.cpp
+index 190dccc..831295c 100644
+--- a/cvars.cpp
++++ b/cvars.cpp
+@@ -323,3 +323,21 @@ CON_COMMAND(cvarlist_md, "List all convars/concmds in Markdown format.")
+ 
+ 	Msg("Wrote %d entries to %s\n", nWritten, outputPath.GetForModify());
+ }
++
++// These are the two commands owned by this pinned unlocker source. Remove
++// their callbacks while ICvar is still connected, then invalidate the same
++// objects so their later static destructors do not revisit the game registry.
++static void UnregisterOwnedCommand(ConCommand& command)
++{
++	if (!command.IsValidRef())
++		return;
++	if (g_pCVar)
++		g_pCVar->UnregisterConCommandCallbacks(command);
++	command.InvalidateRef();
++}
++
++void UnregisterUnlockerCommands()
++{
++	UnregisterOwnedCommand(cvar_unhide_command);
++	UnregisterOwnedCommand(cvarlist_md_command);
++}
+diff --git a/main.cpp b/main.cpp
+index 46281c6..12341a6 100644
+--- a/main.cpp
++++ b/main.cpp
+@@ -3,17 +3,19 @@
+ #include "icommandline.h"
+ #include "interface.h"
+ #include "interfaces/interfaces.h"
++#include "icvar.h"
+ #include <cstring>
+ 
+ CreateInterfaceFn g_pfnServerCreateInterface = NULL;
+ 
+ bool(*g_pfnServerConfigConnect)(IAppSystem* appSystem, CreateInterfaceFn factory);
++void(*g_pfnServerConfigDisconnect)(IAppSystem* appSystem);
++bool g_UnlockerInterfacesConnected = false;
+ float(*g_pfnServerConfigGetTickInterval)(const ISource2ServerConfig* config);
+ 
+ void (*g_pfnNetworkServerStartupServer)(const GameSessionConfiguration_t &config, ISource2WorldSession *pWorldSession, const char*);
+ 
+-extern ConCommand cvar_unhide;
+-extern ConCommand cvarlist_md;
++void UnregisterUnlockerCommands();
+ 
+ template<typename ReturnType, typename ...ArgTypes>
+ static auto PatchVtable(void* object, size_t index, ReturnType(*hook)(ArgTypes...))
+@@ -40,14 +42,29 @@ static auto PatchVtable(void* object, size_t index, ReturnType(*hook)(ArgTypes..
+ bool Connect(IAppSystem* appSystem, CreateInterfaceFn factory)
+ {
+ 	const bool result = g_pfnServerConfigConnect(appSystem, factory);
++	if (!result)
++		return false;
+ 
+ 	ConnectInterfaces(&factory, 1);
+ 
+ 	ConVar_Register(FCVAR_RELEASE | FCVAR_GAMEDLL);
++	g_UnlockerInterfacesConnected = true;
+ 
+ 	return result;
+ }
+ 
++void Disconnect(IAppSystem* appSystem)
++{
++	if (g_UnlockerInterfacesConnected)
++	{
++		g_UnlockerInterfacesConnected = false;
++		UnregisterUnlockerCommands();
++		ConVar_Unregister();
++		DisconnectInterfaces();
++	}
++	g_pfnServerConfigDisconnect(appSystem);
++}
++
+ float GetTickInterval(const ISource2ServerConfig* config)
+ {
+ 	if (CommandLine()->CheckParm("-tickrate"))
+@@ -92,6 +109,7 @@ DLL_EXPORT void* CreateInterface(const char* pName, int* pReturnCode)
+ 	if (strcmp(pName, INTERFACEVERSION_SERVERCONFIG) == 0)
+ 	{
+ 		g_pfnServerConfigConnect = PatchVtable(original, 0, Connect);
++		g_pfnServerConfigDisconnect = PatchVtable(original, 1, Disconnect);
+ 		g_pfnServerConfigGetTickInterval = PatchVtable(original, 13, GetTickInterval);
+ 	}
+ 

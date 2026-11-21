@@ -1,0 +1,32 @@
+{
+  "profile_format": 1,
+  "module": "scenesystem.dll",
+  "sha256": "eb8082bbb3b1895ae37c90181192e0f4b5787fe8fa2986114dd6173fdc234849",
+  "size_of_image": "0x9c6000",
+  "producer": {
+    "rva": "0x5c8f0",
+    "end_rva": "0x5d95b",
+    "sha256": "be93da32f96ee2d7b3db6ef85eb12293396666f283fd193661504dbb278e4d1a",
+    "prologue": "488bc44c8948204c89401848895010488948085553488d68e84881ec08010000",
+    "arguments": 10,
+    "return_value": "signed 32-bit record index",
+    "return": "int instance index"
+  },
+  "layout": {
+    "object": "0x955cc0",
+    "vtable": "0x61e860",
+    "frame": "0x957458",
+    "stack": "0x957be8",
+    "records": "0x957ce0",
+    "capacity": "0x957ce8",
+    "ids": "0x957b48",
+    "transforms": "0x957c40",
+    "cpu_transforms": "0x957be0",
+    "owner_offset": "0xd8",
+    "record_stride": 32,
+    "mesh_cache": "inline packed uint64 at mesh+0x40, lock inline+0x48",
+    "renderer_gpu_buffer_offset": "0x70",
+    "renderer_gpu_buffer_evidence": "rendersystemdx11 CreateBuffer 0x82580 passes wrapper+0x70 as output; old wrapper+0x60"
+  },
+  "validation": "6745: exact module identity, producer function boundaries and capture-critical dataflow reviewed. Cached, copy-on-change and fresh allocations retain 32-byte record indexing, owner +0xd8, 10-argument ABI and renderer wrapper +0x70. GPU ownership guards remain required. Live output not yet certified."
+}

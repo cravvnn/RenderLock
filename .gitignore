@@ -48,3 +48,9 @@ research/**/obj/
 *.glb
 *.gltf
 *.blend2
+
+# Game render (Dolly game side): local builds and runtime data
+game_render/build/
+game_render/native/bin/
+game_render/logs/
+game_render/session-*/

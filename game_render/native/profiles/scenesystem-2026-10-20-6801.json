@@ -1,0 +1,32 @@
+{
+  "profile_format": 1,
+  "module": "scenesystem.dll",
+  "sha256": "caf71738e5e82d0d73ca897d72ce27859a2269d5adbc0fb42e0860a86f577ef3",
+  "size_of_image": "0x9c6000",
+  "producer": {
+    "rva": "0x5c9a0",
+    "end_rva": "0x5da0b",
+    "sha256": "2de020a5e5122d55114b7b8862f2cc502fd32648cdeee72a7085d26936931c15",
+    "prologue": "488bc44c8948204c89401848895010488948085553488d68e84881ec08010000",
+    "arguments": 10,
+    "return_value": "signed 32-bit record index",
+    "return": "int instance index"
+  },
+  "layout": {
+    "object": "0x955d00",
+    "vtable": "0x61e810",
+    "frame": "0x957498",
+    "stack": "0x957c28",
+    "records": "0x957d20",
+    "capacity": "0x957d28",
+    "ids": "0x957b88",
+    "transforms": "0x957c80",
+    "cpu_transforms": "0x957c20",
+    "owner_offset": "0xd8",
+    "record_stride": 32,
+    "mesh_cache": "inline packed uint64 at mesh+0x40, lock inline+0x48",
+    "renderer_gpu_buffer_offset": "0x70",
+    "renderer_gpu_buffer_evidence": "6801 offline: reviewed6782/6785 renderer .text/.data/.pdata byte-exact; complete1531-byte CreateBuffer at0x824a0 unchanged, its0x825e1 output references wrapper+0x70."
+  },
+  "validation": "6801 offline: complete4203-byte producer and its five chained unwind ranges,4695-byte named CSceneSystem initializer,389-byte CSceneObject owner constructor and1833-byte ID-buffer consumer uniquely relocation-equivalent to exact reviewed6782/6785 snapshots. Named vtable0x61e810; all nine globals corroborated through stock references (+0x40; vtable+0x10); owner+0xd8, record32B, mesh cache+0x40/lock+0x48 and renderer wrapper+0x70 retained. Exact6801 renderer pairing. Live capture/output pending."
+}

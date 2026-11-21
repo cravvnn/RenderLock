@@ -1,0 +1,32 @@
+{
+  "profile_format": 1,
+  "module": "scenesystem.dll",
+  "sha256": "026a6e953e6bf1f2fdbcf8388ba5f6868d830ad54216dcf4518df136be50fc5a",
+  "size_of_image": "0x9c6000",
+  "producer": {
+    "rva": "0x5c8e0",
+    "end_rva": "0x5d8a0",
+    "sha256": "0655db12c66e9a8e1dd6298ec5dae86c0e5529c144c8eb9fbc74f31d46100918",
+    "prologue": "488bc44c8948204c89401848895010488948085553488d68e84881ec08010000",
+    "arguments": 10,
+    "added_argument": "uint32* third caller-owned output; preserve at stack+0x50",
+    "return": "int instance index"
+  },
+  "layout": {
+    "object": "0x955cc0",
+    "vtable": "0x61e860",
+    "frame": "0x957458",
+    "stack": "0x957be8",
+    "records": "0x957ce0",
+    "capacity": "0x957ce8",
+    "ids": "0x957b48",
+    "transforms": "0x957c40",
+    "cpu_transforms": "0x957be0",
+    "owner_offset": "0xd8",
+    "record_stride": 32,
+    "mesh_cache": "inline packed uint64 at mesh+0x40, lock inline+0x48",
+    "renderer_gpu_buffer_offset": "0x70",
+    "renderer_gpu_buffer_evidence": "rendersystemdx11 CreateBuffer 0x82580 passes wrapper+0x70 as output; old wrapper+0x60"
+  },
+  "validation": "6726: complete1091instruction producer structural match; relocated RTTI; owner init18instructions unchanged atdad2d; buffer creation370instructions exact. No new capture certification."
+}

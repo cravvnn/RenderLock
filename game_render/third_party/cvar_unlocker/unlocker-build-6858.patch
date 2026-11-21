@@ -1,0 +1,12 @@
+--- a/build_compat.cpp
++++ b/build_compat.cpp
+@@ -169,7 +169,8 @@
+     g_6837_server=server_hash=="2da2f96df238b968ab8d6b5d5e327810a49b604bdeca5a893d967292556db42d";
+     g_6848_server=server_hash=="cce86de118afc09868165f5c0e8bf1c8b23307db6fed52e8a5e4ad67f93d9009";
+     g_6851_server=server_hash=="dd191d3ceafa49f5e92c3706d82c78f337c65ae176074e65c1ff8e9a83004407";
+-    g_6853_server=server_hash=="004e9bb537eb081e7383715400c41cf3899b23af4733697c1963daec7eb9516f";
++    // Build 6858 retains the reviewed 6853 Config001 layout and Tier0 ABI.
++    g_6853_server=server_hash=="004e9bb537eb081e7383715400c41cf3899b23af4733697c1963daec7eb9516f" || server_hash=="a6d7a488bde35b02f600178b5da0d4924e74bae9918c07a84c5119d0bebf3866";
+     if (tier6853 != g_6853_server) return false;
+     g_6844_server=server_hash=="fbeec5547ac12562ec3d8216592e95797c7572278cbad18c469aacbc129829e4";
+     g_6842_server=server_hash=="fb0de9a1d2789934c1310bdf56c6b8d762f1a864d806c0c5668dff4c02f220bb";

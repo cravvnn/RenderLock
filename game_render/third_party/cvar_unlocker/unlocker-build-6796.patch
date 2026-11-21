@@ -1,0 +1,7 @@
+--- a/build_compat-6793.cpp
++++ b/build_compat-6796.cpp
+@@
+-    g_6793_server=server_hash=="8c67dc79f082a45a69c5eac99bd4cfd9e965d74154f3ce0bdf30a224158b4293";
++    g_6793_server=server_hash=="deba4a4f7742839763b2877ee8d490a0cadb4b626e4af7c85c3ac7ba4bc61a66";
+# Build 6796: the reviewed Source2ServerConfig001 table and all three method
+# bodies are unchanged from 6793. Only the exact server hash gate changes.

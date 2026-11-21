@@ -1,0 +1,32 @@
+{
+  "profile_format": 1,
+  "module": "scenesystem.dll",
+  "sha256": "4b58120a35a7426e65e6adf785b0cc526a2dc2b5f7d4c788986a28caa19bfe4d",
+  "size_of_image": "0x9c6000",
+  "producer": {
+    "rva": "0x5c8f0",
+    "end_rva": "0x5d95b",
+    "sha256": "1c1a51672592c80392a6af791971d198ba7f8424812f6a2300cbfa420420043d",
+    "prologue": "488bc44c8948204c89401848895010488948085553488d68e84881ec08010000",
+    "arguments": 10,
+    "return_value": "signed 32-bit record index",
+    "return": "int instance index"
+  },
+  "layout": {
+    "object": "0x955cc0",
+    "vtable": "0x61e800",
+    "frame": "0x957458",
+    "stack": "0x957be8",
+    "records": "0x957ce0",
+    "capacity": "0x957ce8",
+    "ids": "0x957b48",
+    "transforms": "0x957c40",
+    "cpu_transforms": "0x957be0",
+    "owner_offset": "0xd8",
+    "record_stride": 32,
+    "mesh_cache": "inline packed uint64 at mesh+0x40, lock inline+0x48",
+    "renderer_gpu_buffer_offset": "0x70",
+    "renderer_gpu_buffer_evidence": "6769: full 1531-byte CreateBuffer body uniquely relocation-equivalent at 0x824a0; output at 0x825e1 uses wrapper+0x70."
+  },
+  "validation": "6769 offline: complete reviewed producer span relocation-equivalent to 6757 with all RIP references unchanged; CSceneSystem primary RTTI and layout retained. Exact renderer pair reviewed at relocated CreateBuffer body 0x824a0, GPU output +0x70. Live output not certified."
+}

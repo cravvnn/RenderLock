@@ -1,0 +1,32 @@
+{
+  "profile_format": 1,
+  "module": "scenesystem.dll",
+  "sha256": "1ddcd13dd51652bd6d3e183172be9d46df98bc6a266a0e804d09369ba6096d9a",
+  "size_of_image": "0x9c3000",
+  "producer": {
+    "rva": "0x5c970",
+    "end_rva": "0x5d9ea",
+    "sha256": "b29e36e68d8e0b535c749992ed198903a8dbcb692b46755e98ba995d76a315ec",
+    "prologue": "488bc44c8948204c89401848895010488948085553488d68e84881ec08010000",
+    "arguments": 10,
+    "return_value": "signed 32-bit record index",
+    "return": "int instance index"
+  },
+  "layout": {
+    "object": "0x952e80",
+    "vtable": "0x61e880",
+    "frame": "0x954618",
+    "stack": "0x954da8",
+    "records": "0x954ea0",
+    "capacity": "0x954ea8",
+    "ids": "0x954d08",
+    "transforms": "0x954e00",
+    "cpu_transforms": "0x954da0",
+    "owner_offset": "0xd8",
+    "record_stride": 32,
+    "mesh_cache": "inline packed uint64 at mesh+0x40, lock inline+0x48",
+    "renderer_gpu_buffer_offset": "0x70",
+    "renderer_gpu_buffer_evidence": "6861 complete renderer CreateBuffer body mapped; wrapper +0x70 unchanged."
+  },
+  "validation": "6861 offline complete producer comparison: padding and two independent loads reordered; internal branches and consumed globals checked. No live Players output claim."
+}

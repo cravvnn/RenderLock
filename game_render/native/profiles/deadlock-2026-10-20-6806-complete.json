@@ -1,0 +1,234 @@
+{
+  "validation": "6806 offline current-client core qualification; named/typed consumers and independently reviewed Python Follow input, retaining explicit window limits. Server/unlocker/stock assets/optional features are separately reviewed; no live6806 qualification.",
+  "client": {
+    "client_sha256": "3a333e279f2fa4ad6270a3406f8039ce349f20ef787bae2e73c784de768c6817",
+    "file_size": 60319384,
+    "timestamp": 1792548888,
+    "size_of_image": 71032832,
+    "preferred_image_base": "0x180000000",
+    "main_view_setup_rva": "0x19e59d0",
+    "main_view_setup_end_rva": "0x19e5a99",
+    "main_view_setup_prologue_32": "48 89 5c 24 08 48 89 74 24 10 57 48 83 ec 20 48 8b f1 c6 81 30 13 00 00 01 b9 ff ff ff ff e8 9d",
+    "main_view_setup_sha256": "89bd2e37f9d26b39f54bc329428691be61ff2968337918ba7924bef8eff7b75b",
+    "matrix_setup_rva": "0x19df3d0",
+    "matrix_setup_end_rva": "0x19df586",
+    "matrix_setup_sha256": "644c9c08a3993587809fb7a859dea57b300abcd944c38aa3bf1c16a3f6aa7d9b",
+    "primary_vtable_rva": 41426304,
+    "view_setup_this_offset": "0x10",
+    "origin_offset": "0x4a0",
+    "angles_offset": "0x4b8",
+    "fov_offset": "0x498",
+    "aspect_offset": "0x4d4",
+    "view_flag_byte_offset": "0x551",
+    "alternate_projection_bit": "0x2",
+    "viewport_width_offset": "0x430",
+    "viewport_height_offset": "0x438",
+    "viewport_unscaled_width_offset": "0x434",
+    "viewport_unscaled_height_offset": "0x43c",
+    "auxiliary_origin_offset": "0x554",
+    "auxiliary_angles_offset": "0x560",
+    "extra_origin_offset": "0x56c",
+    "call_site_rva": 27128814,
+    "call_site_bytes": "ff 90 88 00 00 00",
+    "view_setup_delegate_rva": "0x5e2ce0",
+    "camera_layout_revision": 1,
+    "view_setup_abi": {
+      "platform": "Microsoft x64",
+      "arguments": "RCX=CViewRender*. Wrapper does not consume incoming RDX; preserve opaque integer argument.",
+      "return": "No defined return value consumed by matrix caller; void-compatible.",
+      "caller_return_rva": "0x19df3f4",
+      "call_kind": "virtual",
+      "vtable_byte_offset": "0x88",
+      "direct_call_sites": [],
+      "evidence_limit": "Static reviewed exact build. Runtime cadence and visual behavior unverified."
+    },
+    "aspect_scaling": {
+      "helper_rva": "0x2284e80",
+      "original_call_rva": "0x5e2f6b",
+      "aspect_source_interface_pointer_rva": "0x3e5f158",
+      "aspect_source_virtual_offset": "0x2c0",
+      "aspect_source_call_rva": "0x5e2f4a",
+      "scale_constant_rva": "0x26415fc",
+      "formula": "2 * degrees(atan(tan(radians(fov)/2) * scale))",
+      "scale": "effective_aspect * 0.75"
+    },
+    "globals": {
+      "pointer_rva": "0x3432240",
+      "fallback_rva": "0x3432140",
+      "current_time_offset": "0x30",
+      "interval_offset": "0x54",
+      "replay_clock_review": null
+    },
+    "camera_layout_review": {
+      "client_sha256": "3a333e279f2fa4ad6270a3406f8039ce349f20ef787bae2e73c784de768c6817",
+      "validation": "6806 offline: all135 required anchors,58 reviewed code spans,56 mapped ranges, six complete camera owners and named schema/RTTI/stock consumers requalified against retained6805/current6806 with full current chained extents. Code relocates; no whole-section equality or live6806 claim.",
+      "client_mode_class": "ClientModeCitadelNormal",
+      "client_mode_vtable_rva": "0x277f0f8",
+      "client_mode_slot": "0x78",
+      "client_mode_array_rva": "0x3804a98",
+      "client_mode_object_rva": "0x3804a10",
+      "cache": {
+        "origin": "0x3e68cc0",
+        "angles": "0x3e68cd0",
+        "forward": "0x3e68ce0",
+        "right": "0x3e68cf0",
+        "up": "0x3e68d00",
+        "basis": "0x2274920"
+      },
+      "functions": {
+        "wrapper": {
+          "rva": "0x19e59d0",
+          "end_rva": "0x19e5a99",
+          "sha256": "89bd2e37f9d26b39f54bc329428691be61ff2968337918ba7924bef8eff7b75b"
+        },
+        "matrix": {
+          "rva": "0x19df3d0",
+          "end_rva": "0x19df586",
+          "sha256": "644c9c08a3993587809fb7a859dea57b300abcd944c38aa3bf1c16a3f6aa7d9b"
+        },
+        "producer": {
+          "rva": "0x5e2ce0",
+          "end_rva": "0x5e2f8d",
+          "sha256": "a3e686e3e499154294d65439d0a3452b8f42380ff3c86052b37937cf264f7412"
+        },
+        "cache_basis": {
+          "rva": "0x22750c0",
+          "end_rva": "0x2275238",
+          "sha256": "a468bddfaffdae63f2b3588b79653dfd97b2843cc6a010e234142201b636f875"
+        },
+        "matrix_consumer": {
+          "rva": "0xc12da0",
+          "end_rva": "0xc12fa5",
+          "sha256": "1eacb89a9795235267449690d9dbceb9ee4f3d29f95d8770be8a8bc804e16c6a"
+        },
+        "aux_consumer": {
+          "rva": "0x18ffd80",
+          "end_rva": "0x18fffdc",
+          "sha256": "e5c1a6081ed90f624e728579d02ce3e3d790859eeb6f202f464e73c73e176924"
+        }
+      }
+    }
+  },
+  "engine": {
+    "sha256": "f7dd5763050e203361809360b4354ef3f768753bb6e43fb314d4822065d28da6",
+    "image_size": "0x906000",
+    "timestamp": "0x6ad7c39d",
+    "addresses": {
+      "engine_client_vtable": "0x4e2790",
+      "demo_player_pointer": "0x5b92b0",
+      "demo_player_default_object": "0x631d88",
+      "demo_player_vtable": "0x4d7e88",
+      "demo_file_vtable": "0x4d7fe0",
+      "network_client_service_pointer": "0x62e6b8",
+      "network_client_service_vtable": "0x51fa10",
+      "aspect_cvar_object": "0x633c10"
+    },
+    "functions": {
+      "engine_get_aspect_ratio": {
+        "rva": "0x73690",
+        "slot": 88,
+        "abi": "float(void* this,int width,int height)",
+        "first16": "4883ec28488d0d75055c00e8c084fcff"
+      },
+      "engine_is_playing_demo": {
+        "rva": "0x732c0",
+        "slot": 42,
+        "abi": "bool(void* this)",
+        "first16": "48833df8fa830000740e488b0ddf5f54"
+      },
+      "engine_get_demo_filename": {
+        "rva": "0x73310",
+        "slot": 43,
+        "abi": "const char*(void* this)",
+        "first16": "4883ec2848833da4fa830000742c488b"
+      },
+      "demo_get_file": {
+        "rva": "0x242c0",
+        "slot": 1,
+        "abi": "void*(void* this)",
+        "first16": "488d4120c3cccccccccccccccccccccc"
+      },
+      "demo_get_start_tick": {
+        "rva": "0x34ed0",
+        "slot": 2,
+        "abi": "int(void* this)",
+        "first16": "8b8104020000c3cccccccccccccccccc"
+      },
+      "demo_get_tick": {
+        "rva": "0x34ee0",
+        "slot": 3,
+        "abi": "int(void* this)",
+        "first16": "40534883ec20488bd9488b0dc8975f00"
+      },
+      "demo_is_playing": {
+        "rva": "0x2d590",
+        "slot": 11,
+        "abi": "bool(void* this)",
+        "first16": "0fb68130120000c3cccccccccccccccc"
+      },
+      "demo_is_paused": {
+        "rva": "0x34ea0",
+        "slot": 12,
+        "abi": "bool(void* this)",
+        "first16": "80b93012000000741a83b92802000000"
+      },
+      "demo_is_seeking": {
+        "rva": "0x28b40",
+        "slot": 14,
+        "abi": "bool(void* this)",
+        "first16": "80b93012000000740c83b908020000ff"
+      },
+      "demo_get_playback_scale": {
+        "rva": "0x34f30",
+        "slot": 17,
+        "abi": "float(void* this)",
+        "first16": "f30f108114020000c3cccccccccccccc"
+      },
+      "demo_file_get_filename": {
+        "rva": "0x24180",
+        "slot": 3,
+        "abi": "const char*(void* this)",
+        "first16": "488b5108488d05a4f14a004885d2480f"
+      },
+      "network_service_get_tick": {
+        "rva": "0x1d4f00",
+        "slot": 57,
+        "abi": "int(void* this)",
+        "first16": "8b8190000000c3cccccccccccccccccc"
+      }
+    },
+    "validated_by": "6806 installed engine2 whole-file exact6805; existing complete typed interface/getter/field/caller evidence carries. Offline only.",
+    "notes": [
+      "6806 engine2 whole file is identical to6805; existing named interface/accessor/field evidence carries. No live6806 behavior claim."
+    ]
+  },
+  "tier0": {
+    "sha256": "666c9022739190d571a67161646d1a55511e130b62c3a93f8c95b47beaede433",
+    "size_of_image": "0x401000",
+    "interface": "VEngineCvar007",
+    "vtable_rva": "0x313208",
+    "find_cvar": {
+      "slot": 11,
+      "rva": "0x6c6b0",
+      "abi": "void*(void* cvar,uint64* return_storage,const char* name,int allow_defensive)"
+    },
+    "get_data": {
+      "slot": 41,
+      "rva": "0x6c5f0",
+      "abi": "void*(void* cvar,uint64 reference)"
+    },
+    "set_value": {
+      "rva": "0x20fea0",
+      "abi": "void(ConVarRefAbstract*,int slot,const CVValue* new_value,CVValue* current_value,void* context)",
+      "first16": "4c8944241848894c2408555657415441"
+    },
+    "data_offsets": {
+      "name": "0x0",
+      "type_int16": "0x28",
+      "change_count": "0x2c",
+      "flags": "0x30",
+      "scalar_value": "0x58"
+    },
+    "validated_by": "6806 installed Tier0 whole-file exact6805; existing complete CCvar adapter/setter evidence carries; new server pair separately reviewed. Offline only."
+  }
+}

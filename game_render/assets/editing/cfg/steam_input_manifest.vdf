@@ -1,0 +1,528 @@
+"In Game Actions"
+{
+	"major_revision"		"3"
+	"minor_revision"		"116"
+
+	"configurations"
+	{
+		"controller_neptune"
+		{
+			"0"
+			{
+				"path" "steamdeck_mapping_gyro.vdf"
+			}
+			"1"
+			{
+				"path" "steamdeck_mapping_gyro_flickstick.vdf"
+			}
+			"2"
+			{
+				"path" "steamdeck_mapping.vdf"
+			}
+		}
+		"controller_ps5"
+		{
+			"0"
+			{
+				"path" "ps5_controller_mapping_gyro.vdf"
+			}
+			"1"
+			{
+				"path" "ps5_controller_mapping_gyro_flickstick.vdf"
+			}
+			"2"
+			{
+				"path" "ps5_controller_mapping.vdf"
+			}
+		}
+		"controller_switch_pro"
+		{
+			"0"
+			{
+				"path" "switch_pro_mapping_gyro.vdf"
+			}
+			"1"
+			{
+				"path" "switch_pro_mapping_gyro_flickstick.vdf"
+			}
+			"2"
+			{
+				"path" "switch_pro_mapping.vdf"
+			}
+		}
+		"controller_xbox360"
+		{
+			"0"
+			{
+				"path" "xbox_360_mapping.vdf"
+			}
+		}
+		"controller_xboxone"
+		{
+			"0"
+			{
+				"path" "xbox_one_mapping.vdf"
+			}
+		}
+	}
+	"actions"
+	{
+		"GameControls"
+		{
+			"title"		"#InGame_Controls"
+			"legacy_set"		"0"
+			"StickPadGyro"
+			{
+				"Move"
+				{
+					"title"					"#Move"
+					"input_mode"			"joystick_move"
+				}
+				"JoystickCamera"
+				{
+					"title"					"#Camera"
+					"input_mode"			"joystick_to_camera_angles"
+				}
+				"FlickStick"
+				{
+					"title"					"#FlickStick"
+					"input_mode"			"flickstick_to_camera_angles"
+				}
+				"GyroCamera"
+				{
+					"title"					"#Camera"
+					"input_mode"			"gyro_to_camera_angles"
+				}
+				"TouchPadCamera"
+				{
+					"title"					"#Camera"
+					"input_mode"			"touchpad_to_camera_angles"
+				}
+				"RadialMenu"
+				{
+					"title"					"#RadialMenu"
+					"input_mode"			"joystick_move"
+				}
+			}
+			"Button"
+			{
+				"AbilityMelee"				"#AbilityMelee"
+
+				"Ability1"					"#Ability1"
+				"Ability2"					"#Ability2"
+				"Ability3"					"#Ability3"
+				"Ability4"					"#Ability4"
+
+				"Item1"						"#Item1"
+				"Item2"						"#Item2"
+				"Item3"						"#Item3"
+				"Item4"						"#Item4"
+
+				"Mantle"					"#JumpMantle"
+
+				"OpenHeroSheet" 			"#OpenHeroSheet"
+				"PurchaseQuickbuy"			"#PurchaseQuickbuy"
+
+				"Roll"						"#Roll"
+				"Crouch"					"#Crouch"
+				"CrouchToggle"				"#CrouchToggle"
+				"DownDash"					"#DownDash"
+				"Scoreboard"				"#Scoreboard"
+				"Reload"					"#Reload"
+				"ExtraInfo"					"#ExtraInfo"
+				"AltCast"					"#AltCast"
+				"ReplayDeath"				"#ReplayDeath"
+				"MoveForward"				"#MoveForward"
+				"MoveBackwards"				"#MoveBackwards"
+				"MoveLeft"					"#MoveLeft"
+				"MoveRight"					"#MoveRight"
+				"MoveUp"					"#MoveUp"
+				"MoveDown"					"#MoveDown"
+
+				"Attack"					"#Attack"
+				"ADS"						"#ADS"
+				"ResetCamera"				"#ResetCamera"
+
+				"Ping"						"#Ping"
+				"InstantPing"				"#InstantPing"
+
+				"MouseWheel"				"#MouseWheel"
+				"MinimapZoomIn"				"#MinimapZoomIn"
+				"MinimapZoomOut"			"#MinimapZoomOut"
+				
+				"PingOption1"				"#PingOption1"
+				"PingOption2"				"#PingOption2"
+				"PingOption3"				"#PingOption3"
+				"PingOption4"				"#PingOption4"
+				"PingOption5"				"#PingOption5"
+				"PingOption6"				"#PingOption6"
+				"PingOption7"				"#PingOption7"
+				"PingOption8"				"#PingOption8"
+				"PingOption9"				"#PingOption9"
+				"PingOption10"				"#PingOption10"
+				"PingOption11"				"#PingOption11"
+				"PingOption12"				"#PingOption12"
+
+				"HeldItem"					"#HeldItem"
+
+				"SwitchPlayerCam1"			"#SwitchPlayerCam1"
+				"SwitchPlayerCam2"			"#SwitchPlayerCam2"
+				"SwitchPlayerCam3"			"#SwitchPlayerCam3"
+				"SwitchPlayerCam4"			"#SwitchPlayerCam4"
+				"SwitchPlayerCam5"			"#SwitchPlayerCam5"
+
+				"AbilityUpgrade1"			"#AbilityUpgrade1"
+				"AbilityUpgrade2"			"#AbilityUpgrade2"
+				"AbilityUpgrade3"			"#AbilityUpgrade3"
+				"AbilityUpgrade4"			"#AbilityUpgrade4"
+				"AbilityUpgradeRadial"		"#AbilityUpgradeRadial"
+
+				"ItemQuickCastMode"			"#ItemQuickCastMode"
+				"AbilityQuickCastMode1"		"#AbilityQuickCastMode1"
+				"AbilityQuickCastMode2"		"#AbilityQuickCastMode2"
+				"AbilityQuickCastMode3"		"#AbilityQuickCastMode3"
+				"AbilityQuickCastMode4"		"#AbilityQuickCastMode4"
+
+				"Pause"						"#Pause"
+
+				"PushToTalk"				"#PushToTalk"
+				"PushToTalkParty"			"#PushToTalkParty"
+				"ToggleMute"				"#ToggleMute"
+
+				"Chat"						"#Chat"
+				"ChatTeam"					"#ChatTeam"
+
+				"Zipline"					"#Zipline"
+				"Interact"					"#Interact"
+				"Cosmetic1"					"#Cosmetic1"
+				"CancelAbility"				"#CancelAbility"
+
+				"OpenMainMenu" 				"#Action_OpenMainMenu, key_press ESC"
+
+				"HideoutNews"				"#HideoutNews"
+				"HideoutCancelMatchmaking"	"#HideoutCancelMatchmaking"
+				"HideoutAcceptRequest"		"#HideoutAcceptRequest"
+				"HideoutRejectRequest"		"#HideoutRejectRequest"
+				"HideoutCameraIn"			"#HideoutCameraIn"
+				"HideoutCameraOut"			"#HideoutCameraOut"
+				"HideoutToggleEditMode"		"#HideoutToggleEditMode"
+				"HideoutSurveyOption1"		"#HideoutSurveyOption1"
+				"HideoutSurveyOption2"		"#HideoutSurveyOption2"
+				"HideoutSurveyOption3"		"#HideoutSurveyOption3"
+				"HideoutSurveyOption4"		"#HideoutSurveyOption4"
+				"HideoutSurveyOption5"		"#HideoutSurveyOption5"
+				"HideoutSurveySkip"			"#HideoutSurveySkip"
+			}
+		}
+		"MenuControls"
+		{
+			"title"							"#MenuControls"
+			"legacy_set"					"0"
+			"StickPadGyro"
+			{
+				"Mouse"
+				{
+					"title"					"#Mouse"
+					"input_mode"			"absolute_mouse"
+					"os_mouse"				"1"
+				}
+				"Scroll"
+				{
+					"title"					"#Scroll"
+					"input_mode"			"joystick_move"
+				}
+			}
+			"Button"
+			{
+				"PurchaseQuickbuy"			"#PurchaseQuickbuy"
+
+				"CursorSelect"				"#Action_CursorSelect"
+				"CursorContext"				"#Action_CursorContext"
+				"CursorMiddle"				"#Action_CursorMiddle"
+				"OpenMainMenu" 				"#Action_OpenMainMenu, key_press ESC"
+				"MenuBack"					"#Action_MenuBack, key_press ESC"
+				"MenuUp"					"#Action_MenuUp"
+				"MenuDown"					"#Action_MenuDown"
+				"MenuLeft"					"#Action_MenuLeft"
+				"MenuRight"					"#Action_MenuRight"
+				"PostGameScoreboard"		"#Action_PostGameScoreboard"
+				"PostGameGraphs"			"#Action_PostGameGraphs"
+			}
+		}
+		"SpectatorControls"
+		{
+			"title"							"#SpectatorControls"
+			"legacy_set"					"0"
+			"StickPadGyro"
+			{
+				"Move"
+				{
+					"title"					"#Move"
+					"input_mode"			"joystick_move"
+				}
+				"JoystickCamera"
+				{
+					"title"					"#Camera"
+					"input_mode"			"joystick_to_camera_angles"
+				}
+				"FlickStick"
+				{
+					"title"					"#FlickStick"
+					"input_mode"			"flickstick_to_camera_angles"
+				}
+				"GyroCamera"
+				{
+					"title" 				"#Camera"
+					"input_mode" 			"gyro_to_camera_angles"
+				}
+				"TouchPadCamera"
+				{
+					"title" 				"#Camera"
+					"input_mode" 			"touchpad_to_camera_angles"
+				}
+			}
+			"Button"
+			{
+				"ResetCamera"				"#ResetCamera"
+				"Roll"						"#FastMove"
+
+				"ToggleSpectatorCamera"		"#ToggleSpectatorCamera"
+				"ToggleSpectatorPlayerPerspective"	"#ToggleSpectatorPlayerPerspective"
+				"ToggleSpectatorTeam"		"#ToggleSpectatorTeam"
+				"SpectatorNextTarget"		"#SpectatorNextTarget"
+				"SpectatorPrevTarget"		"#SpectatorPrevTarget"
+				"SpectatorFlyUp"			"#MoveUp"
+				"SpectatorFlyDown"			"#MoveDown"
+				"SpectatorChase"			"#SpectatorChase"
+				"SpectatorInEye"			"#SpectatorInEye"
+
+				"SpectatorToggleFreeCursor"	"#SpectatorToggleFreeCursor"
+				"SpectatorFOWTeamAmber"		"#SpectatorFOWTeamAmber"
+				"SpectatorFOWTeamSapphire"	"#SpectatorFOWTeamSapphire"
+				"SpectatorFOWTeamBoth"		"#SpectatorFOWTeamBoth"
+				"SpectatorFOWTeamTarget"	"#SpectatorFOWTeamTarget"
+
+				"OpenHeroSheet"				"#OpenMenu"
+
+				"PushToTalk"				"#PushToTalk"
+				"PushToTalkParty"			"#PushToTalkParty"
+				"ToggleMute"				"#ToggleMute"
+
+				"OpenMainMenu" 				"#Action_OpenMainMenu, key_press ESC"
+				"Scoreboard"				"#Scoreboard"
+				"ExtraInfo"					"#ExtraInfo"
+
+				"Chat"						"#Chat"
+				"ChatTeam"					"#ChatTeam"
+			}
+		}
+		"ReplayControls"
+		{
+			"title"							"#ReplayControls"
+			"legacy_set"					"0"
+			"StickPadGyro"
+			{
+				"Move"
+				{
+					"title"					"#Move"
+					"input_mode"			"joystick_move"
+				}
+				"JoystickCamera"
+				{
+					"title"					"#Camera"
+					"input_mode"			"joystick_to_camera_angles"
+				}
+				"FlickStick"
+				{
+					"title"					"#FlickStick"
+					"input_mode"			"flickstick_to_camera_angles"
+				}
+				"GyroCamera"
+				{
+					"title"					"#Camera"
+					"input_mode"				"gyro_to_camera_angles"
+				}
+				"TouchPadCamera"
+				{
+					"title"					"#Camera"
+					"input_mode"			"touchpad_to_camera_angles"
+				}
+				"RadialMenu"
+				{
+					"title"					"#RadialMenu"
+					"input_mode"			"joystick_move"
+				}
+			}
+			"Button"
+			{
+				"ResetCamera"				"#ResetCamera"
+				"Roll"						"#FastMove"
+
+				"CursorSelect"				"#Action_CursorSelect"
+				"CursorContext"				"#Action_CursorContext"
+				"CursorMiddle"				"#Action_CursorMiddle"
+				"OpenMainMenu" 				"#Action_OpenMainMenu, key_press ESC"
+				"MenuBack"					"#Action_MenuBack, key_press ESC"
+				"MenuUp"					"#Action_MenuUp"
+				"MenuDown"					"#Action_MenuDown"
+				"MenuLeft"					"#Action_MenuLeft"
+				"MenuRight"					"#Action_MenuRight"
+				"PostGameScoreboard"		"#Action_PostGameScoreboard"
+				"PostGameGraphs"			"#Action_PostGameGraphs"
+
+				"ReplayTogglePause"			"#ReplayTogglePause"
+				"ReplayIncreaseSpeed"		"#ReplayIncreaseSpeed"
+				"ReplayDecreaseSpeed"		"#ReplayDecreaseSpeed"
+
+				"ToggleSpectatorCamera"		"#ToggleSpectatorCamera"
+				"ToggleSpectatorTeam"		"#ToggleSpectatorTeam"
+				"SpectatorNextTarget"		"#SpectatorNextTarget"
+				"SpectatorPrevTarget"		"#SpectatorPrevTarget"
+				"SpectatorFlyUp"			"#MoveUp"
+				"SpectatorFlyDown"			"#MoveDown"
+				"SpectatorChase"			"#SpectatorChase"
+				"SpectatorInEye"			"#SpectatorInEye"
+
+				"SpectatorToggleFreeCursor"	"#SpectatorToggleFreeCursor"
+				"SpectatorFOWTeamAmber"		"#SpectatorFOWTeamAmber"
+				"SpectatorFOWTeamSapphire"	"#SpectatorFOWTeamSapphire"
+				"SpectatorFOWTeamBoth"		"#SpectatorFOWTeamBoth"
+				"SpectatorFOWTeamTarget"	"#SpectatorFOWTeamTarget"
+			}
+		}
+	}
+	"action_layers"
+	{
+	}
+	"localization"
+	{
+		"english"
+		{
+			"MenuControls"						"Menu Controls"
+			"InGame_Controls"					"In-Game Controls"
+			"ReplayControls"					"Replay Controls"
+			"SpectatorControls"					"Spectator Controls"
+			"Mouse"								"Move Cursor"
+			"Scroll"							"Scroll"
+			"Move"								"Move"
+			"Camera"							"Camera"
+			"RadialMenu"						"RadialMenu"
+			"FlickStick"						"FlickStick Camera"
+			"AbilityMelee"						"Melee"
+			"Ability1"							"Ability 1"
+			"Ability2"							"Ability 2"
+			"Ability3"							"Ability 3"
+			"Ability4"							"Ability 4"
+			"Item1"								"Item 1"
+			"Item2"								"Item 2"
+			"Item3"								"Item 3"
+			"Item4"								"Item 4"
+			"JumpMantle"						"Jump/Mantle"
+			"Zipline"							"Zipline (Hold)"
+			"Interact"							"Use"
+			"Cosmetic1"							"Cosmetic1"
+			"CancelAbility"						"Cancel Ability"
+			"OpenHeroSheet"						"Open Buy Menu"
+			"PurchaseQuickbuy"					"Purchase Quick Buy"
+			"Roll"								"Roll"
+			"Crouch"							"Crouch"
+			"CrouchToggle"						"Crouch Toggle"
+			"DownDash"							"Down Dash"
+			"PushToTalk"						"Push-to-Talk"
+			"PushToTalkParty"					"Push-to-Talk (Party)"
+			"ToggleMute"						"Toggle Mute"
+			"Scoreboard"						"Scoreboard"
+			"Reload"							"Reload"
+			"ExtraInfo"							"Extra Info"
+			"AltCast"							"Alternate Cast"
+			"ReplayDeath"						"Replay Death"
+			"MoveForward"						"Move Forward"
+			"MoveBackwards"						"Move Backward"
+			"MoveLeft"							"Move Left"
+			"MoveRight"							"Move Right"
+			"MoveUp"							"Fly Up"
+			"MoveDown"							"Fly Down"
+			"Attack"							"Fire"
+			"ADS"								"Zoom/Alternate Fire"
+			"ResetCamera"						"Reset Camera"
+			"Chat"								"Chat"
+			"ChatTeam"							"Team Chat"
+			"Ping"								"Ping"
+			"InstantPing"						"Instant Ping"
+			"QuickResponse"						"Quick Response"
+			"MouseWheel"						"Chat Wheel"
+			"MinimapZoomIn"						"Minimap Zoom In"
+			"MinimapZoomOut"					"Minimap Zoom Out"
+			"PingOption1"						"Ping Option 1"
+			"PingOption2"						"Ping Option 2"	
+			"PingOption3"						"Ping Option 3"
+			"PingOption4"						"Ping Option 4"
+			"PingOption5"						"Ping Option 5"
+			"PingOption6"						"Ping Option 6"
+			"PingOption7"						"Ping Option 7"
+			"PingOption8"						"Ping Option 8"
+			"PingOption9"						"Ping Option 9"
+			"PingOption10"						"Ping Option 10"
+			"PingOption11"						"Ping Option 11"
+			"PingOption12"						"Ping Option 12"
+			"HeldItem"							"Parry/Drop Urn"
+			"SwitchPlayerCam1"					"Switch to Player 1 Camera"
+			"SwitchPlayerCam2"					"Switch to Player 2 Camera"
+			"SwitchPlayerCam3"					"Switch to Player 3 Camera"
+			"SwitchPlayerCam4"					"Switch to Player 4 Camera"
+			"SwitchPlayerCam5"					"Switch to Player 5 Camera"
+			"AbilityUpgrade1"					"Upgrade Ability 1"
+			"AbilityUpgrade2"					"Upgrade Ability 2"
+			"AbilityUpgrade3"					"Upgrade Ability 3"
+			"AbilityUpgrade4"					"Upgrade Ability 4"
+			"AbilityUpgradeRadial"				"Ability Upgrade Radial"
+			"AltCastMode"						"Alt Cast Mode"
+			"ItemQuickCastMode"					"Quick Cast Item Mode"
+			"AbilityQuickCastMode1"				"Quick Cast Ability 1"
+			"AbilityQuickCastMode2"				"Quick Cast Ability 2"
+			"AbilityQuickCastMode3"				"Quick Cast Ability 3"
+			"AbilityQuickCastMode4"				"Quick Cast Ability 4"
+			"ToggleSpectatorCamera"				"Toggle Camera"
+			"ToggleSpectatorPlayerPerspective"	"Toggle Player Perspective"
+			"ToggleSpectatorTeam"				"Toggle Team"
+			"SpectatorNextTarget"				"Next Target"
+			"SpectatorPrevTarget"				"Previous Target"
+			"SpectatorChase"					"Chase Camera"
+			"SpectatorInEye"					"First-Person View"
+			"SpectatorToggleFreeCursor"			"Toggle Free Cursor"
+			"SpectatorFOWTeamAmber"				"FOW Team Amber"
+			"SpectatorFOWTeamSapphire"			"FOW Team Sapphire"
+			"SpectatorFOWTeamBoth"				"FOW Both Teams"
+			"SpectatorFOWTeamTarget"			"FOW Target Team"
+			"ReplayIncreaseSpeed"				"Increase Replay Speed"
+			"ReplayDecreaseSpeed"				"Decrease Replay Speed"
+			"ReplayTogglePause"					"Toggle Replay Pause"
+			"DevConsole"						"Developer Console"
+			"Pause"								"Pause"
+			"FastMove"							"Increase Speed"
+			"OpenMenu"							"Buy"
+			"Action_CursorSelect"				"Select"
+			"Action_CursorContext"				"Make Preferred"
+			"Action_CursorMiddle"				"Options"
+			"Action_MenuBack"					"Back"			
+			"Action_OpenMainMenu"				"Game Menu"
+			"Action_MenuUp"						"Menu Up"
+			"Action_MenuDown"					"Menu Down"
+			"Action_MenuLeft"					"Menu Left"
+			"Action_MenuRight"					"Menu Right"
+			"Action_PostGameScoreboard"			"Post Game Scoreboard"
+			"Action_PostGameGraphs"				"Post Game Graphs"
+
+			"HideoutNews"						"News"
+			"HideoutCancelMatchmaking"			"Cancel Matchmaking"
+			"HideoutAcceptRequest"				"Accept Invite Request"
+			"HideoutRejectRequest"				"Reject Invite Request"
+			"HideoutSurveyOption1"				"Survey Option 1"
+			"HideoutSurveyOption2"				"Survey Option 2"
+			"HideoutSurveyOption3"				"Survey Option 3"
+			"HideoutSurveyOption4"				"Survey Option 4"
+			"HideoutSurveyOption5"				"Survey Option 5"
+			"HideoutSurveySkip"					"SkipSurvey"
+		}
+	}
+}

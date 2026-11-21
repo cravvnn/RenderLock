@@ -1,0 +1,32 @@
+[
+  {
+    "name": "reuse before poll returns",
+    "replace": [
+      [
+        "RequirePending == TRUE",
+        "RequirePending == FALSE"
+      ]
+    ],
+    "expect": "NoEarlyReuse"
+  },
+  {
+    "name": "reuse before GPU proof passes",
+    "replace": [
+      [
+        "RequireGpu == TRUE",
+        "RequireGpu == FALSE"
+      ]
+    ],
+    "expect": "NoEarlyReuse"
+  },
+  {
+    "name": "reuse before redirect finishes",
+    "replace": [
+      [
+        "RequireRedirect == TRUE",
+        "RequireRedirect == FALSE"
+      ]
+    ],
+    "expect": "NoEarlyReuse"
+  }
+]

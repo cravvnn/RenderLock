@@ -1,0 +1,239 @@
+{
+  "validation": "6853 and byte-identical6854 offline: complete/scoped client consumers, explicit type-ID change and indexed relocation proof; named observer field/getters retain0xe98. New engine/Tier0/scene/renderer reviewed. Exact unlocker pair and historical guards pass. No new live qualification.",
+  "client": {
+    "client_sha256": "fa6a50168ac34e282ddb4e4b5e1a0fe0c67983b3779406cdf1a856008142210c",
+    "file_size": 60653208,
+    "timestamp": 1793905943,
+    "size_of_image": 71421952,
+    "preferred_image_base": "0x180000000",
+    "main_view_setup_rva": "0x1a11ec0",
+    "main_view_setup_end_rva": "0x1a11f89",
+    "main_view_setup_prologue_32": "48 89 5c 24 08 48 89 74 24 10 57 48 83 ec 20 48 8b f1 c6 81 30 13 00 00 01 b9 ff ff ff ff e8 6d",
+    "main_view_setup_sha256": "91d2a8c25a086efedbf4b1adb471dc73eee961c25e7450d2a8d01a2da7fc0fbd",
+    "matrix_setup_rva": "0x1a0b8c0",
+    "matrix_setup_end_rva": "0x1a0ba76",
+    "matrix_setup_sha256": "57bf63586298bdd6ce61a6586209c3c4a733c49af920eb60d9699edce888e80b",
+    "primary_vtable_rva": "0x27b8a80",
+    "view_setup_this_offset": "0x10",
+    "origin_offset": "0x4a0",
+    "angles_offset": "0x4b8",
+    "fov_offset": "0x498",
+    "aspect_offset": "0x4d4",
+    "view_flag_byte_offset": "0x551",
+    "alternate_projection_bit": "0x2",
+    "viewport_width_offset": "0x430",
+    "viewport_height_offset": "0x438",
+    "viewport_unscaled_width_offset": "0x434",
+    "viewport_unscaled_height_offset": "0x43c",
+    "auxiliary_origin_offset": "0x554",
+    "auxiliary_angles_offset": "0x560",
+    "extra_origin_offset": "0x56c",
+    "call_site_rva": "0x1a0b8de",
+    "call_site_bytes": "ff 90 88 00 00 00",
+    "view_setup_delegate_rva": "0x5ee4e0",
+    "camera_layout_revision": 1,
+    "view_setup_abi": {
+      "platform": "Microsoft x64",
+      "arguments": "RCX=CViewRender*. Wrapper does not consume incoming RDX; preserve opaque integer argument.",
+      "return": "No defined return value consumed by matrix caller; void-compatible.",
+      "caller_return_rva": "0x1a0b8e4",
+      "call_kind": "virtual",
+      "vtable_byte_offset": "0x88",
+      "direct_call_sites": [],
+      "evidence_limit": "Static reviewed exact build. Runtime cadence and visual behavior unverified."
+    },
+    "aspect_scaling": {
+      "helper_rva": "0x22b7d20",
+      "original_call_rva": "0x5ee76b",
+      "aspect_source_interface_pointer_rva": "0x3eb7620",
+      "aspect_source_virtual_offset": "0x2c0",
+      "aspect_source_call_rva": "0x5ee74a",
+      "scale_constant_rva": "0x26765dc",
+      "formula": "2 * degrees(atan(tan(radians(fov)/2) * scale))",
+      "scale": "effective_aspect * 0.75"
+    },
+    "globals": {
+      "pointer_rva": "0x347cc40",
+      "fallback_rva": "0x347cce0",
+      "current_time_offset": "0x30",
+      "interval_offset": "0x54",
+      "replay_clock_review": null
+    },
+    "camera_layout_review": {
+      "client_sha256": "fa6a50168ac34e282ddb4e4b5e1a0fe0c67983b3779406cdf1a856008142210c",
+      "validation": "6853 and byte-identical6854 offline: complete/scoped client consumers, explicit type-ID change and indexed relocation proof; named observer field/getters retain0xe98. New engine/Tier0/scene/renderer reviewed. Exact unlocker pair and historical guards pass. No new live qualification.",
+      "client_mode_class": "ClientModeCitadelNormal",
+      "client_mode_vtable_rva": "0x27ba228",
+      "client_mode_slot": "0x78",
+      "client_mode_array_rva": "0x3854038",
+      "client_mode_object_rva": "0x3853fb0",
+      "cache": {
+        "origin": "0x3ec12f0",
+        "angles": "0x3ec1300",
+        "forward": "0x3ec1310",
+        "right": "0x3ec1320",
+        "up": "0x3ec1330",
+        "basis": "0x22a7960"
+      },
+      "functions": {
+        "wrapper": {
+          "rva": "0x1a11ec0",
+          "end_rva": "0x1a11f89",
+          "sha256": "91d2a8c25a086efedbf4b1adb471dc73eee961c25e7450d2a8d01a2da7fc0fbd"
+        },
+        "matrix": {
+          "rva": "0x1a0b8c0",
+          "end_rva": "0x1a0ba76",
+          "sha256": "57bf63586298bdd6ce61a6586209c3c4a733c49af920eb60d9699edce888e80b"
+        },
+        "producer": {
+          "rva": "0x5ee4e0",
+          "end_rva": "0x5ee78d",
+          "sha256": "27344b02c30943181beb53687e923ea4db24c4bb59a22988798838cd73fde9b4"
+        },
+        "cache_basis": {
+          "rva": "0x22a8130",
+          "end_rva": "0x22a82a8",
+          "sha256": "95415987a2802783f2bb303ec0945de5ca63247b35bb73f3d2b139f42f7e3ba0"
+        },
+        "matrix_consumer": {
+          "rva": "0xc2ddb0",
+          "end_rva": "0xc2dfb5",
+          "sha256": "f8c1b1749c4d2f03f363f7d4b97bd28a77a30e0dfd913bacf0748ce61b590292"
+        },
+        "aux_consumer": {
+          "rva": "0x192c1a0",
+          "end_rva": "0x192c3fc",
+          "sha256": "3f20677c8f736ab07c1f4dac2e06cf53e858b1518dd3b638774b5fb0206471a7"
+        }
+      }
+    },
+    "camera_signature": {
+      "client_sha256": "fa6a50168ac34e282ddb4e4b5e1a0fe0c67983b3779406cdf1a856008142210c",
+      "bytes": "48895c24084889742410574883ec20488bf1c6813013000001b9ffffffffe86d91bffe488bc8488b104c8b4278488d561041ffd0488b0d25574a02448b864c0400008b9644040000488b01ff90c00200004c8d0d18f44a02f30f1186d01c00004c8d05f9f34a02488d15e2f34a02488d8ec8040000e8f6618900f20f1086b0040000488b5c2430f20f1105a1f34a028b86b804000089059df34a02f20f1086c8040000f20f110595f34a028b86d0040000890591f34a02c6863013000000488b7424384883c4205fc3cccccccccccccc40555356574157488bec4881ec800000004d8bf88bda488bf9e812b1b100488bf04885c00f84ba0100004c89a424b00000004c89ac24b80000004533ed4c89b424c00000004c8b7708410fb74e28e8dd",
+      "mask": "010101010101010101010101010101010101010101010101010101010101010000000001010101010101010101010101010101010101010000000001010101010101010101010101010101010101010101010101000000000101010101010101010101000000000101010000000001010101010101010000000001010101010101010101010101010101010000000001010101010101010000000001010101010101010101010100000000010101010101010100000000010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101000000000101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101"
+    }
+  },
+  "engine": {
+    "sha256": "e5c84fc8f18a136858af9ec9fc1b2d5ddc745712f63988d58999def32426dcd9",
+    "image_size": "0x906000",
+    "timestamp": "0x6aecd4df",
+    "addresses": {
+      "engine_client_vtable": "0x4e27f0",
+      "demo_player_pointer": "0x5b9430",
+      "demo_player_default_object": "0x631ec8",
+      "demo_player_vtable": "0x4d7e88",
+      "demo_file_vtable": "0x4d7fe0",
+      "network_client_service_pointer": "0x62e7f8",
+      "network_client_service_vtable": "0x51fa48",
+      "aspect_cvar_object": "0x633d50"
+    },
+    "functions": {
+      "engine_get_aspect_ratio": {
+        "rva": "0x73690",
+        "slot": 88,
+        "abi": "float(void* this,int width,int height)",
+        "first16": "4883ec28488d0db5065c00e8c084fcff"
+      },
+      "engine_is_playing_demo": {
+        "rva": "0x732c0",
+        "slot": 42,
+        "abi": "bool(void* this)",
+        "first16": "48833d38fc830000740e488b0d5f6154"
+      },
+      "engine_get_demo_filename": {
+        "rva": "0x73310",
+        "slot": 43,
+        "abi": "const char*(void* this)",
+        "first16": "4883ec2848833de4fb830000742c488b"
+      },
+      "demo_get_file": {
+        "rva": "0x242c0",
+        "slot": 1,
+        "abi": "void*(void* this)",
+        "first16": "488d4120c3cccccccccccccccccccccc"
+      },
+      "demo_get_start_tick": {
+        "rva": "0x34ed0",
+        "slot": 2,
+        "abi": "int(void* this)",
+        "first16": "8b8104020000c3cccccccccccccccccc"
+      },
+      "demo_get_tick": {
+        "rva": "0x34ee0",
+        "slot": 3,
+        "abi": "int(void* this)",
+        "first16": "40534883ec20488bd9488b0d08995f00"
+      },
+      "demo_is_playing": {
+        "rva": "0x2d590",
+        "slot": 11,
+        "abi": "bool(void* this)",
+        "first16": "0fb68130120000c3cccccccccccccccc"
+      },
+      "demo_is_paused": {
+        "rva": "0x34ea0",
+        "slot": 12,
+        "abi": "bool(void* this)",
+        "first16": "80b93012000000741a83b92802000000"
+      },
+      "demo_is_seeking": {
+        "rva": "0x28b40",
+        "slot": 14,
+        "abi": "bool(void* this)",
+        "first16": "80b93012000000740c83b908020000ff"
+      },
+      "demo_get_playback_scale": {
+        "rva": "0x34f30",
+        "slot": 17,
+        "abi": "float(void* this)",
+        "first16": "f30f108114020000c3cccccccccccccc"
+      },
+      "demo_file_get_filename": {
+        "rva": "0x24180",
+        "slot": 3,
+        "abi": "const char*(void* this)",
+        "first16": "488b5108488d05a4f14a004885d2480f"
+      },
+      "network_service_get_tick": {
+        "rva": "0x1d5000",
+        "slot": 57,
+        "abi": "int(void* this)",
+        "first16": "8b8190000000c3cccccccccccccccccc"
+      }
+    },
+    "validated_by": "6853 and byte-identical 6854 offline named RTTI/slot/body/consumer review. No live claim.",
+    "notes": [
+      "All twelve named getters and required globals independently relocated."
+    ]
+  },
+  "tier0": {
+    "sha256": "3eb86a30eba4e33140232a536555ae846cdba1ba45068635f3b6b33c49c10313",
+    "size_of_image": "0x402000",
+    "interface": "VEngineCvar007",
+    "vtable_rva": "0x313208",
+    "find_cvar": {
+      "slot": 11,
+      "rva": "0x6c6b0",
+      "abi": "void*(void* cvar,uint64* return_storage,const char* name,int allow_defensive)"
+    },
+    "get_data": {
+      "slot": 41,
+      "rva": "0x6c5f0",
+      "abi": "void*(void* cvar,uint64 reference)"
+    },
+    "set_value": {
+      "rva": "0x20ffa0",
+      "abi": "void(ConVarRefAbstract*,int slot,const CVValue* new_value,CVValue* current_value,void* context)",
+      "first16": "4c8944241848894c2408555657415441"
+    },
+    "data_offsets": {
+      "name": "0x0",
+      "type_int16": "0x28",
+      "change_count": "0x2c",
+      "flags": "0x30",
+      "scalar_value": "0x58"
+    },
+    "validated_by": "6853/6854 exact named CCvar table, lookup/data/setter and all fourteen adapter slot bodies reviewed. Internal callback members move +0x100; scalar storage remains +0x58. New type IDs: int32 5, float32 9, Vector4 15."
+  }
+}

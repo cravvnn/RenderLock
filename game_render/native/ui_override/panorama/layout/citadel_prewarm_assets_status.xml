@@ -1,0 +1,23 @@
+<!-- Private opt-in Dolly Panorama loading experiment V2, 2026-10-16. Look: Kara's redesign, Figma [design reference] (2026-10-27). -->
+<root>
+	<styles>
+		<include src="s2r://panorama/styles/citadel_base_styles.vcss" />
+		<include src="s2r://panorama/styles/citadel_status_message_shared.vcss" />
+		<include src="s2r://panorama/styles/citadel_prewarm_assets_status.vcss" />
+	</styles>
+	<CitadelPrewarmAssetsStatus class="StatusNotification DollyLoadingProbeV2" hittest="false">
+		<Panel class="Details">
+			<Label class="DollyBrand" text="Deadlock Dolly" hittest="false" />
+			<Panel class="DollyTitleRow" hittest="false">
+				<Panel class="IconContainer">
+					<Panel class="Icon" />
+				</Panel>
+				<Label class="Title" text="Loading shaders" />
+			</Panel>
+			<Label class="Desc" text="Your replay will open automatically." />
+		</Panel>
+		<Panel class="DollyChalkClip" hittest="false">
+			<Panel class="DollyChalk" hittest="false" />
+		</Panel>
+	</CitadelPrewarmAssetsStatus>
+</root>

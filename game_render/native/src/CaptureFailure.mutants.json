@@ -1,0 +1,62 @@
+[
+  {
+    "name": "RetireFailures",
+    "replace": [
+      [
+        "RetireFailures == TRUE",
+        "RetireFailures == FALSE"
+      ]
+    ],
+    "expect": "PromptRetirement"
+  },
+  {
+    "name": "RequireImage",
+    "replace": [
+      [
+        "RequireImage == TRUE",
+        "RequireImage == FALSE"
+      ]
+    ],
+    "expect": "NoEarlyRetirement"
+  },
+  {
+    "name": "RequireProof",
+    "replace": [
+      [
+        "RequireProof == TRUE",
+        "RequireProof == FALSE"
+      ]
+    ],
+    "expect": "NoEarlyRetirement"
+  },
+  {
+    "name": "RequireCallback",
+    "replace": [
+      [
+        "RequireCallback == TRUE",
+        "RequireCallback == FALSE"
+      ]
+    ],
+    "expect": "NoEarlyClose"
+  },
+  {
+    "name": "RequireFlush",
+    "replace": [
+      [
+        "RequireFlush == TRUE",
+        "RequireFlush == FALSE"
+      ]
+    ],
+    "expect": "FlushBeforeReport"
+  },
+  {
+    "name": "terminal pacing suppressed by progress throttle",
+    "replace": [
+      [
+        "PublishTerminal == TRUE",
+        "PublishTerminal == FALSE"
+      ]
+    ],
+    "expect": "TerminalVisible"
+  }
+]

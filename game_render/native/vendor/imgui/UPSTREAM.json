@@ -1,0 +1,33 @@
+{
+  "repository": "https://github.com/ocornut/imgui",
+  "tag": "v1.91.9b",
+  "files_sha256": {
+    "LICENSE.txt": "c80c5789748d955c4a650562baa0d750494e2c7128c2ca66aaebe2e3c4e198bf",
+    "imgui.h": "2d0180859ff85e7fe66ed9999b0f05f2fc45176773046a8f86b3b6bd190b0765",
+    "imgui.cpp": "af1cc31255fbf58d57ecc9d727cbd39a84e44fa8f11be7fd419fa0100c5255d8",
+    "imgui_draw.cpp": "9d2d9ee6745d9b98d7f39a16da8ffcf783f90bb8c9e931038fc8e9a15cbe3d84",
+    "imgui_tables.cpp": "4ea380fa9d49cac6cbfbc8b969969f9b0705518ec9ca340681d8c70e3eefbc28",
+    "imgui_widgets.cpp": "54ac29dbcbe70091f5e5fc2cb4099e6d0b9d1c939e5158f2be983cb508714414",
+    "imgui_internal.h": "1363c617a743957f367afe1c6c88345870b7aa25ee339809fb915466e4fb9575",
+    "imconfig.h": "0884061cc43e27e1d346fe18dcd1425792eb2532d3d16610a82eb5ac751f7594",
+    "imstb_rectpack.h": "2efa3d5f7d003c19743b15155dad9f46d9f9fc783a18893d703b431d3c990972",
+    "imstb_textedit.h": "77010e494caf72c178b573569612aec409d24380409676325a31d02de0ec64b7",
+    "imstb_truetype.h": "87f08919ae8e7223451d0e9d06b62829075d3e920c9e6ad436db9d7e7427ffce",
+    "backends/imgui_impl_win32.h": "606df46db972371ac6b5f5ad94bba75a09657da47b259105c4845c1f8638fa0c",
+    "backends/imgui_impl_win32.cpp": "e572de10045298bbf833aa7a15e28d2777df57603b4e50b9c8aa4c878f1e4cfa",
+    "backends/imgui_impl_dx11.h": "cf55f23132dcd240c31995494e0828abb84e552adee71be20f384d68eca21697",
+    "backends/imgui_impl_dx11.cpp": "7a8f7294b86065d514a9e19f1bed3bc84d4587f0142b2c551a584b4067cb2902"
+  },
+  "local_patches": {
+    "backends/imgui_impl_dx11.cpp": {
+      "description": "Honor ImDrawData.FramebufferScale for the DX11 viewport and scissor rectangles. Dolly supplies the actual swapchain-to-client size ratio; input/layout remain in client coordinates. Covered by real WARP rendering and pixel readback at mismatched client/buffer sizes.",
+      "upstream_sha256": "7a8f7294b86065d514a9e19f1bed3bc84d4587f0142b2c551a584b4067cb2902",
+      "patched_sha256": "5f7427b117e188a931be95797f48320c3a01e4dce35311129222ca955b92b3a7"
+    },
+    "imgui_draw.cpp": {
+      "description": "Promote font atlas width and height to size_t before multiplying for the Alpha8 allocation and clearing. Avoid signed-int intermediate overflow without changing normal atlas dimensions.",
+      "upstream_sha256": "9d2d9ee6745d9b98d7f39a16da8ffcf783f90bb8c9e931038fc8e9a15cbe3d84",
+      "patched_sha256": "6c52c9fce6f488b2f41461b52ff8fd97e6cde2ffbfefcf59070e0b4a0a2c2287"
+    }
+  }
+}

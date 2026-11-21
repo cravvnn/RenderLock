@@ -1,0 +1,30 @@
+--- a/build_compat.cpp
++++ b/build_compat.cpp
+@@ -31,6 +31,7 @@
+ static bool g_6730_server=false;
+ static bool g_6731_server=false;
+ static bool g_6739_server=false;
++static bool g_6742_server=false;
+ static HMODULE g_real_server=nullptr;
+ static DollyCvarProxy g_proxy;
+ static constexpr DollyCvarSlot kSlots[]={
+@@ -91,14 +92,17 @@
+     g_6730_server=server_hash=="81cac6d66cefa0467c040d68e62f579252448c8a8971f15a753696a1502ca966";
+     g_6731_server=server_hash=="5226b3df209e197476b3f80944fc28f4eec0c0cb9b73b15eec11757a0917bcbe";
+     g_6739_server=server_hash=="0c0b622de4913190a2c739cdd3eef4abb2336724f4314795554d82defb5e298e";
+-    if (tier6726 != (g_6726_server || g_6728_server || g_6730_server || g_6731_server || g_6739_server)) return false;
+-    return g_6739_server || g_6731_server || g_6730_server || g_6728_server || g_6726_server || g_latest_server || g_hotfix_server || server_hash=="cb480d4091735abe7b74695c8c8077a882528aaaaa9f457d81fbca886b6c9bd8";
++    g_6742_server=server_hash=="c57de2e3687a9d8b47216e583d0b91dafa2ce23f2ad14e364a7042f131cfed6d";
++    if (tier6726 != (g_6726_server || g_6728_server || g_6730_server || g_6731_server || g_6739_server || g_6742_server)) return false;
++    return g_6742_server || g_6739_server || g_6731_server || g_6730_server || g_6728_server || g_6726_server || g_latest_server || g_hotfix_server || server_hash=="cb480d4091735abe7b74695c8c8077a882528aaaaa9f457d81fbca886b6c9bd8";
+ }
+ bool DollyVerifyServerConfig(void* config) {
+     if(!config) return false;
+     if(!g_new_build) return true;
+     auto base=reinterpret_cast<std::uintptr_t>(g_real_server);
+     auto table=*static_cast<std::uintptr_t**>(config);
++    if (g_6742_server)
++        return reinterpret_cast<std::uintptr_t>(table)==base+0x29d0f28 && table[0]==base+0x976890 && table[1]==base+0x97689c && table[13]==base+0x978310;
+     if (g_6739_server)
+         return reinterpret_cast<std::uintptr_t>(table)==base+0x29d0f28 && table[0]==base+0x976890 && table[1]==base+0x97689c && table[13]==base+0x978310;
+     if (g_6731_server)

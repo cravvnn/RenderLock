@@ -1,0 +1,8 @@
+[
+ {"name":"drop callback shared ownership","replace":[["oldAlive' = (\\E q \\in P : Holds(q))","oldAlive' = FALSE"]],"expect":"SnapshotAlive"},
+ {"name":"unmap native view on editor close","replace":[["nativeMapped'=TRUE","nativeMapped'=FALSE"]],"expect":"NativeViewAlive"},
+ {"name":"publication counts as release acknowledgement","replace":[["/\\ UNCHANGED <<pc,busy,local,desktopMapped,nativeMapped,ack,badWrite>>","/\\ ack'=2 /\\ UNCHANGED <<pc,busy,local,desktopMapped,nativeMapped,badWrite>>"]],"expect":"NoWriteAfterSuccessfulRelease"},
+ {"name":"no cross-thread admission (thread_local only)","replace":[["UseGuard == TRUE","UseGuard == FALSE"]],"expect":"ExclusiveStatics"},
+ {"name":"no cross-thread admission reaches a stale write after Release","replace":[["UseGuard == TRUE","UseGuard == FALSE"],["ExclusiveStatics == Cardinality({p \\in P : pc[p] \\in {\"acquire\",\"use\",\"return\"}}) <= 1","ExclusiveStatics == TRUE"]],"expect":"NoWriteAfterSuccessfulRelease"},
+ {"name":"admission never succeeds","replace":[["IF busy=0 \\/ ~UseGuard","IF FALSE"]],"expect":"ReleaseAcknowledged"}
+]

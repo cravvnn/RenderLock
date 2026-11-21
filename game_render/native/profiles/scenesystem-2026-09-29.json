@@ -1,0 +1,32 @@
+{
+  "profile_format": 1,
+  "module": "scenesystem.dll",
+  "sha256": "3ece2e69f0f779e9bb05f1bd52b524df7adc5da262ddf9766ea71d1b01ce248d",
+  "size_of_image": "0x9c6000",
+  "producer": {
+    "rva": "0x5c8e0",
+    "end_rva": "0x5d8a0",
+    "sha256": "a95cc9164bed9f103b92f65ac40c1faa7de72316dbd812c4751eadee19554f8d",
+    "prologue": "488bc44c8948204c89401848895010488948085553488d68e84881ec08010000",
+    "arguments": 10,
+    "added_argument": "uint32* third caller-owned output; preserve at stack+0x50",
+    "return": "int instance index"
+  },
+  "layout": {
+    "object": "0x955cc0",
+    "vtable": "0x61e7d0",
+    "frame": "0x957458",
+    "stack": "0x957be8",
+    "records": "0x957ce0",
+    "capacity": "0x957ce8",
+    "ids": "0x957b48",
+    "transforms": "0x957c40",
+    "cpu_transforms": "0x957be0",
+    "owner_offset": "0xd8",
+    "record_stride": 32,
+    "mesh_cache": "inline packed uint64 at mesh+0x40, lock inline+0x48",
+    "renderer_gpu_buffer_offset": "0x70",
+    "renderer_gpu_buffer_evidence": "rendersystemdx11 CreateBuffer 0x82580 passes wrapper+0x70 as output; old wrapper+0x60"
+  },
+  "validation": "Offline constructor, producer allocation/write, RTTI and instruction review; runtime layered export remains unverified."
+}

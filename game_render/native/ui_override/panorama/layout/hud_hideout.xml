@@ -1,0 +1,59 @@
+<!-- Current stock contents preserved; only PrewarmStatus is reparented into an owned full-screen anchor. -->
+<root>
+	<styles>
+		<include src="s2r://panorama/styles/hud_common.vcss" />
+		<include src="s2r://panorama/styles/citadel_base_styles.vcss" />
+		<include src="s2r://panorama/styles/hud_hideout.vcss" />
+	</styles>
+	<snippets>
+		<snippet name="PartyMember">
+			<Panel class="PartyMember">
+				<CitadelHeroBadge id="HeroBadge" />
+			</Panel>
+		</snippet>
+		<snippet name="IntroLegalFooter">
+			<Panel class="IntroLegalFooter light">
+				<Label id="IntroLegalFooterLabel" class="light" html="true" text="#Citadel_China_LegalFooter" />
+				<Button class="IntroLegalFooterRating" onactivate="CitadelHideoutLegalRatingClicked()" />
+			</Panel>
+		</snippet>
+	</snippets>
+	<CitadelHudHideout hittest="false">
+		<GlobalClassListener classes="gShopOpen" />
+		<Panel id="IntroContainer">
+			<Panel class="GameSubtext">
+				<Label text="#Citadel_Main_EarlyDevBuild" />
+				<Label id="BuildNumber" text="#Citadel_Dashboard_BuildVersion" />
+			</Panel>
+			<Label class="IntroText light" text="#citadel_Hideout_Intro" html="true" />
+		</Panel>
+		<Panel class="MainContents" hittest="false">
+			<Panel class="TopLeft" hittest="false">
+				<Label class="QuestPromptHeader" text="#Citadel_QuestPrompt_DailyHeroVoteHeader" />
+				<Panel id="HeroVotePrompt">
+					<Panel id="HeroVotePipOff" />
+					<Label class="QuestPrompt" text="#Citadel_QuestPrompt_DailyHeroVote" />
+					<Label class="QuestPrompt" id="DailyVoteBonus" text="#Citadel_QuestPrompt_DailyHeroVoteBonusAmount2" />
+				</Panel>
+			</Panel>
+			<Panel class="BottomLeft" hittest="false">
+				<CitadelBindingButton class="MenuHint" action="OpenMainMenu" onactivate="CitadelToggleEscapeMenu()" text="#Citadel_Menu" />
+				<CitadelBindingButton class="MenuHint" action="OpenHeroSheet" onactivate="CitadelToggleEscapeMenu()" text="#Hideout_View_Builds" />
+				<CitadelBindingButton id="ResetCameraBinding" class="MenuHint" action="ADS" text="#Hideout_Reset_Camera" />
+				<Button class="ViolatorButton" onactivate="CitadelEditKeybinds()">
+					<Image id="CriticalBindMissingIcon" src="s2r://panorama/images/icons/notification_alert.vsvg" />
+					<Label id="CriticalBindMissingMessage" class="MenuHint" text="#Hideout_required_keybind_missing" />
+				</Button>
+			</Panel>
+			<Panel class="BottomRight" hittest="false">
+				<Panel class="SurveyContainer">
+					<CitadelAccountSurvey id="Survey" />
+				</Panel>
+				<CitadelLatestNews id="LatestNews" />
+			</Panel>
+			<Panel id="DollyShaderNoticeAnchorV2" hittest="false" hittestchildren="false" style="width: 100%; height: 100%;">
+				<CitadelPrewarmAssetsStatus id="PrewarmStatus" style="width: 420px; horizontal-align: center; vertical-align: top; position: 0px 16% 0px;" />
+			</Panel>
+		</Panel>
+	</CitadelHudHideout>
+</root>

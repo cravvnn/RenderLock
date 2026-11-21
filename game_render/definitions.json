@@ -1,0 +1,94 @@
+{
+  "format": 1,
+  "native_abi": 4,
+  "updated": "2026-10-25T00:00:00Z",
+  "notes": "Additive Deadlock build definitions for released Dolly versions. Entries are appended by tools/publish_definitions.py; nothing here can remove a pin that shipped in a release. See docs/DEFINITIONS.md.",
+  "modules": {},
+  "engine": {
+    "layouts": {
+      "legacy": {
+        "demo_global": "0x61b618",
+        "demo_table": "0x535730",
+        "engine_table": "0x540128",
+        "playing": "0x2ec00",
+        "active": "0x7bf30",
+        "paused": "0x368d0",
+        "seeking": "0x2a240",
+        "tick": "0x36910",
+        "filename": "0x7bf80"
+      },
+      "september": {
+        "demo_global": "0x5b9270",
+        "demo_table": "0x4d7f48",
+        "engine_table": "0x4e2848",
+        "playing": "0x2d6b0",
+        "active": "0x733e0",
+        "paused": "0x34fc0",
+        "seeking": "0x28c60",
+        "tick": "0x35000",
+        "filename": "0x73430"
+      },
+      "6728": {
+        "demo_global": "0x5b92b0",
+        "demo_table": "0x4d7e88",
+        "engine_table": "0x4e2790",
+        "playing": "0x2d590",
+        "active": "0x732c0",
+        "paused": "0x34ea0",
+        "seeking": "0x28b40",
+        "tick": "0x34ee0",
+        "filename": "0x73310"
+      }
+    },
+    "profiles": []
+  },
+  "tier0": {
+    "layouts": {
+      "legacy": {
+        "table": "0x3106e8",
+        "setter": "0x20ec60",
+        "find": "0x6bef0",
+        "data": "0x6be30",
+        "data_slot": 43,
+        "extended": false
+      },
+      "legacy_ext": {
+        "table": "0x3106e8",
+        "setter": "0x20ec60",
+        "find": "0x6bef0",
+        "data": "0x6be30",
+        "data_slot": 43,
+        "extended": true
+      },
+      "modern_6726": {
+        "table": "0x313208",
+        "setter": "0x20fd40",
+        "find": "0x6c6b0",
+        "data": "0x6c5f0",
+        "data_slot": 41,
+        "extended": true
+      },
+      "modern_6779": {
+        "table": "0x313208",
+        "setter": "0x20fe80",
+        "find": "0x6c6b0",
+        "data": "0x6c5f0",
+        "data_slot": 41,
+        "extended": true
+      },
+      "modern_6801": {
+        "table": "0x313208",
+        "setter": "0x20fea0",
+        "find": "0x6c6b0",
+        "data": "0x6c5f0",
+        "data_slot": 41,
+        "extended": true
+      }
+    },
+    "profiles": []
+  },
+  "client": {
+    "profiles": []
+  },
+  "editing": {}
+}

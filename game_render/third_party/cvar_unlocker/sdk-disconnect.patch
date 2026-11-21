@@ -1,0 +1,13 @@
+diff --git a/interfaces/interfaces.cpp b/interfaces/interfaces.cpp
+index ef5d8e5..8e2fc1e 100644
+--- a/interfaces/interfaces.cpp
++++ b/interfaces/interfaces.cpp
+@@ -317,7 +317,7 @@ void DisconnectInterfaces()
+ 		{
+ 			ConnectionRegistration_t &reg = s_pConnectionRegistration[i];
+ 			if (reg.m_nConnectionPhase == s_nConnectionCount)
+-				reg.m_ppGlobalStorage = NULL;
++				*(void **)reg.m_ppGlobalStorage = NULL;
+ 		}
+ 	}
+ }

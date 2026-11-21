@@ -1,0 +1,908 @@
+diff --git a/main.cpp b/main.cpp
+--- a/main.cpp
++++ b/main.cpp
+@@ -5,6 +5,8 @@
+ #include "interfaces/interfaces.h"
+ #include "icvar.h"
+ #include <cstring>
++#include "build_compat.hpp"
++static void* g_HookedServerConfig=nullptr;
+ 
+ CreateInterfaceFn g_pfnServerCreateInterface = NULL;
+ 
+@@ -23,7 +25,7 @@
+ 	const auto** vtable = *(const void***)object;
+ 
+ 	DWORD oldProtect;
+-	if (!VirtualProtect(vtable, sizeof(void*), PAGE_EXECUTE_READWRITE, &oldProtect))
++	if (!VirtualProtect(vtable + index, sizeof(void*), PAGE_EXECUTE_READWRITE, &oldProtect))
+ 	{
+ 		Plat_FatalError("VirtualProtect PAGE_EXECUTE_READWRITE failed: %d", GetLastError());
+ 	}
+@@ -31,7 +33,7 @@
+ 	const auto original = (decltype(hook))vtable[index];
+ 	vtable[index] = hook;
+ 
+-	if (!VirtualProtect(vtable, sizeof(void*), oldProtect, &oldProtect))
++	if (!VirtualProtect(vtable + index, sizeof(void*), oldProtect, &oldProtect))
+ 	{
+ 		Plat_FatalError("VirtualProtect restore failed: %d", GetLastError());
+ 	}
+@@ -46,6 +48,11 @@
+ 		return false;
+ 
+ 	ConnectInterfaces(&factory, 1);
++	if (!DollyAdaptCvarInterface())
++	{
++		DisconnectInterfaces();
++		return false;
++	}
+ 
+ 	ConVar_Register(FCVAR_RELEASE | FCVAR_GAMEDLL);
+ 	g_UnlockerInterfacesConnected = true;
+@@ -95,7 +102,11 @@
+ 		realServerPath.FixSlashes();
+ 
+ 		HMODULE serverModule = LoadLibrary(realServerPath.GetForModify());
+-		g_pfnServerCreateInterface = (CreateInterfaceFn)GetProcAddress(serverModule, "CreateInterface");
++		if (!serverModule || !DollyVerifyUnlockerBuild(serverModule))
++        {
++            Plat_FatalError("Dolly unlocker does not support this game build.");
++        }
++        g_pfnServerCreateInterface = (CreateInterfaceFn)GetProcAddress(serverModule, "CreateInterface");
+ 
+ 		if (g_pfnServerCreateInterface == NULL)
+ 		{
+@@ -106,9 +117,12 @@
+ 	auto original = g_pfnServerCreateInterface(pName, pReturnCode);
+ 
+ 	// Intercept the first interface requested by the engine
+-	if (strcmp(pName, INTERFACEVERSION_SERVERCONFIG) == 0)
++	if (strcmp(pName, INTERFACEVERSION_SERVERCONFIG) == 0 && original != g_HookedServerConfig)
+ 	{
+-		g_pfnServerConfigConnect = PatchVtable(original, 0, Connect);
++		if (g_HookedServerConfig || !DollyVerifyServerConfig(original))
++            Plat_FatalError("Dolly unlocker server-config identity changed.");
++        g_HookedServerConfig = original;
++        g_pfnServerConfigConnect = PatchVtable(original, 0, Connect);
+ 		g_pfnServerConfigDisconnect = PatchVtable(original, 1, Disconnect);
+ 		g_pfnServerConfigGetTickInterval = PatchVtable(original, 13, GetTickInterval);
+ 	}
+diff --git a/build_compat.hpp b/build_compat.hpp
+new file mode 100644
+--- /dev/null
++++ b/build_compat.hpp
+@@ -0,0 +1,4 @@
++#pragma once
++bool DollyVerifyUnlockerBuild(void* real_server_module);
++bool DollyVerifyServerConfig(void* config);
++bool DollyAdaptCvarInterface();
+diff --git a/build_compat.cpp b/build_compat.cpp
+new file mode 100644
+--- /dev/null
++++ b/build_compat.cpp
+@@ -0,0 +1,96 @@
++#include <windows.h>
++#include <bcrypt.h>
++#include <array>
++#include <string>
++#include <vector>
++#include "icvar.h"
++extern ICvar* cvar;
++#include "build_compat.hpp"
++#include "cvar_adapter_core.hpp"
++#include "cvar_thunks.inc"
++#pragma comment(lib, "bcrypt.lib")
++static_assert(sizeof(ConVarRef)==8 && sizeof(ConCommandRef)==8);
++static_assert(offsetof(ConCommandCreation_t, m_pszName)==0);
++static_assert(offsetof(ConCommandCreation_t, m_pszHelpString)==8);
++static_assert(offsetof(ConCommandCreation_t, m_nFlags)==0x10);
++static_assert(offsetof(ConCommandCreation_t, m_CBInfo)==0x18);
++static_assert(offsetof(ConCommandCreation_t, m_CompletionCBInfo)==0x28);
++static_assert(offsetof(ConCommandData, m_pszHelpString)==8);
++static_assert(offsetof(ConCommandData, m_nFlags)==0x10);
++// The reviewed new tier0 removed this optional debug database export. Some
++// pinned SDK static-library objects still reference its import pointer. Resolve
++// that pointer locally so the Windows loader never requires a removed export.
++// Legacy builds recover the original flag; absent export means no debug writes.
++static bool g_NoTokenDatabase=false;
++extern "C" { bool* __imp_g_bUpdateStringTokenDatabase=&g_NoTokenDatabase; }
++static bool g_new_build=false;
++static HMODULE g_real_server=nullptr;
++static DollyCvarProxy g_proxy;
++static constexpr DollyCvarSlot kSlots[]={
++#include "cvar_slots.inc"
++};
++static std::string ModuleHash(HMODULE module) {
++    wchar_t path[32768];
++    DWORD length=module?GetModuleFileNameW(module,path,32768):0;
++    if(!length || length>=32768) return {};
++    HANDLE file=CreateFileW(path,GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,FILE_FLAG_SEQUENTIAL_SCAN,nullptr);
++    if(file==INVALID_HANDLE_VALUE) return {};
++    BCRYPT_ALG_HANDLE alg=nullptr; BCRYPT_HASH_HANDLE hash=nullptr;
++    DWORD object_size=0,received=0; bool ok=false;
++    std::array<unsigned char,32> digest{};
++    do {
++        if(BCryptOpenAlgorithmProvider(&alg,BCRYPT_SHA256_ALGORITHM,nullptr,0)<0) break;
++        if(BCryptGetProperty(alg,BCRYPT_OBJECT_LENGTH,reinterpret_cast<PUCHAR>(&object_size),sizeof(object_size),&received,0)<0) break;
++        std::vector<unsigned char> object(object_size);
++        if(BCryptCreateHash(alg,&hash,object.data(),object_size,nullptr,0,0)<0) break;
++        std::array<unsigned char,65536> data; bool read_ok=true;
++        for(;;) {
++            if(!ReadFile(file,data.data(),static_cast<DWORD>(data.size()),&received,nullptr)) { read_ok=false;break; }
++            if(!received) break;
++            if(BCryptHashData(hash,data.data(),received,0)<0) {read_ok=false;break;}
++        }
++        if(read_ok && BCryptFinishHash(hash,digest.data(),static_cast<ULONG>(digest.size()),0)>=0) ok=true;
++        // The caller-provided object buffer must outlive the BCrypt handle.
++        BCryptDestroyHash(hash);hash=nullptr;
++    } while(false);
++    if(hash) BCryptDestroyHash(hash);
++    if(alg) BCryptCloseAlgorithmProvider(alg,0);
++    CloseHandle(file);
++    if(!ok) return {};
++    const char* hex="0123456789abcdef";std::string result;
++    for(auto v:digest){result+=hex[v>>4];result+=hex[v&15];}return result;
++}
++static void UnsupportedCvarMethod() { Plat_FatalError("Unreviewed ICvar method requested by Dolly unlocker."); }
++bool DollyVerifyUnlockerBuild(void* real_server_module) {
++    auto tier=GetModuleHandleW(L"tier0.dll");
++    const auto hash=ModuleHash(tier);
++    g_new_build=hash=="493bf3ca610bac0eec1369d19aa67f4c279c6ae1c8f1243b3bad0974c6a8db82";
++    // Existing reviewed legacy builds continue to use the original SDK directly.
++    if(!g_new_build && hash!="b4300eb0abfe73e1e877516ab6b8bdd1a1bdb4ffc47c7515a349d0623b852f69" &&
++       hash!="b3192eac3cb8c54ac3f9c7aaf7c725ddfcc2dc46d99ba13d16177b6ebf736ebc") return false;
++    if (!g_new_build) {
++        auto flag=reinterpret_cast<bool*>(GetProcAddress(tier,"g_bUpdateStringTokenDatabase"));
++        if (!flag) return false;
++        __imp_g_bUpdateStringTokenDatabase=flag;
++    }
++    g_real_server=static_cast<HMODULE>(real_server_module);
++    return !g_new_build || ModuleHash(g_real_server)=="cb480d4091735abe7b74695c8c8077a882528aaaaa9f457d81fbca886b6c9bd8";
++}
++bool DollyVerifyServerConfig(void* config) {
++    if(!config) return false;
++    if(!g_new_build) return true;
++    auto base=reinterpret_cast<std::uintptr_t>(g_real_server);
++    auto table=*static_cast<std::uintptr_t**>(config);
++    return reinterpret_cast<std::uintptr_t>(table)==base+0x2994b70 &&
++           table[0]==base+0x97b5f4 && table[1]==base+0x97b600 && table[13]==base+0x97c0e0;
++}
++bool DollyAdaptCvarInterface() {
++    if(!g_new_build) return g_pCVar!=nullptr;
++    if(!g_pCVar || cvar!=g_pCVar) return false;
++    const auto base=reinterpret_cast<std::uintptr_t>(GetModuleHandleW(L"tier0.dll"));
++    if(!DollyConfigureCvarProxy(g_proxy,g_pCVar,reinterpret_cast<void**>(base+0x313208),base,
++        kSlots,sizeof(kSlots)/sizeof(kSlots[0]),kDollyThunks,
++        reinterpret_cast<void*>(&UnsupportedCvarMethod),reinterpret_cast<void*>(&DollyNewMaxSplitScreenSlots))) return false;
++    g_pCVar=cvar=reinterpret_cast<ICvar*>(&g_proxy);
++    return true;
++}
+diff --git a/cvar_adapter_core.hpp b/cvar_adapter_core.hpp
+new file mode 100644
+--- /dev/null
++++ b/cvar_adapter_core.hpp
+@@ -0,0 +1,27 @@
++#pragma once
++#include <cstddef>
++#include <cstdint>
++#include <cstring>
++struct DollyCvarSlot { unsigned old_slot, new_slot; std::uintptr_t rva; };
++struct DollyCvarProxy { void** vtable{}; void* original{}; void* targets[48]{}; };
++static_assert(offsetof(DollyCvarProxy, original)==8);
++static_assert(offsetof(DollyCvarProxy, targets)==16);
++inline bool DollyConfigureCvarProxy(DollyCvarProxy& proxy, void* original,
++    void** expected_table, std::uintptr_t base, const DollyCvarSlot* slots,
++    std::size_t count, void** thunks, void* rejected, void* max_slots) {
++    if (!original || *static_cast<void***>(original)!=expected_table) return false;
++    // Validate every target before exposing any adapter to the SDK.
++    for(std::size_t i=0;i<count;++i) {
++        const auto& s=slots[i];
++        if(s.old_slot>=48 || s.new_slot>=46 ||
++           expected_table[s.new_slot]!=reinterpret_cast<void*>(base+s.rva)) return false;
++    }
++    proxy.vtable=thunks; proxy.original=original;
++    for(auto& target:proxy.targets) target=rejected;
++    for(std::size_t i=0;i<count;++i) proxy.targets[slots[i].old_slot]=expected_table[slots[i].new_slot];
++    proxy.targets[26]=max_slots;
++    return true;
++}
++inline int DollyNewMaxSplitScreenSlots(void* original) {
++    int result; std::memcpy(&result, static_cast<char*>(original)+8, sizeof(result)); return result;
++}
+diff --git a/cvar_slots.inc b/cvar_slots.inc
+new file mode 100644
+--- /dev/null
++++ b/cvar_slots.inc
+@@ -0,0 +1,14 @@
++{11, 11, 0x6c6b0},
++{14, 14, 0x6af30},
++{16, 16, 0x6b290},
++{17, 17, 0x6cb10},
++{20, 20, 0x6d030},
++{23, 23, 0x6d880},
++{34, 32, 0x77d70},
++{40, 38, 0x6b740},
++{41, 39, 0x6c2f0},
++{43, 41, 0x6c5f0},
++{44, 42, 0x69ff0},
++{45, 43, 0x6a4f0},
++{46, 44, 0x6cf20},
++{47, 45, 0x6b460},
+diff --git a/cvar_thunks.asm b/cvar_thunks.asm
+new file mode 100644
+--- /dev/null
++++ b/cvar_thunks.asm
+@@ -0,0 +1,291 @@
++option casemap:none
++.code
++PUBLIC DollyCvarThunk0
++DollyCvarThunk0 PROC
++ mov rax, qword ptr [rcx+16]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk0 ENDP
++PUBLIC DollyCvarThunk1
++DollyCvarThunk1 PROC
++ mov rax, qword ptr [rcx+24]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk1 ENDP
++PUBLIC DollyCvarThunk2
++DollyCvarThunk2 PROC
++ mov rax, qword ptr [rcx+32]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk2 ENDP
++PUBLIC DollyCvarThunk3
++DollyCvarThunk3 PROC
++ mov rax, qword ptr [rcx+40]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk3 ENDP
++PUBLIC DollyCvarThunk4
++DollyCvarThunk4 PROC
++ mov rax, qword ptr [rcx+48]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk4 ENDP
++PUBLIC DollyCvarThunk5
++DollyCvarThunk5 PROC
++ mov rax, qword ptr [rcx+56]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk5 ENDP
++PUBLIC DollyCvarThunk6
++DollyCvarThunk6 PROC
++ mov rax, qword ptr [rcx+64]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk6 ENDP
++PUBLIC DollyCvarThunk7
++DollyCvarThunk7 PROC
++ mov rax, qword ptr [rcx+72]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk7 ENDP
++PUBLIC DollyCvarThunk8
++DollyCvarThunk8 PROC
++ mov rax, qword ptr [rcx+80]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk8 ENDP
++PUBLIC DollyCvarThunk9
++DollyCvarThunk9 PROC
++ mov rax, qword ptr [rcx+88]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk9 ENDP
++PUBLIC DollyCvarThunk10
++DollyCvarThunk10 PROC
++ mov rax, qword ptr [rcx+96]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk10 ENDP
++PUBLIC DollyCvarThunk11
++DollyCvarThunk11 PROC
++ mov rax, qword ptr [rcx+104]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk11 ENDP
++PUBLIC DollyCvarThunk12
++DollyCvarThunk12 PROC
++ mov rax, qword ptr [rcx+112]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk12 ENDP
++PUBLIC DollyCvarThunk13
++DollyCvarThunk13 PROC
++ mov rax, qword ptr [rcx+120]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk13 ENDP
++PUBLIC DollyCvarThunk14
++DollyCvarThunk14 PROC
++ mov rax, qword ptr [rcx+128]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk14 ENDP
++PUBLIC DollyCvarThunk15
++DollyCvarThunk15 PROC
++ mov rax, qword ptr [rcx+136]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk15 ENDP
++PUBLIC DollyCvarThunk16
++DollyCvarThunk16 PROC
++ mov rax, qword ptr [rcx+144]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk16 ENDP
++PUBLIC DollyCvarThunk17
++DollyCvarThunk17 PROC
++ mov rax, qword ptr [rcx+152]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk17 ENDP
++PUBLIC DollyCvarThunk18
++DollyCvarThunk18 PROC
++ mov rax, qword ptr [rcx+160]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk18 ENDP
++PUBLIC DollyCvarThunk19
++DollyCvarThunk19 PROC
++ mov rax, qword ptr [rcx+168]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk19 ENDP
++PUBLIC DollyCvarThunk20
++DollyCvarThunk20 PROC
++ mov rax, qword ptr [rcx+176]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk20 ENDP
++PUBLIC DollyCvarThunk21
++DollyCvarThunk21 PROC
++ mov rax, qword ptr [rcx+184]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk21 ENDP
++PUBLIC DollyCvarThunk22
++DollyCvarThunk22 PROC
++ mov rax, qword ptr [rcx+192]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk22 ENDP
++PUBLIC DollyCvarThunk23
++DollyCvarThunk23 PROC
++ mov rax, qword ptr [rcx+200]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk23 ENDP
++PUBLIC DollyCvarThunk24
++DollyCvarThunk24 PROC
++ mov rax, qword ptr [rcx+208]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk24 ENDP
++PUBLIC DollyCvarThunk25
++DollyCvarThunk25 PROC
++ mov rax, qword ptr [rcx+216]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk25 ENDP
++PUBLIC DollyCvarThunk26
++DollyCvarThunk26 PROC
++ mov rax, qword ptr [rcx+224]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk26 ENDP
++PUBLIC DollyCvarThunk27
++DollyCvarThunk27 PROC
++ mov rax, qword ptr [rcx+232]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk27 ENDP
++PUBLIC DollyCvarThunk28
++DollyCvarThunk28 PROC
++ mov rax, qword ptr [rcx+240]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk28 ENDP
++PUBLIC DollyCvarThunk29
++DollyCvarThunk29 PROC
++ mov rax, qword ptr [rcx+248]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk29 ENDP
++PUBLIC DollyCvarThunk30
++DollyCvarThunk30 PROC
++ mov rax, qword ptr [rcx+256]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk30 ENDP
++PUBLIC DollyCvarThunk31
++DollyCvarThunk31 PROC
++ mov rax, qword ptr [rcx+264]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk31 ENDP
++PUBLIC DollyCvarThunk32
++DollyCvarThunk32 PROC
++ mov rax, qword ptr [rcx+272]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk32 ENDP
++PUBLIC DollyCvarThunk33
++DollyCvarThunk33 PROC
++ mov rax, qword ptr [rcx+280]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk33 ENDP
++PUBLIC DollyCvarThunk34
++DollyCvarThunk34 PROC
++ mov rax, qword ptr [rcx+288]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk34 ENDP
++PUBLIC DollyCvarThunk35
++DollyCvarThunk35 PROC
++ mov rax, qword ptr [rcx+296]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk35 ENDP
++PUBLIC DollyCvarThunk36
++DollyCvarThunk36 PROC
++ mov rax, qword ptr [rcx+304]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk36 ENDP
++PUBLIC DollyCvarThunk37
++DollyCvarThunk37 PROC
++ mov rax, qword ptr [rcx+312]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk37 ENDP
++PUBLIC DollyCvarThunk38
++DollyCvarThunk38 PROC
++ mov rax, qword ptr [rcx+320]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk38 ENDP
++PUBLIC DollyCvarThunk39
++DollyCvarThunk39 PROC
++ mov rax, qword ptr [rcx+328]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk39 ENDP
++PUBLIC DollyCvarThunk40
++DollyCvarThunk40 PROC
++ mov rax, qword ptr [rcx+336]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk40 ENDP
++PUBLIC DollyCvarThunk41
++DollyCvarThunk41 PROC
++ mov rax, qword ptr [rcx+344]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk41 ENDP
++PUBLIC DollyCvarThunk42
++DollyCvarThunk42 PROC
++ mov rax, qword ptr [rcx+352]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk42 ENDP
++PUBLIC DollyCvarThunk43
++DollyCvarThunk43 PROC
++ mov rax, qword ptr [rcx+360]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk43 ENDP
++PUBLIC DollyCvarThunk44
++DollyCvarThunk44 PROC
++ mov rax, qword ptr [rcx+368]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk44 ENDP
++PUBLIC DollyCvarThunk45
++DollyCvarThunk45 PROC
++ mov rax, qword ptr [rcx+376]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk45 ENDP
++PUBLIC DollyCvarThunk46
++DollyCvarThunk46 PROC
++ mov rax, qword ptr [rcx+384]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk46 ENDP
++PUBLIC DollyCvarThunk47
++DollyCvarThunk47 PROC
++ mov rax, qword ptr [rcx+392]
++ mov rcx, qword ptr [rcx+8]
++ jmp rax
++DollyCvarThunk47 ENDP
++END
+diff --git a/cvar_thunks.inc b/cvar_thunks.inc
+new file mode 100644
+--- /dev/null
++++ b/cvar_thunks.inc
+@@ -0,0 +1,98 @@
++extern "C" void DollyCvarThunk0();
++extern "C" void DollyCvarThunk1();
++extern "C" void DollyCvarThunk2();
++extern "C" void DollyCvarThunk3();
++extern "C" void DollyCvarThunk4();
++extern "C" void DollyCvarThunk5();
++extern "C" void DollyCvarThunk6();
++extern "C" void DollyCvarThunk7();
++extern "C" void DollyCvarThunk8();
++extern "C" void DollyCvarThunk9();
++extern "C" void DollyCvarThunk10();
++extern "C" void DollyCvarThunk11();
++extern "C" void DollyCvarThunk12();
++extern "C" void DollyCvarThunk13();
++extern "C" void DollyCvarThunk14();
++extern "C" void DollyCvarThunk15();
++extern "C" void DollyCvarThunk16();
++extern "C" void DollyCvarThunk17();
++extern "C" void DollyCvarThunk18();
++extern "C" void DollyCvarThunk19();
++extern "C" void DollyCvarThunk20();
++extern "C" void DollyCvarThunk21();
++extern "C" void DollyCvarThunk22();
++extern "C" void DollyCvarThunk23();
++extern "C" void DollyCvarThunk24();
++extern "C" void DollyCvarThunk25();
++extern "C" void DollyCvarThunk26();
++extern "C" void DollyCvarThunk27();
++extern "C" void DollyCvarThunk28();
++extern "C" void DollyCvarThunk29();
++extern "C" void DollyCvarThunk30();
++extern "C" void DollyCvarThunk31();
++extern "C" void DollyCvarThunk32();
++extern "C" void DollyCvarThunk33();
++extern "C" void DollyCvarThunk34();
++extern "C" void DollyCvarThunk35();
++extern "C" void DollyCvarThunk36();
++extern "C" void DollyCvarThunk37();
++extern "C" void DollyCvarThunk38();
++extern "C" void DollyCvarThunk39();
++extern "C" void DollyCvarThunk40();
++extern "C" void DollyCvarThunk41();
++extern "C" void DollyCvarThunk42();
++extern "C" void DollyCvarThunk43();
++extern "C" void DollyCvarThunk44();
++extern "C" void DollyCvarThunk45();
++extern "C" void DollyCvarThunk46();
++extern "C" void DollyCvarThunk47();
++static void* kDollyThunks[]={
++ reinterpret_cast<void*>(&DollyCvarThunk0),
++ reinterpret_cast<void*>(&DollyCvarThunk1),
++ reinterpret_cast<void*>(&DollyCvarThunk2),
++ reinterpret_cast<void*>(&DollyCvarThunk3),
++ reinterpret_cast<void*>(&DollyCvarThunk4),
++ reinterpret_cast<void*>(&DollyCvarThunk5),
++ reinterpret_cast<void*>(&DollyCvarThunk6),
++ reinterpret_cast<void*>(&DollyCvarThunk7),
++ reinterpret_cast<void*>(&DollyCvarThunk8),
++ reinterpret_cast<void*>(&DollyCvarThunk9),
++ reinterpret_cast<void*>(&DollyCvarThunk10),
++ reinterpret_cast<void*>(&DollyCvarThunk11),
++ reinterpret_cast<void*>(&DollyCvarThunk12),
++ reinterpret_cast<void*>(&DollyCvarThunk13),
++ reinterpret_cast<void*>(&DollyCvarThunk14),
++ reinterpret_cast<void*>(&DollyCvarThunk15),
++ reinterpret_cast<void*>(&DollyCvarThunk16),
++ reinterpret_cast<void*>(&DollyCvarThunk17),
++ reinterpret_cast<void*>(&DollyCvarThunk18),
++ reinterpret_cast<void*>(&DollyCvarThunk19),
++ reinterpret_cast<void*>(&DollyCvarThunk20),
++ reinterpret_cast<void*>(&DollyCvarThunk21),
++ reinterpret_cast<void*>(&DollyCvarThunk22),
++ reinterpret_cast<void*>(&DollyCvarThunk23),
++ reinterpret_cast<void*>(&DollyCvarThunk24),
++ reinterpret_cast<void*>(&DollyCvarThunk25),
++ reinterpret_cast<void*>(&DollyCvarThunk26),
++ reinterpret_cast<void*>(&DollyCvarThunk27),
++ reinterpret_cast<void*>(&DollyCvarThunk28),
++ reinterpret_cast<void*>(&DollyCvarThunk29),
++ reinterpret_cast<void*>(&DollyCvarThunk30),
++ reinterpret_cast<void*>(&DollyCvarThunk31),
++ reinterpret_cast<void*>(&DollyCvarThunk32),
++ reinterpret_cast<void*>(&DollyCvarThunk33),
++ reinterpret_cast<void*>(&DollyCvarThunk34),
++ reinterpret_cast<void*>(&DollyCvarThunk35),
++ reinterpret_cast<void*>(&DollyCvarThunk36),
++ reinterpret_cast<void*>(&DollyCvarThunk37),
++ reinterpret_cast<void*>(&DollyCvarThunk38),
++ reinterpret_cast<void*>(&DollyCvarThunk39),
++ reinterpret_cast<void*>(&DollyCvarThunk40),
++ reinterpret_cast<void*>(&DollyCvarThunk41),
++ reinterpret_cast<void*>(&DollyCvarThunk42),
++ reinterpret_cast<void*>(&DollyCvarThunk43),
++ reinterpret_cast<void*>(&DollyCvarThunk44),
++ reinterpret_cast<void*>(&DollyCvarThunk45),
++ reinterpret_cast<void*>(&DollyCvarThunk46),
++ reinterpret_cast<void*>(&DollyCvarThunk47),
++};
+diff --git a/cvar_adapter_tests.cpp b/cvar_adapter_tests.cpp
+new file mode 100644
+--- /dev/null
++++ b/cvar_adapter_tests.cpp
+@@ -0,0 +1,78 @@
++#include "cvar_adapter_core.hpp"
++#include "cvar_thunks.inc"
++#include <stdexcept>
++#include <cstdio>
++#include <array>
++struct Ref { unsigned short index; int registration; Ref():index(65535),registration(0){} Ref(unsigned short i,int r):index(i),registration(r){} };
++struct Setup { const char* name; const char* help; unsigned long long flags; void* callback; };
++struct Facade {
++virtual void unused_0()=0;
++virtual void unused_1()=0;
++virtual void unused_2()=0;
++virtual void unused_3()=0;
++virtual void unused_4()=0;
++virtual void unused_5()=0;
++virtual void unused_6()=0;
++virtual void unused_7()=0;
++virtual void unused_8()=0;
++virtual void unused_9()=0;
++virtual void unused_10()=0;
++virtual unsigned long long test_args(unsigned long long, unsigned long long, unsigned long long, unsigned long long, unsigned long long)=0;
++virtual void unused_12()=0;
++virtual void unused_13()=0;
++virtual double test_float(double,double)=0;
++virtual void unused_15()=0;
++virtual void unused_16()=0;
++virtual void unused_17()=0;
++virtual void unused_18()=0;
++virtual void unused_19()=0;
++virtual void unused_20()=0;
++virtual void unused_21()=0;
++virtual void unused_22()=0;
++virtual void unused_23()=0;
++virtual void unused_24()=0;
++virtual void unused_25()=0;
++virtual int max_slots()=0;
++virtual void unused_27()=0;
++virtual void unused_28()=0;
++virtual void unused_29()=0;
++virtual void unused_30()=0;
++virtual void unused_31()=0;
++virtual void unused_32()=0;
++virtual void unused_33()=0;
++virtual void unused_34()=0;
++virtual void unused_35()=0;
++virtual void unused_36()=0;
++virtual void unused_37()=0;
++virtual void unused_38()=0;
++virtual void unused_39()=0;
++virtual void unused_40()=0;
++virtual void unused_41()=0;
++virtual void unused_42()=0;
++virtual void unused_43()=0;
++virtual Ref register_cmd(const Setup&,unsigned long long)=0;
++virtual void unregister_cmd(Ref)=0;
++virtual const Setup* data(Ref)=0;
++virtual void unused_47()=0;
++};
++struct Original { void** table; int max=4; int registrations=0; int removals=0; const Setup* setup=nullptr; };
++static void require(bool pass,const char* message){if(!pass)throw std::runtime_error(message);}
++static void rejected(){throw std::runtime_error("unexpected method");}
++static unsigned long long args(void* self,unsigned long long a,unsigned long long b,unsigned long long c,unsigned long long d,unsigned long long e){require(static_cast<Original*>(self)->max==4,"this");return a+2*b+3*c+4*d+5*e;}
++static double floating(void* self,double a,double b){require(static_cast<Original*>(self)->max==4,"float this");return a+2*b;}
++static Ref* reg(void* self,Ref* result,const Setup* setup,unsigned long long flags){auto& obj=*static_cast<Original*>(self);require(flags==1234 && setup->flags==42,"registration args");obj.setup=setup;++obj.registrations;*result=Ref(19,71);return result;}
++static void unreg(void* self,Ref ref){require(ref.index==19 && ref.registration==71,"unregister ref");++static_cast<Original*>(self)->removals;}
++static const Setup* data(void* self,Ref ref){require(ref.index==19 && ref.registration==71,"data ref");return static_cast<Original*>(self)->setup;}
++int main(){try{
++ std::array<void*,46> table{};table[11]=reinterpret_cast<void*>(&args);table[14]=reinterpret_cast<void*>(&floating);table[42]=reinterpret_cast<void*>(&reg);table[43]=reinterpret_cast<void*>(&unreg);table[44]=reinterpret_cast<void*>(&data);
++ DollyCvarSlot slots[]={{11,11,reinterpret_cast<std::uintptr_t>(&args)},{14,14,reinterpret_cast<std::uintptr_t>(&floating)},{44,42,reinterpret_cast<std::uintptr_t>(&reg)},{45,43,reinterpret_cast<std::uintptr_t>(&unreg)},{46,44,reinterpret_cast<std::uintptr_t>(&data)}};
++ Original original{table.data()};DollyCvarProxy proxy;
++ require(DollyConfigureCvarProxy(proxy,&original,table.data(),0,slots,5,kDollyThunks,reinterpret_cast<void*>(&rejected),reinterpret_cast<void*>(&DollyNewMaxSplitScreenSlots)),"configure");
++ auto* api=reinterpret_cast<Facade*>(&proxy);
++ require(api->test_args(1,2,3,4,5)==55,"stack/integer args");require(api->test_float(1.25,3.5)==8.25,"XMM args/return");require(api->max_slots()==4,"removed max accessor");
++ Setup setup{"owned","help",42,nullptr};auto ref=api->register_cmd(setup,1234);require(ref.index==19 && ref.registration==71,"hidden return buffer");require(api->data(ref)==&setup,"data return/ref");api->unregister_cmd(ref);require(original.registrations==1 && original.removals==1,"lifecycle");
++ auto saved=proxy;auto pointer=table[43];table[43]=table[42];require(!DollyConfigureCvarProxy(proxy,&original,table.data(),0,slots,5,kDollyThunks,reinterpret_cast<void*>(&rejected),reinterpret_cast<void*>(&DollyNewMaxSplitScreenSlots)),"changed target accepted");require(std::memcmp(&proxy,&saved,sizeof(proxy))==0,"partial mutation");table[43]=pointer;
++ require(!DollyConfigureCvarProxy(proxy,&original,table.data()+1,0,slots,5,kDollyThunks,reinterpret_cast<void*>(&rejected),reinterpret_cast<void*>(&DollyNewMaxSplitScreenSlots)),"changed vtable accepted");
++ require(proxy.targets[29]==reinterpret_cast<void*>(&rejected),"removed unknown method forwarded");
++ puts("adapter ABI, identity, rejection and lifecycle tests passed");return 0;
++}catch(const std::exception& e){puts(e.what());return 1;}}
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+new file mode 100644
+--- /dev/null
++++ b/CMakeLists.txt
+@@ -0,0 +1,27 @@
++cmake_minimum_required(VERSION 3.21)
++project(UnlockerShutdownCandidate LANGUAGES CXX ASM_MASM)
++set(CMAKE_CXX_STANDARD 20)
++set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded")
++set(SDK "${CMAKE_CURRENT_SOURCE_DIR}/sdk")
++add_library(unlocker_shutdown_candidate SHARED main.cpp cvars.cpp build_compat.cpp cvar_thunks.asm
++  sdk/interfaces/interfaces.cpp sdk/tier1/convar.cpp sdk/tier1/generichash.cpp)
++target_include_directories(unlocker_shutdown_candidate PRIVATE
++  "${SDK}" "${SDK}/thirdparty/protobuf-3.21.8/src" "${SDK}/common"
++  "${SDK}/game/shared" "${SDK}/game/server" "${SDK}/public"
++  "${SDK}/public/engine" "${SDK}/public/mathlib" "${SDK}/public/tier0"
++  "${SDK}/public/tier1" "${SDK}/public/entity2" "${SDK}/public/game/server")
++target_compile_definitions(unlocker_shutdown_candidate PRIVATE
++  CreateInterface=_CreateInterface COMPILER_MSVC COMPILER_MSVC64 PLATFORM_64BITS
++  X64BITS WIN32 WINDOWS CRT_SECURE_NO_WARNINGS CRT_SECURE_NO_DEPRECATE
++  CRT_NONSTDC_NO_DEPRECATE _MBCS)
++target_link_libraries(unlocker_shutdown_candidate PRIVATE
++  "${SDK}/lib/public/win64/2015/libprotobuf.lib" "${SDK}/lib/public/win64/tier0.lib"
++  "${SDK}/lib/public/win64/tier1.lib" "${SDK}/lib/public/win64/interfaces.lib"
++  "${SDK}/lib/public/win64/mathlib.lib")
++
++add_executable(shutdown_lifecycle_tests shutdown_lifecycle_tests.cpp)
++enable_testing()
++add_test(NAME shutdown_lifecycle_tests COMMAND shutdown_lifecycle_tests)
++
++add_executable(cvar_adapter_tests cvar_adapter_tests.cpp cvar_thunks.asm)
++add_test(NAME cvar_adapter_tests COMMAND cvar_adapter_tests)
+diff --git a/shutdown_lifecycle_tests.cpp b/shutdown_lifecycle_tests.cpp
+new file mode 100644
+--- /dev/null
++++ b/shutdown_lifecycle_tests.cpp
+@@ -0,0 +1,158 @@
++
++#include <cstdio>
++#include <stdexcept>
++using CreateInterfaceFn = void*(*)(const char*,int*);
++struct IAppSystem {};
++static void check(bool value,const char* reason) { if(!value) throw std::runtime_error(reason); }
++struct ConCommand { bool valid=false; bool IsValidRef()const{return valid;} void InvalidateRef(){valid=false;} };
++static int callbacks=0,lateCallbacks=0,originalDisconnects=0;
++static bool registryAlive=true,connectResult=true,adapterValid=true;
++static bool DollyAdaptCvarInterface(){return adapterValid;}
++struct Registry { void UnregisterConCommandCallbacks(const ConCommand&) { if(registryAlive) ++callbacks; else ++lateCallbacks; } };
++static Registry registry;
++static Registry *g_pCVar=nullptr,*cvar=nullptr;
++static ConCommand cvar_unhide_command,cvarlist_md_command;
++struct ConnectionRegistration_t { void *m_ppGlobalStorage; int m_nConnectionPhase; };
++static int s_nConnectionCount=0,s_nRegistrationCount=0;
++static ConnectionRegistration_t s_pConnectionRegistration[2];
++static bool g_UnlockerInterfacesConnected=false;
++static constexpr unsigned long long FCVAR_RELEASE=1,FCVAR_GAMEDLL=2;
++static void ConnectInterfaces(CreateInterfaceFn*,int) {
++ g_pCVar=cvar=&registry;
++ s_pConnectionRegistration[0]={&g_pCVar,0};s_pConnectionRegistration[1]={&cvar,0};
++ s_nConnectionCount=1;s_nRegistrationCount=2;
++}
++static void ConVar_Register(unsigned long long) { cvar_unhide_command.valid=true;cvarlist_md_command.valid=true; }
++static void ConVar_Unregister() {} // The pinned implementation only resets its registered flag.
++static bool originalConnect(IAppSystem*,CreateInterfaceFn) {return connectResult;}
++static void originalDisconnect(IAppSystem*) {++originalDisconnects;}
++static auto g_pfnServerConfigConnect=originalConnect;
++static auto g_pfnServerConfigDisconnect=originalDisconnect;
++
++
++void UnRegisterConCommand( ConCommand *cmd )
++{
++	if(cmd->IsValidRef())
++	{
++		if(g_pCVar)
++			g_pCVar->UnregisterConCommandCallbacks( *cmd );
++
++		cmd->InvalidateRef();
++	}
++}
++
++static void UnregisterOwnedCommand(ConCommand& command)
++{
++	if (!command.IsValidRef())
++		return;
++	if (g_pCVar)
++		g_pCVar->UnregisterConCommandCallbacks(command);
++	command.InvalidateRef();
++}
++
++void UnregisterUnlockerCommands()
++{
++	UnregisterOwnedCommand(cvar_unhide_command);
++	UnregisterOwnedCommand(cvarlist_md_command);
++}
++
++void DisconnectInterfaces()
++{
++	if (--s_nConnectionCount >= 0)
++	{
++		for (int i = 0; i < s_nRegistrationCount; i++)
++		{
++			ConnectionRegistration_t &reg = s_pConnectionRegistration[i];
++			if (reg.m_nConnectionPhase == s_nConnectionCount)
++				*(void **)reg.m_ppGlobalStorage = NULL;
++		}
++	}
++}
++
++void BaselineDisconnectInterfaces()
++{
++	if (--s_nConnectionCount >= 0)
++	{
++		for (int i = 0; i < s_nRegistrationCount; i++)
++		{
++			ConnectionRegistration_t &reg = s_pConnectionRegistration[i];
++			if (reg.m_nConnectionPhase == s_nConnectionCount)
++				reg.m_ppGlobalStorage = NULL;
++		}
++	}
++}
++
++bool Connect(IAppSystem* appSystem, CreateInterfaceFn factory)
++{
++	const bool result = g_pfnServerConfigConnect(appSystem, factory);
++	if (!result)
++		return false;
++
++	ConnectInterfaces(&factory, 1);
++	if (!DollyAdaptCvarInterface())
++	{
++		DisconnectInterfaces();
++		return false;
++	}
++
++	ConVar_Register(FCVAR_RELEASE | FCVAR_GAMEDLL);
++	g_UnlockerInterfacesConnected = true;
++
++	return result;
++}
++
++void Disconnect(IAppSystem* appSystem)
++{
++	if (g_UnlockerInterfacesConnected)
++	{
++		g_UnlockerInterfacesConnected = false;
++		UnregisterUnlockerCommands();
++		ConVar_Unregister();
++		DisconnectInterfaces();
++	}
++	g_pfnServerConfigDisconnect(appSystem);
++}
++
++
++static void reset() {
++ callbacks=lateCallbacks=originalDisconnects=0;registryAlive=connectResult=adapterValid=true;
++ g_pCVar=cvar=nullptr;g_UnlockerInterfacesConnected=false;
++ s_nConnectionCount=s_nRegistrationCount=0;
++ cvar_unhide_command.valid=cvarlist_md_command.valid=false;
++}
++static void lateDestructors() {
++ registryAlive=false;
++ // Exact pinned SDK routine called by each command's static destructor.
++ UnRegisterConCommand(&cvar_unhide_command);UnRegisterConCommand(&cvarlist_md_command);
++}
++int main() {
++ try {
++  IAppSystem system;
++  reset();check(Connect(&system,nullptr),"normal connect failed");
++  Disconnect(&system);
++  check(callbacks==2,"owned callbacks must detach before teardown");
++  check(g_pCVar==nullptr && cvar==nullptr,"SDK globals not cleared");
++  check(!cvar_unhide_command.valid && !cvarlist_md_command.valid,"references not invalidated");
++  lateDestructors();check(lateCallbacks==0,"late command accessed destroyed registry");
++  Disconnect(&system);check(callbacks==2 && originalDisconnects==2,"duplicate cleanup was not idempotent");
++  reset();connectResult=false;
++  check(!Connect(&system,nullptr),"failed parent connect accepted");Disconnect(&system);lateDestructors();
++  check(callbacks==0 && lateCallbacks==0 && s_nConnectionCount==0,"failed connect acquired cleanup state");
++  reset();adapterValid=false;
++  check(!Connect(&system,nullptr),"failed adapter accepted");
++  check(!g_pCVar && !cvar && !g_UnlockerInterfacesConnected,"failed adapter leaked interfaces");
++  Disconnect(&system);lateDestructors();
++  check(callbacks==0 && lateCallbacks==0 && s_nConnectionCount==0,"failed adapter acquired registry callbacks");
++  reset();Connect(&system,nullptr);cvarlist_md_command.InvalidateRef();Disconnect(&system);lateDestructors();
++  check(callbacks==1 && lateCallbacks==0,"invalid reference touched registry");
++  reset();Connect(&system,nullptr);g_pCVar=nullptr;Disconnect(&system);lateDestructors();
++  check(callbacks==0 && lateCallbacks==0,"missing interface cleanup not safe");
++  // Confirm the simulated registry catches the original SDK pointer bug and
++  // the upstream absence of early command cleanup, rather than merely passing.
++  reset();Connect(&system,nullptr);BaselineDisconnectInterfaces();
++  check(g_pCVar!=nullptr && cvar!=nullptr,"baseline bug no longer reproduced");
++  lateDestructors();check(lateCallbacks==2,"baseline late access was not detected");
++  std::puts("passed: lifecycle ordering, late destructors, repeated cleanup, failed connect, invalid reference, missing interface, baseline failure");
++  return 0;
++ } catch(const std::exception& e) {std::fprintf(stderr,"FAILED: %s\n",e.what());return 1;}
++}

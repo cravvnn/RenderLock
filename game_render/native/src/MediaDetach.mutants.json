@@ -1,0 +1,90 @@
+[
+  {
+    "name": "omit audio stop on detach",
+    "config": "MediaDetach.cfg",
+    "replace": [
+      [
+        "UseFix == TRUE",
+        "UseFix == FALSE"
+      ]
+    ],
+    "expect": "StoppedOnDetach"
+  },
+  {
+    "name": "stop audio before grace ends",
+    "config": "MediaDetach.cfg",
+    "replace": [
+      [
+        "audio' = audio /\\ UNCHANGED <<stopReq,detached,mapped>>",
+        "audio' = FALSE /\\ UNCHANGED <<stopReq,detached,mapped>>"
+      ]
+    ],
+    "expect": "KeepGrace"
+  },
+  {
+    "name": "reconnect does not reset grace",
+    "config": "MediaDetach.cfg",
+    "replace": [
+      [
+        "ResetOnReconnect == TRUE",
+        "ResetOnReconnect == FALSE"
+      ]
+    ],
+    "expect": "NoEarlyDetach"
+  },
+  {
+    "name": "cleanup while video active",
+    "config": "MediaDetach.cfg",
+    "replace": [
+      [
+        "IF (VideoActive \\/ ~GraceNeedsVideo) /\\ set = \"fresh\"",
+        "IF FALSE /\\ set = \"fresh\""
+      ]
+    ],
+    "expect": "NoEarlyDetach"
+  },
+  {
+    "name": "grace without active video",
+    "config": "MediaDetach.cfg",
+    "replace": [
+      [
+        "GraceNeedsVideo == TRUE",
+        "GraceNeedsVideo == FALSE"
+      ]
+    ],
+    "expect": "GraceOnlyWhileVideo"
+  },
+  {
+    "name": "omit video stop request on detach",
+    "config": "MediaDetach.cfg",
+    "replace": [
+      [
+        "StopVideoOnDetach == TRUE",
+        "StopVideoOnDetach == FALSE"
+      ]
+    ],
+    "expect": "StopRequested"
+  },
+  {
+    "name": "unnamed tick keeps recording grace",
+    "config": "MediaDetach.cfg",
+    "replace": [
+      [
+        "UnnamedCleans == TRUE",
+        "UnnamedCleans == FALSE"
+      ]
+    ],
+    "expect": "ExitDetached"
+  },
+  {
+    "name": "treat stop request as finalization",
+    "config": "MediaDetach.cfg",
+    "replace": [
+      [
+        "ShutdownJoins == TRUE",
+        "ShutdownJoins == FALSE"
+      ]
+    ],
+    "expect": "Finalized"
+  }
+]

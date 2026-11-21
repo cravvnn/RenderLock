@@ -1,0 +1,292 @@
+{
+  "format": 1,
+  "files": {
+    "game/citadel/cfg/citadel_1v1_match.cfg": {
+      "bytes": 153,
+      "sha1": "6027fed7362414e626e36b16da917706ab141444"
+    },
+    "game/citadel/cfg/citadel_audio.cfg": {
+      "bytes": 1012,
+      "sha1": "c2f436dfc3f1a17a42e2a6271d78f8af972bb192"
+    },
+    "game/citadel/cfg/citadel_botmatch_2v2_test.cfg": {
+      "bytes": 148,
+      "sha1": "5d623f4c7ccbf79a3f35547cdb33fc2fd705261f"
+    },
+    "game/citadel/cfg/citadel_botmatch_6v6_spectator.cfg": {
+      "bytes": 201,
+      "sha1": "bcf9e1fe3470429007e2ac22b4b1fa0075d0eec9"
+    },
+    "game/citadel/cfg/citadel_botmatch_build_test.cfg": {
+      "bytes": 148,
+      "sha1": "df9ac26d41c9783c6cf25347aa93937fc0c51879"
+    },
+    "game/citadel/cfg/citadel_botmatch_player_vs_bot.cfg": {
+      "bytes": 117,
+      "sha1": "df549cacd3955105c3fca6c68bb07d4924501464"
+    },
+    "game/citadel/cfg/citadel_botmatch_practice_1v1.cfg": {
+      "bytes": 117,
+      "sha1": "df549cacd3955105c3fca6c68bb07d4924501464"
+    },
+    "game/citadel/cfg/citadel_botmatch_practice_2v2_guided.cfg": {
+      "bytes": 585,
+      "sha1": "335d0dbfb4a7f654f51fbc65fc16c196c1b10623"
+    },
+    "game/citadel/cfg/citadel_botmatch_practice_6v6.cfg": {
+      "bytes": 224,
+      "sha1": "6332ea5eebe7a34eda03f60b65d20086aab4840b"
+    },
+    "game/citadel/cfg/citadel_botmatch_test.cfg": {
+      "bytes": 617,
+      "sha1": "5489090d7e9398afb83de3a36b6e3cd5890c4c9f"
+    },
+    "game/citadel/cfg/citadel_dev_intro_test.cfg": {
+      "bytes": 379,
+      "sha1": "64ae5ecfa8b757c993f19cc6c2c0b92d02a9d48c"
+    },
+    "game/citadel/cfg/citadel_hideout.cfg": {
+      "bytes": 49,
+      "sha1": "544b92025565fb1ddc9160ae43c774ebfbae5b84"
+    },
+    "game/citadel/cfg/citadel_local_botmatch.cfg": {
+      "bytes": 535,
+      "sha1": "78da97bbf5227d0abcf090919f2bce0b2df2dd4f"
+    },
+    "game/citadel/cfg/citadel_sandbox_match.cfg": {
+      "bytes": 149,
+      "sha1": "83e5e1632fc999816dfd1fc5562084e77a83181e"
+    },
+    "game/citadel/cfg/citadel_server.cfg": {
+      "bytes": 541,
+      "sha1": "4d358f570cca5901096234f6fdca36e31cb4cd6e"
+    },
+    "game/citadel/cfg/configdefaults.linux.vcfg": {
+      "bytes": 18,
+      "sha1": "c3e875e6eb5d69b91a73b002bee141ff3f57392c"
+    },
+    "game/citadel/cfg/configdefaults.osx.vcfg": {
+      "bytes": 18,
+      "sha1": "c3e875e6eb5d69b91a73b002bee141ff3f57392c"
+    },
+    "game/citadel/cfg/configdefaults.pc.vcfg": {
+      "bytes": 18,
+      "sha1": "c3e875e6eb5d69b91a73b002bee141ff3f57392c"
+    },
+    "game/citadel/cfg/configschema.vcfg": {
+      "bytes": 73,
+      "sha1": "e065a0114f61cf7dc7067f2d13bd8204fe428e1d"
+    },
+    "game/citadel/cfg/machine_convars_default.vcfg": {
+      "bytes": 313,
+      "sha1": "17c558bc0ac002145f01da819a2bc73c6427d1ce"
+    },
+    "game/citadel/cfg/ps5_controller_mapping.vdf": {
+      "bytes": 65397,
+      "sha1": "3d3aa5e63620e9272ea200d766bfbb84cbc097bb"
+    },
+    "game/citadel/cfg/ps5_controller_mapping_gyro.vdf": {
+      "bytes": 65382,
+      "sha1": "8ede2afaf233858b2e1f9404f0a91624afa662d6"
+    },
+    "game/citadel/cfg/ps5_controller_mapping_gyro_flickstick.vdf": {
+      "bytes": 66000,
+      "sha1": "7688b786c2c520817f52876b6e45a08955f14cf2"
+    },
+    "game/citadel/cfg/steam_input_manifest.vdf": {
+      "bytes": 15285,
+      "sha1": "56813fe55b9b085b9364b60f13eae14c6c13fa7c"
+    },
+    "game/citadel/cfg/steamdeck_mapping.vdf": {
+      "bytes": 65470,
+      "sha1": "8cb848708a0a00775e121951b0d9bec368752c48"
+    },
+    "game/citadel/cfg/steamdeck_mapping_gyro.vdf": {
+      "bytes": 65453,
+      "sha1": "2e2c12d9cd49cdc429c304719b1f7cadd543f390"
+    },
+    "game/citadel/cfg/steamdeck_mapping_gyro_flickstick.vdf": {
+      "bytes": 66072,
+      "sha1": "1e72675a088e2ef6d821db8758c58c2fd408738e"
+    },
+    "game/citadel/cfg/switch_pro_mapping.vdf": {
+      "bytes": 64795,
+      "sha1": "da68686700e9c0cef09e63b5323fb401dbcd0fe1"
+    },
+    "game/citadel/cfg/switch_pro_mapping_gyro.vdf": {
+      "bytes": 64780,
+      "sha1": "602deee67a3bb12601ea5e9a7bb28a7dba7af639"
+    },
+    "game/citadel/cfg/switch_pro_mapping_gyro_flickstick.vdf": {
+      "bytes": 65396,
+      "sha1": "cfa6cf124123dcde2cc170d6d1904b8ddd5f3744"
+    },
+    "game/citadel/cfg/user_keys_default.vcfg": {
+      "bytes": 818,
+      "sha1": "9f3557f8fb657edbaaa43e410040e9c62512b714"
+    },
+    "game/citadel/cfg/user_keys_dev_default.vcfg": {
+      "bytes": 999,
+      "sha1": "81b118b88f0f3ef7a12cd086e32476b47f7acd95"
+    },
+    "game/citadel/cfg/xbox_360_mapping.vdf": {
+      "bytes": 64792,
+      "sha1": "21d0c306db67f4d46256e621d6dc2143df01d7a2"
+    },
+    "game/citadel/cfg/xbox_one_mapping.vdf": {
+      "bytes": 64792,
+      "sha1": "d0fbb6004a63b86192ebfa760980c2aeb052a97f"
+    },
+    "game/citadel/gameinfo.gi": {
+      "bytes": 18808,
+      "sha1": "79b8f885d86dec21fb9c902266e9daca8f20da42"
+    },
+    "game/core/cfg/sfm_default_animation_groups.vcfg": {
+      "bytes": 51357,
+      "sha1": "0f5112698b482f8c1190c89192a4c0c8b0e50198"
+    },
+    "game/core/cfg/user_keys_default.vcfg": {
+      "bytes": 2270,
+      "sha1": "ab4e0ee92367ba6d28a89dae8f6000631ffdb641"
+    }
+  },
+  "reviewed_depots": [
+    {
+      "1422451": "2454131391896165055",
+      "1422452": "5388639295280096380",
+      "1422456": "6245485333566467018"
+    },
+    {
+      "1422451": "3683166479957346628",
+      "1422452": "1643560653459646223",
+      "1422456": "8708494607106299287"
+    },
+    {
+      "1422451": "6305784606635966931",
+      "1422452": "4063443923369059307",
+      "1422456": "3910018851167511568"
+    },
+    {
+      "1422451": "6080236275371237932",
+      "1422452": "3455107773002401730",
+      "1422456": "2286293062839369678"
+    },
+    {
+      "1422451": "7027095991257036524",
+      "1422452": "7517640817608725397",
+      "1422456": "2676828593797519091"
+    },
+    {
+      "1422451": "7123347752036570724",
+      "1422452": "4883908217308655566",
+      "1422456": "3447976424094034279"
+    },
+    {
+      "1422451": "6311210981267226229",
+      "1422452": "8059190445173182678",
+      "1422456": "7154591329278884986"
+    },
+    {
+      "1422451": "1223704611912134071",
+      "1422452": "3415167049091184750",
+      "1422456": "5739150258570601443"
+    },
+    {
+      "1422451": "1822537349529376529",
+      "1422452": "6250208816379417895",
+      "1422456": "4596779932908570712"
+    },
+    {
+      "1422451": "3263742712748582118",
+      "1422452": "3442489238597897780",
+      "1422456": "4734298675079275514"
+    },
+    {
+      "1422451": "3263742712748582118",
+      "1422452": "3442489238597897780",
+      "1422456": "3184097847819834534"
+    },
+    {
+      "1422451": "7633929797436233660",
+      "1422452": "7364860423534291039",
+      "1422456": "3592147562014424653"
+    },
+    {
+      "1422451": "1639915595439358496",
+      "1422452": "6795611937931138128",
+      "1422456": "8920614686526412402"
+    },
+    {
+      "1422451": "251439169978540470",
+      "1422452": "7118681225651587652",
+      "1422456": "7481470845663423297"
+    },
+    {
+      "1422451": "8997474511597058609",
+      "1422452": "1170478102639778864",
+      "1422456": "1725068050630894641"
+    },
+    {
+      "1422451": "3192697558758146897",
+      "1422452": "6998852340591744273",
+      "1422456": "3348871753292267677"
+    },
+    {
+      "1422451": "7932155862063038447",
+      "1422452": "3924485956536464492",
+      "1422456": "7023502151624661415"
+    },
+    {
+      "1422451": "8832225228956688081",
+      "1422452": "6498059110623542296",
+      "1422456": "1124591651485547492"
+    },
+    {
+      "1422451": "5350434913634208315",
+      "1422452": "7462880516553399331",
+      "1422456": "862331407601123826"
+    },
+    {
+      "1422451": "5350434913634208315",
+      "1422452": "7462880516553399331",
+      "1422456": "5428136821525997367"
+    },
+    {
+      "1422451": "5350434913634208315",
+      "1422452": "7462880516553399331",
+      "1422456": "6805999837340186827"
+    },
+    {
+      "1422451": "6777116935162903309",
+      "1422452": "8105158587312664623",
+      "1422456": "5276872409314336643"
+    },
+    {
+      "1422451": "3331249988489341477",
+      "1422452": "4061682804349537808",
+      "1422456": "3255813969905480578"
+    },
+    {
+      "1422451": "9191901710615339575",
+      "1422452": "2693602205848239566",
+      "1422456": "2939123716983788394"
+    },
+    {
+      "1422451": "4107312098624091083",
+      "1422452": "4534104682050373067",
+      "1422456": "3164984248281119043"
+    },
+    {
+      "1422451": "8590211232665907532",
+      "1422452": "9129133899016749745",
+      "1422456": "756140601198168750"
+    }
+  ],
+  "video_resources": {
+    "cfg/video_defaults_0.txt": "6442c33610dd11f9992115c99547b5e0164e14b96d4cda0292510bc055b3a701",
+    "cfg/video_defaults_1.txt": "52124d493f87968a9a0cbf4d281c1e24b8938462649d9663e8fe4af8a4afa7db",
+    "cfg/video_defaults_2.txt": "aca75bc2db0279e703d9bce78fda60e89929526fdf96342c24c788219dd5ebe1",
+    "cfg/video_defaults_3.txt": "4d2d85b450b0eff9a2d65b78eceb50ada2d1d900ceaad9faed2db0412dfb6529",
+    "cfg/video_version.txt": "71221263e4448ad9eaeac8492df3033e69b827f4d909c5d1c542a5c2b6e6e2f0"
+  }
+}

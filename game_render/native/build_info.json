@@ -1,0 +1,49 @@
+{
+  "abi": 4,
+  "version": "0.7.48-beta",
+  "sha256": "014b467ae62a2fede8cdcc88e6f40b16256f12dff84d55b5938fa75a3d4a0863",
+  "game_audio_sha256": "4a563f3eeb4fcddfb5fb64cca6ac276747d21fc4da375902f301102a6bcd9d2c",
+  "built_utc": "2026-11-21T18:23:21.041315+00:00",
+  "compiler": "Visual Studio 17 2022",
+  "configuration": "Release",
+  "runtime": "static",
+  "native_path_tests_passed": true,
+  "native_effect_tests_passed": true,
+  "native_visualization_tests_passed": true,
+  "native_callback_tests_passed": true,
+  "native_flight_tests_passed": true,
+  "native_attach_tests_passed": true,
+  "native_overlay_tests_passed": true,
+  "native_video_math_tests_passed": true,
+  "native_video_encoder_tests_passed": false,
+  "native_depth_scene_tests_passed": true,
+  "skipped_tests": [
+    "native_video_encoder_smoke"
+  ],
+  "full_suite_complete": false,
+  "reshade_game_runtime_verified": false,
+  "game_runtime_verified": false,
+  "pe": {
+    "machine": "x64",
+    "dll": true,
+    "exports": [
+      "CreateInterface",
+      "DollyAtomicCompareExchange32",
+      "DollyAtomicExchange32",
+      "DollyAtomicExchange64",
+      "DollyNativeProtocolVersion"
+    ],
+    "import_libraries": [
+      "D3DCOMPILER_47.dll",
+      "GDI32.dll",
+      "IMM32.dll",
+      "KERNEL32.dll",
+      "SHELL32.dll",
+      "USER32.dll",
+      "bcrypt.dll",
+      "d3d11.dll",
+      "ole32.dll"
+    ]
+  },
+  "replay_index_sha256": "735d1f81c1ad327157c277f4ddf38ebecb4b80a7069c36bf5576b3ab39378428"
+}

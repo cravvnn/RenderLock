@@ -1,0 +1,32 @@
+{
+  "profile_format": 1,
+  "module": "scenesystem.dll",
+  "sha256": "f7933050f4151d44c4a5a39eff84850b50662c96462ef36d70fbbc6dff2685bd",
+  "size_of_image": "0x9c6000",
+  "producer": {
+    "rva": "0x5c8f0",
+    "end_rva": "0x5d95b",
+    "sha256": "8789a7d7ccd6c406f7a07eb97e283466572114f6f13ccc70ecf911aa33beb3ba",
+    "prologue": "488bc44c8948204c89401848895010488948085553488d68e84881ec08010000",
+    "arguments": 10,
+    "return_value": "signed 32-bit record index",
+    "return": "int instance index"
+  },
+  "layout": {
+    "object": "0x955cc0",
+    "vtable": "0x61e800",
+    "frame": "0x957458",
+    "stack": "0x957be8",
+    "records": "0x957ce0",
+    "capacity": "0x957ce8",
+    "ids": "0x957b48",
+    "transforms": "0x957c40",
+    "cpu_transforms": "0x957be0",
+    "owner_offset": "0xd8",
+    "record_stride": 32,
+    "mesh_cache": "inline packed uint64 at mesh+0x40, lock inline+0x48",
+    "renderer_gpu_buffer_offset": "0x70",
+    "renderer_gpu_buffer_evidence": "rendersystemdx11 CreateBuffer 0x82580 passes wrapper+0x70 as output; old wrapper+0x60"
+  },
+  "validation": "6757: exact module identity; the reviewed producer prologue/ABI is intact at the same RVA and the producer body is byte-identical modulo relocations (masked-equal to the 6739/6753 body). The CSceneSystem primary vtable moved to 0x61e800 (COL 0x63b770 at 0x61e7f8; the constructor stores it into the object at 0x955cc0; 0x61e860 is no longer a vtable start) and the reviewed layout globals are unchanged; the renderer wrapper +0x70 GPU-buffer output is unchanged (rendersystemdx11 08a30cba). Live output not yet certified."
+}
