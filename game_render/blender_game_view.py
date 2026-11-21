@@ -5,7 +5,6 @@ streams the game's own frames into Blender's viewport and render result. The
 Blender view (or scene camera for F12) drives the game camera, and the timeline
 drives the replay tick.
 """
-from __future__ import annotations
 
 bl_info = {
     "name": "RenderLock Game View (experimental)",
@@ -29,7 +28,20 @@ import gpu
 import numpy as np
 from gpu_extras.presets import draw_texture_2d
 
-ROOT = Path(__file__).resolve().parent
+def _root():
+    """This file's folder, also when run from Blender's Text Editor (where __file__ is only a name)."""
+    here = Path(__file__)
+    if here.is_absolute() and (here.parent / "frame_stream.py").is_file():
+        return here.resolve().parent
+    for text in bpy.data.texts:
+        if text.filepath:
+            path = Path(bpy.path.abspath(text.filepath))
+            if path.name == "blender_game_view.py" and (path.parent / "frame_stream.py").is_file():
+                return path.resolve().parent
+    raise RuntimeError("Open blender_game_view.py from its game_render folder, then run it.")
+
+
+ROOT = _root()
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -656,4 +668,8 @@ def unregister():
 
 
 if __name__ == "__main__":
+    try:  # running the script again replaces the earlier registration
+        unregister()
+    except Exception:
+        pass
     register()
