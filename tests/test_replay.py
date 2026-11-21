@@ -352,3 +352,21 @@ def test_extract_replay_keeps_core_actor_data_when_optional_capture_is_unavailab
     assert data['network_projectiles']['availability']==('unavailable'if failure else 'available')
     assert data['network_projectiles']['reason']==failure
     validate_envelope(data['network_projectiles'],data)
+
+
+def test_other_player_origins_skip_exported_and_repeated_heroes():
+    import polars as pl
+    from types import SimpleNamespace
+    from agr.replay import _other_player_origins
+    frame = pl.DataFrame(dict(
+        tick=[10, 10, 10, 10, 11, 11, 11, 11, 12, 99],
+        hero_id=[35, 25, 7, 7, 35, 25, 7, 7, 25, 25],
+        x=[1.0, 5.0, 0.0, 0.0, 1.0, 5.0, 0.0, 0.0, 6.0, 9.0], y=[0.0] * 10, z=[0.0] * 10))
+    parsed = SimpleNamespace(load=lambda *names: None, player_ticks=frame)
+    result = _other_player_origins(parsed, pl, 10, 12, {35})
+    assert result['availability'] == 'available'
+    assert result['players'] == [dict(hero_id=25, ticks=[10, 12], positions=[[5.0, 0.0, 0.0], [6.0, 0.0, 0.0]])]
+
+    def fail(*names):
+        raise RuntimeError('no table')
+    assert _other_player_origins(SimpleNamespace(load=fail), pl, 10, 12, set())['availability'] == 'unavailable'

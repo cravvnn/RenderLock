@@ -3,7 +3,9 @@
 Used only after the strict providers have refused an instance. Nothing here is checked against the game and every
 package built this way says so. Covered: creation in any attach mode on the owner itself, control points bound at
 creation to the owner's origin or to one of its attachment points, literal transforms, release and destruction.
-A control point bound to another exported character follows that character. One bound to an entity that is not
+A control point bound to another exported character follows that character. One bound to a player that is not
+exported follows that player's recorded origin, when the player can be told from the fallback positions recorded
+for the same entity anywhere in the clip (see identify_other_players). One bound to any other entity that is not
 exported uses its recorded fallback position, held still. A literal control point first set after creation holds
 its first recorded value from creation. An effect created with a named control point configuration (creation mode
 -1, used by animation-driven effects) takes its bindings from that configuration in the effect's own definition;
@@ -14,6 +16,7 @@ effect, is left out and the rest is built.
 Still refused: a binding to an unexported entity without a fallback position, a binding made or changed after
 creation, and non-zero attachment offsets.
 """
+import bisect
 import math
 from .particle_control_events import compile_control_events
 
@@ -29,6 +32,9 @@ DRIVER_ATTACHMENT = ('PATTACH_POINT', 'PATTACH_POINT_FOLLOW')
 DRIVER_WORLD = 'PATTACH_WORLDORIGIN'
 FAR_FROM_EFFECT, NEAR_WORLD_ORIGIN = 512.0, 128.0  # game units
 NO_ENTITY = 0xffffff
+OTHER_PLAYER_POLICY = 'agr_other_player_origins_v1'
+# A fallback position is on the body of the entity it was recorded for: this close to that player's origin.
+NEAR_PLAYER_ACROSS, NEAR_PLAYER_BELOW, NEAR_PLAYER_ABOVE = 64.0, 16.0, 128.0
 
 
 def require(ok, message):
@@ -82,12 +88,78 @@ def configuration_drivers(creation, definition, owner, birth=0):
     return result
 
 
-def broad_bindings(instance, start, end, exported=(), definition=None):
+def _fallback(binding):
+    value = binding.get('fallback_position')
+    if (isinstance(value, dict) and set(value) <= set('xyz')
+            and all(type(v) in (int, float) and math.isfinite(v) and abs(v) <= 131072 for v in value.values())):
+        return [float(value.get(axis, 0)) for axis in 'xyz']
+    return None
+
+
+def other_player_tracks(capture):
+    """{hero id: (ticks, positions)} from the segment's record of players that are not exported; {} without one."""
+    if not isinstance(capture, dict) or capture.get('policy') != OTHER_PLAYER_POLICY:
+        return {}
+    result = {}
+    for row in capture.get('players') or []:
+        hero, ticks, positions = row.get('hero_id'), row.get('ticks'), row.get('positions')
+        if (type(hero) is int and hero > 0 and hero not in result and isinstance(ticks, list) and ticks
+                and isinstance(positions, list) and len(positions) == len(ticks)
+                and all(type(t) is int for t in ticks) and ticks == sorted(set(ticks))
+                and all(isinstance(p, list) and len(p) == 3
+                        and all(type(v) in (int, float) and math.isfinite(v) for v in p) for p in positions)):
+            result[hero] = (ticks, positions)
+    return result
+
+
+def origin_at(track, tick):
+    """The player's last recorded origin at or before tick (the first one for an earlier tick)."""
+    ticks, positions = track
+    return positions[max(bisect.bisect_right(ticks, tick) - 1, 0)]
+
+
+def identify_other_players(instances, capture, exported=()):
+    """Tell which player each unexported entity handle is: {handle: (hero id, track)}.
+
+    capture: the segment's record of players that are not exported. Its origins carry no entity identity. A handle
+    is matched when every fallback position recorded for it within the captured ticks lies on one player's body
+    and on no other player's. Not checked against the game.
+    """
+    tracks = other_player_tracks(capture)
+    if not tracks or type(capture.get('start_tick')) is not int or type(capture.get('end_tick')) is not int:
+        return {}
+    seen = {}
+    for instance in instances:
+        for event in instance.get('events') or []:
+            binding = (event.get('data') or {}).get('update_particle_ent')
+            if (not isinstance(binding, dict) or type(event.get('tick')) is not int
+                    or not capture['start_tick'] <= event['tick'] <= capture['end_tick']):
+                continue
+            handle, position = binding.get('entity_handle'), _fallback(binding)
+            if (type(handle) is int and 0 <= handle < NO_ENTITY and position is not None
+                    and f'{handle & 0x3fff}:{handle >> 14}' not in exported):
+                seen.setdefault(handle, []).append((event['tick'], position))
+
+    def on_body(track, tick, position):
+        origin = origin_at(track, tick)
+        return (math.hypot(position[0] - origin[0], position[1] - origin[1]) <= NEAR_PLAYER_ACROSS
+                and -NEAR_PLAYER_BELOW <= position[2] - origin[2] <= NEAR_PLAYER_ABOVE)
+    result = {}
+    for handle, rows in seen.items():
+        fits = [hero for hero, track in tracks.items() if all(on_body(track, tick, at) for tick, at in rows)]
+        if len(fits) == 1:
+            result[handle] = (fits[0], tracks[fits[0]])
+    return result
+
+
+def broad_bindings(instance, start, end, exported=(), definition=None, other_players=None):
     """Return one binding per control point: entity origin, attachment point or literal transform.
 
     exported: identities of every character in the scene; a binding to one of them carries 'target_entity'.
     definition: the effect's decoded definition, needed to resolve a named control point configuration; without it
     such an effect is only checked at binding level.
+    other_players: identify_other_players() for the clip; a binding to one of those handles follows that player's
+    origin, keeping the offset of its fallback position at creation.
     """
     controls = compile_control_events(instance, start, end)
     birth = instance['created_tick']
@@ -116,11 +188,23 @@ def broad_bindings(instance, start, end, exported=(), definition=None):
         bound = binding.get('entity_handle')
         target = f'{bound & 0x3fff}:{bound >> 14}' if type(bound) is int else None
         if not own(bound) and target not in exported:
-            fallback = binding.get('fallback_position')
-            require(isinstance(fallback, dict) and set(fallback) <= set('xyz')
-                    and all(type(v) in (int, float) and math.isfinite(v) and abs(v) <= 131072 for v in fallback.values()),
+            position = _fallback(binding)
+            if other_players and bound in other_players:
+                hero, track = other_players[bound]
+                at_birth = origin_at(track, birth)
+                offset = [0.0, 0.0, 0.0] if position is None else [a - b for a, b in zip(position, at_birth)]
+                updates, last = [], None
+                for tick in [birth] + [t for t in track[0] if birth < t <= end]:
+                    placed = [a + b for a, b in zip(origin_at(track, tick), offset)]
+                    if placed != last:
+                        updates.append(dict(tick=tick, control_point=cp, position=placed, rotation=[0, 0, 0, 1],
+                                            interpolation_interval=0))
+                        last = placed
+                bindings[cp] = dict(control_point=cp, provider='literal_transform', other_entity_fallback=True,
+                                    other_player_hero=hero, updates=updates)
+                continue
+            require(position is not None,
                     'a control point on an entity that is not exported has no recorded fallback position')
-            position = [float(fallback.get(axis, 0)) for axis in 'xyz']
             bindings[cp] = dict(control_point=cp, provider='literal_transform', other_entity_fallback=True,
                                 updates=[dict(tick=birth, control_point=cp, position=position, rotation=[0, 0, 0, 1],
                                               interpolation_interval=0)])

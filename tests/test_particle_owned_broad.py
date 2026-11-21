@@ -259,3 +259,47 @@ def test_configuration_driver_without_an_attach_type_is_taken_as_the_owner_origi
     assert rows[0] == dict(control_point=0, provider='entity_origin', target_entity='56:895', configuration='game',
                            assumed=True)
     assert rows[10]['provider'] == 'named_attachment'
+
+
+def player_capture(**players):
+    return dict(policy='agr_other_player_origins_v1', start_tick=90, end_tick=130, players=[
+        dict(hero_id=int(hero), ticks=[tick for tick, _ in rows], positions=[position for _, position in rows])
+        for hero, rows in players.items()])
+
+
+def test_point_on_a_player_that_is_not_exported_follows_that_player():
+    from agr.particle_owned_broad import identify_other_players, other_player_tracks
+    capture = player_capture(**{
+        '25': [(90, [100.0, 200.0, 640.0]), (110, [110.0, 200.0, 640.0])],
+        '81': [(90, [900.0, 200.0, 640.0])]})
+    tracks = other_player_tracks(capture)
+    # A fallback position recorded before the captured ticks says nothing about where the player is now.
+    earlier = instance([event('UPDATE_ENT', 1, tick=40, update_particle_ent=dict(
+        control_point=0, entity_handle=OTHER, attach_type=5, attachment=3,
+        fallback_position=dict(x=5000.0, y=0.0, z=0.0)))])
+    row = instance([
+        bind(1, 0, OTHER, 5, 3, fallback_position=dict(x=102.0, y=205.0, z=672.0)), bind(2, 1, OWNER, 5, 3),
+        bind(3, 2, OTHER, 1, 0),
+    ], mode=2)
+    players = identify_other_players([earlier, row], capture, exported={'56:895'})
+    assert players == {OTHER: (25, tracks[25])}
+    rows = broad_bindings(row, 90, 130, exported={'56:895'}, other_players=players)
+    assert [(u['tick'], u['position']) for u in rows[2]['updates']] == [
+        (100, [100.0, 200.0, 640.0]), (110, [110.0, 200.0, 640.0])]
+    # The attachment point keeps the offset its fallback position had at creation.
+    assert [(u['tick'], u['position']) for u in rows[0]['updates']] == [
+        (100, [102.0, 205.0, 672.0]), (110, [112.0, 205.0, 672.0])]
+    assert rows[0]['other_player_hero'] == rows[2]['other_player_hero'] == 25
+
+
+def test_an_entity_near_two_players_or_none_is_not_identified():
+    from agr.particle_owned_broad import identify_other_players, other_player_tracks
+    row = instance([bind(1, 0, OTHER, 5, 3, fallback_position=dict(x=102.0, y=205.0, z=672.0)),
+                    bind(2, 1, OTHER, 1, 0)], mode=2)
+    near_two = player_capture(**{'25': [(90, [100.0, 200.0, 640.0])], '81': [(90, [110.0, 210.0, 650.0])]})
+    far = player_capture(**{'25': [(90, [400.0, 200.0, 640.0])]})
+    assert identify_other_players([row], near_two) == {} and identify_other_players([row], far) == {}
+    assert identify_other_players([row], None) == {}
+    assert other_player_tracks(None) == {} and other_player_tracks(dict(policy='other')) == {}
+    with pytest.raises(ValueError, match='no recorded fallback'):
+        broad_bindings(row, 90, 130, other_players={})

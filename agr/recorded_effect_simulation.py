@@ -416,6 +416,7 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
     from .particle_events import WORLD_CUSTOM_ORIGIN_SCOPE,is_world_custom_origin_candidate
     instances=[i for i in data.get('particle_instances',[]) if i.get('entity_id') in selected
                or i.get('selection_scope') == WORLD_CUSTOM_ORIGIN_SCOPE]
+    other_players=None
     report={'status':'partial','stage':'rendering','backend':'recorded_simulation_v1',
             'attachment_provider':'selected_hero_model',
             'wearable_redirection':'not_reconstructed',
@@ -582,7 +583,7 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
                 # fading tail is an assumption, not a measured bound.
                 report['finished_before_clip']['owned_destroyed_before_history']+=1
                 continue
-            broad=False
+            broad=False;followed=[]
             try:
                 if without_profile:raise ValueError('profile already failed')
                 model_profile, root_profile, binding_provider = recorded_binding_profile(instance)
@@ -591,8 +592,14 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
                 # Broad path: simulate from the recorded bindings without a per-effect profile, labelled unverified.
                 from .particle_owned_broad import broad_bindings,POLICY as BROAD_POLICY,SCOPE as BROAD_SCOPE,validate_response as validate_broad_response
                 configured=instance['events'][0].get('data',{}).get('create_particle',{}).get('attach_type')==-1
+                if other_players is None:
+                    from .particle_owned_broad import identify_other_players
+                    other_players=identify_other_players(data.get('particle_instances',[]),
+                        data.get('other_player_origins'),set(entity_objects))
                 bindings=broad_bindings(instance,motion_start,data['end_tick'],exported=set(entity_objects),
-                                        definition=get_definition(instance['resource']) if configured else None)
+                                        definition=get_definition(instance['resource']) if configured else None,
+                                        other_players=other_players)
+                followed=sorted({b['other_player_hero'] for b in bindings if b.get('other_player_hero')})
                 model_profile=root_profile=False;broad=True
             literal_provenance=None
             from .particle_owned_literal import RESOURCE as LITERAL_RESOURCE,collect as collect_literal,DEFINITIONS as LITERAL_DEFINITIONS,validate_definitions as validate_literal_definitions
@@ -773,6 +780,7 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
             if broad:
                 entry['unverified']=BROAD_POLICY
                 if unset_points:entry['control_points_assumed_at_world_origin']=unset_points
+                if followed:entry['follows_players_not_exported']=followed
                 if simulation['instances'][0].get('systems_left_at_world_origin'):
                     entry['systems_left_at_world_origin']=simulation['instances'][0]['systems_left_at_world_origin']
                 report['unverified_owned_instances']=report.get('unverified_owned_instances',0)+1

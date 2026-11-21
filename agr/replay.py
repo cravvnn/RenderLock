@@ -303,6 +303,39 @@ def _entities_from_raw(rows: list[dict[str, Any]], start: int, end: int,
     }
 
 
+OTHER_PLAYER_POLICY = "agr_other_player_origins_v1"
+
+
+def _other_player_origins(parsed, pl, start_tick: int, end_tick: int, exported: set[int]) -> dict[str, Any]:
+    """Origins of the players that are not exported, so an effect aimed at one of them can be placed.
+
+    Read from Boon's per-tick player table, which carries no entity identity: rows are keyed by hero only.
+    A hero recorded for more than one player is left out. Consecutive equal positions are stored once.
+    """
+    try:
+        parsed.load("player_ticks")
+        frame = parsed.player_ticks.filter(pl.col("tick").is_between(start_tick, end_tick)).select(
+            "tick", "hero_id", "x", "y", "z").sort("tick")
+        tracks: dict[int, dict[str, list]] = {}
+        repeated = set()
+        for tick, hero, *position in frame.iter_rows():
+            if (isinstance(hero, bool) or not isinstance(hero, int) or hero <= 0 or hero in exported
+                    or _vector(position) is None):
+                continue
+            track = tracks.setdefault(hero, {"hero_id": hero, "ticks": [], "positions": []})
+            if track["ticks"] and track["ticks"][-1] == tick:
+                repeated.add(hero)
+            elif not track["positions"] or track["positions"][-1] != list(position):
+                track["ticks"].append(int(tick))
+                track["positions"].append([float(v) for v in position])
+        return {"policy": OTHER_PLAYER_POLICY, "availability": "available", "source": "boon player_ticks",
+                "start_tick": start_tick, "end_tick": end_tick,
+                "players": [tracks[hero] for hero in sorted(tracks) if hero not in repeated]}
+    except Exception as exc:
+        return {"policy": OTHER_PLAYER_POLICY, "availability": "unavailable",
+                "reason": f"{type(exc).__name__}: {exc}", "players": []}
+
+
 def extract_replay(demo: Path, output: Path, start_tick: int, end_tick: int,
                    hero_ids: list[int] | None = None) -> Path:
     """Extract a fresh .dem range; both boundary ticks are included.
@@ -446,6 +479,8 @@ def extract_replay(demo: Path, output: Path, start_tick: int, end_tick: int,
         "network_projectiles": projectile_capture,
         "client_modifier_writes": modifier_capture,
         "client_effect_owner_states": owner_capture,
+        "other_player_origins": _other_player_origins(
+            parsed, pl, start_tick, end_tick, {entity["hero_id"] for entity in entities}),
     }
     destination = output / "segment.json"
     _write_json(destination, manifest)
