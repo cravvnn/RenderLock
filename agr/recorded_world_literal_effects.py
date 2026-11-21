@@ -4,7 +4,8 @@ import json
 from pathlib import Path
 import subprocess
 from .particle_world_literal import (BACKEND, SCOPE, request_header, control_points, world_identity,
-                                     validate_response, validate_package)
+                                     validate_response, validate_package, literal_controls, without_model_events,
+                                     models_not_applied, placed_positions, simulator_events)
 
 MAX_SYSTEMS = 256
 
@@ -37,7 +38,8 @@ def prepare_world_literal_package(data, instance, runtime, provider, decoder, ad
     plan = {key: data[key] for key in ('start_tick', 'end_tick', 'tick_rate')}
     plan.update(gameinfo=str(Path(runtime['install_path']) / 'game/citadel/gameinfo.gi'),
                 seed=substitute_seed(data, instance),
-                instances=[dict(instance, world_origin_provider=header,
+                instances=[dict(instance, events=simulator_events(instance, literal_controls(data, instance)),
+                                world_origin_provider=header,
                                 control_points=control_points(data, instance))])
     plan_path = out / 'request.json'
     result_path = out / 'simulation.json'
@@ -62,11 +64,14 @@ def prepare_world_literal_package(data, instance, runtime, provider, decoder, ad
     if not names or not names <= set(definitions):
         raise ValueError('World simulation system tree differs from the decoded effect tree')
     sim['instances'][0]['entity_id'] = None
-    if sim['instances'][0].get('unprovided_control_point_indices'):
+    points = literal_controls(data, instance)
+    models = models_not_applied(instance)
+    if models:
+        sim['instances'][0]['control_point_models_not_applied'] = models
+    if (sim['instances'][0].get('unprovided_control_point_indices') or models
+            or points[0][0].get('assumed_world_origin')):
         from .particle_owned_broad import leave_out_world_origin_systems
-        leave_out_world_origin_systems(sim['instances'][0], [
-            row['position'] for row in sim['instances'][0].get('literal_transforms_applied') or []
-            if row.get('control_point') == 0])
+        leave_out_world_origin_systems(sim['instances'][0], placed_positions(points))
     # The same asset collection as owned effects: sprite sheets, texture defaults, light and rope inputs, models.
     from .particle_render_assets import prepare_render_assets
     assets = prepare_render_assets(set(definitions), decoder, adapter, provider, runtime, definitions=definitions,

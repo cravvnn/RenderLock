@@ -45,7 +45,7 @@ def test_every_tick_carries_the_latest_recorded_value_of_each_point():
 
 @pytest.mark.parametrize('change, message', [
     (lambda s, i: i['events'].append(dict(type='UPDATE_ENT', tick=103, order=15, data={})), 'only literal transforms'),
-    (lambda s, i: i['events'].pop(1), 'no recorded origin'),
+    (lambda s, i: i.update(events=[i['events'][0], i['events'][-1]]), 'no recorded control point'),
     (lambda s, i: i['events'].__setitem__(2, transform(101, 12, 2, (4, 5, 6))), 'creation-time value'),
     (lambda s, i: s.update(end_tick=100 + 5000), 'more than 64 s'),
     (lambda s, i: i.update(entity_handle=5), 'unattached creation'),
@@ -63,3 +63,41 @@ def test_effect_born_before_the_clip_is_simulated_from_its_true_birth():
     scene.update(start_tick=102, end_tick=110)
     rows = control_points(scene, instance)
     assert rows[0]['tick'] == 100 and rows[-1]['tick'] == 110
+
+
+def test_effect_that_never_sets_point_zero_has_it_at_the_world_origin():
+    from agr.particle_world_literal import placed_positions
+    scene, instance = scene_and_instance()
+    instance['events'].pop(1)
+    points = literal_controls(scene, instance)
+    assert points[0][0]['position'] == [0.0, 0.0, 0.0] and points[0][0]['assumed_world_origin'] is True
+    assert control_points(scene, instance)[0]['position'] == [0.0, 0.0, 0.0]
+    # Only positions away from the world origin say where the effect is.
+    points[2][0]['position'] = [4000.0, 5.0, 6.0]
+    assert placed_positions(points) == [[4000.0, 5.0, 6.0]]
+
+
+def test_a_model_assigned_to_a_control_point_is_not_applied_and_is_named():
+    from agr.particle_world_literal import models_not_applied, without_model_events
+    scene, instance = scene_and_instance()
+    instance['events'].insert(2, dict(type='SET_CONTROL_POINT_MODEL', tick=100, order=11, data=dict(
+        type='GAME_PARTICLE_MANAGER_EVENT_SET_CONTROL_POINT_MODEL', index=7,
+        set_control_point_model=dict(control_point=0, model_name='models/example.vmdl'))))
+    instance['events'][2]['order'] = 11
+    for order, event in enumerate(instance['events'], 10):
+        event['order'] = order
+    assert sorted(literal_controls(scene, instance)) == [0, 2]
+    assert models_not_applied(instance) == ['models/example.vmdl']
+    assert all(event['type'] != 'SET_CONTROL_POINT_MODEL' for event in without_model_events(instance)['events'])
+
+
+def test_simulator_gets_an_explicit_world_origin_only_when_the_game_set_none():
+    from agr.particle_world_literal import simulator_events
+    scene, instance = scene_and_instance()
+    assert simulator_events(instance, literal_controls(scene, instance)) == instance['events']
+    instance['events'].pop(1)
+    events = simulator_events(instance, literal_controls(scene, instance))
+    assert events[1]['type'] == 'UPDATE_TRANSFORM' and events[1]['data']['update_particle_transform'] == dict(
+        control_point=0, position=dict(x=0.0, y=0.0, z=0.0))
+    assert [event['order'] for event in events] == [20, 21, 24, 26, 28]
+    assert [dict(event, order=None) for event in events[2:]] == [dict(event, order=None) for event in instance['events'][1:]]

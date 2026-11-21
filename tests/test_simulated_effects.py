@@ -148,3 +148,13 @@ def test_uv_raw_origin_preserves_crossing_for_shader_time_wrap():
  assert texture_uv_parameters(controls,.75,wrap_origin=False)[1]==(.5,1.25)
  with pytest.raises(UnsupportedEffect,match='mapping'):
   texture_control_value({'m_nType':'PF_TYPE_COLLECTION_AGE','m_nMapType':'unknown'},.5)
+
+
+def test_trail_radius_scale_can_follow_the_system_age():
+    p={'previous':[0,0,0],'position':[2,0,0],'trail':1,'radius':4,'age':1}
+    renderer={'m_bIgnoreDT':True,'m_flRadiusScale':{'m_nType':'PF_TYPE_COLLECTION_AGE'}}
+    assert trail_dimensions(p,renderer,1/64,dict(points={},age=.5))[1]==2
+    import pytest
+    from agr.installed_effects import UnsupportedEffect
+    with pytest.raises(UnsupportedEffect):
+        trail_dimensions(p,renderer,1/64)

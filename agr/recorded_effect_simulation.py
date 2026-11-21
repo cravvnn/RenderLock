@@ -471,7 +471,7 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
     instances=sorted(instances,key=lambda i:(1,-i['created_tick']) if i.get('selection_scope') == WORLD_CUSTOM_ORIGIN_SCOPE
                      and type(i.get('created_tick')) is int else (0,0))
     world_finished={}
-    report['finished_before_clip']={'world_by_simulation':0,'world_older_than_finished_instance':0,'owned_destroyed_before_history':0}
+    report['finished_before_clip']={'world_by_simulation':0,'world_older_than_finished_instance':0,'world_destroyed_before_clip':0,'owned_destroyed_before_history':0}
     DESTROY_TAIL_TICKS=5*data['tick_rate']
     # Every frame change evaluates all animated objects in the view layer. Effects that are already built are
     # taken out of the view layer while later ones are built, and put back before the scene is saved.
@@ -500,6 +500,11 @@ def build_recorded_effects(data, manifest_dir, scene, camera, entity_objects, ru
                     report['finished_before_clip']['world_older_than_finished_instance']+=1
                     continue
                 from .particle_world_origin import request_header,POLICY as WORLD_POLICY,RESOURCE as WORLD_RESOURCE
+                if (instance.get('resource')!=WORLD_RESOURCE and type(instance.get('destroy_tick')) is int
+                        and instance['destroy_tick']+DESTROY_TAIL_TICKS<data['start_tick']):
+                    # Destroyed well before the clip: finished, not unsupported (same 5 s allowance as owned effects).
+                    report['finished_before_clip']['world_destroyed_before_clip']+=1
+                    continue
                 from .recorded_world_effects import prepare_world_package
                 if instance.get('resource')!=WORLD_RESOURCE:
                     # Broad path: any other unowned effect is simulated from its recorded literal points, unverified.

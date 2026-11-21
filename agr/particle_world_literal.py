@@ -2,8 +2,11 @@
 
 This is the broad path: any resource, no per-effect profile, no client or definition pin. Nothing here is checked
 against the game, and every package says so. The narrow bat-explosion profile in particle_world_origin stays as is.
-Accepted shape: one CREATE (unattached, mode 8), literal UPDATE_TRANSFORM events and optional RELEASE. A destroyed
-effect, an entity binding or an interpolated transform is refused and stays visible as unsupported.
+Accepted shape: one CREATE (unattached, mode 8), literal UPDATE_TRANSFORM events, optional RELEASE and DESTROY.
+An entity binding or an interpolated transform is refused and stays visible as unsupported.
+A model the game assigns to a control point is not applied: the systems that need it end up at the world origin and
+are left out (see leave_out_world_origin_systems). An effect that never sets control point 0 has it at the world
+origin, as the game leaves it.
 Because every input is a recorded literal, an effect born before the clip is simulated from its true birth, up to
 MAX_TICKS before the clip end.
 """
@@ -17,6 +20,40 @@ BACKEND = 'simulated_world_literal_unverified_v1'
 SCOPE = ('Recorded unowned effect simulated from its literal control points. Not compared with the game: timing, '
          'seeds, shading and any layer the importer leaves out are unverified.')
 MAX_TICKS = 4095
+MODEL_EVENT = 'SET_CONTROL_POINT_MODEL'
+
+
+def without_model_events(instance):
+    """The instance without its control point model assignments, which nothing downstream applies."""
+    return dict(instance, events=[event for event in instance['events'] if event.get('type') != MODEL_EVENT])
+
+
+def models_not_applied(instance):
+    return sorted({str(event.get('data', {}).get('set_control_point_model', {}).get('model_name'))
+                   for event in instance['events'] if event.get('type') == MODEL_EVENT})
+
+
+def simulator_events(instance, points):
+    """The events sent to the simulator: model assignments removed and, when the game never set control point 0,
+    an explicit world-origin value for it at creation (the simulator requires one). The simulator needs an order on
+    every event, so the recorded orders are doubled and the added point takes the slot right after creation.
+    """
+    events = without_model_events(instance)['events']
+    if not points[0][0].get('assumed_world_origin'):
+        return events
+    require(all(type(event.get('order')) is int and 0 <= event['order'] < 2**30 for event in events),
+            'recorded event order exceeds bounds')
+    events = [dict(event, order=2 * event['order']) for event in events]
+    origin = dict(type='UPDATE_TRANSFORM', tick=instance['created_tick'], order=events[0]['order'] + 1, data=dict(
+        type='GAME_PARTICLE_MANAGER_EVENT_UPDATE_TRANSFORM', index=instance['index'],
+        update_particle_transform=dict(control_point=0, position=dict(x=0.0, y=0.0, z=0.0))))
+    return [events[0], origin] + events[1:]
+
+
+def placed_positions(points):
+    """Where the effect is: every supplied position away from the world origin (a point there is a setting)."""
+    return [list(update['position']) for updates in points.values() for update in updates
+            if not update.get('assumed_world_origin') and math.hypot(*update['position']) >= 128.0]
 
 
 def require(ok, message):
@@ -42,7 +79,7 @@ def literal_controls(scene, instance):
             'exact generation and the unowned handle are required')
     events = instance.get('events')
     require(isinstance(events, list) and 2 <= len(events) <= 4096 and all(isinstance(e, dict) for e in events)
-            and {e.get('type') for e in events} <= {'CREATE', 'UPDATE_TRANSFORM', 'RELEASE', 'DESTROY'},
+            and {e.get('type') for e in events} <= {'CREATE', 'UPDATE_TRANSFORM', 'RELEASE', 'DESTROY', MODEL_EVENT},
             'only literal transforms, release and destruction are supported; entity bindings are not')
     require(all(type(e.get('order')) is int for e in events), 'recorded event order is required')
     creation = events[0].get('data', {}).get('create_particle')
@@ -52,14 +89,18 @@ def literal_controls(scene, instance):
             and creation.get('cluster') is False
             and instance.get('resource_hash') == creation.get('particle_name_index'),
             'creation fields or resource identity differ')
-    controls = compile_control_events(instance, birth, end)
+    controls = compile_control_events(without_model_events(instance), birth, end)
     require(not controls['entity_binding_events'], 'world controls differ')
     points = {}
     for literal in controls['literal_transforms']:
         require(all(math.isfinite(v) and abs(v) <= 131072 for v in literal['position']),
                 'control point position exceeds bounds')
         points.setdefault(literal['control_point'], []).append(literal)
-    require(0 in points, 'no recorded origin (control point 0)')
+    require(points, 'no recorded control point')
+    if 0 not in points:
+        # Never set by the game, which leaves it at the world origin.
+        points[0] = [dict(tick=birth, control_point=0, position=[0.0, 0.0, 0.0], rotation=[0.0, 0.0, 0.0, 1.0],
+                          interpolation_interval=0, assumed_world_origin=True)]
     require(all(rows[0]['tick'] == birth for rows in points.values()),
             'a control point first set after creation needs its creation-time value')
     return points

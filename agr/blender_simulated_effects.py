@@ -52,7 +52,7 @@ def texture_control_value(value, age, default=0):
     return result
 
 
-def trail_dimensions(particle, renderer, step):
+def trail_dimensions(particle, renderer, step, context=None):
     delta = [a-b for a,b in zip(particle['previous'], particle['position'])]
     distance = math.sqrt(sum(v*v for v in delta))
     if distance < 1e-10:
@@ -61,7 +61,9 @@ def trail_dimensions(particle, renderer, step):
     length = particle['trail']*distance*multiplier*renderer.get('m_flLengthScale',1)
     length *= min(1.,particle['age']/max(1e-9,renderer.get('m_flLengthFadeInTime',0)))
     length = max(renderer.get('m_flMinLength',0),min(renderer.get('m_flMaxLength',2000),length))
-    radius = min(particle['radius']*scalar(renderer.get('m_flRadiusScale'),default=1),
+    from .particle_render_controls import render_scalar
+    # The radius scale may follow the system age or a control point, read from this tick's snapshot.
+    radius = min(particle['radius']*render_scalar(renderer.get('m_flRadiusScale'),context=context,default=1),
                  length*renderer.get('m_flConstrainRadiusToLengthRatio',1))
     return length,max(0.,radius),[v/distance for v in delta]
 
@@ -879,13 +881,13 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254,
                     data.keyframe_insert('energy',frame=frame);data.keyframe_insert('color',frame=frame)
                     data.keyframe_insert('cutoff_distance',frame=frame)
                 elif trail:
-                    length,radius,direction=trail_dimensions(p,renderer,step)
+                    length,radius,direction=trail_dimensions(p,renderer,step,context)
                     obj.rotation_quaternion=Vector((1,0,0)).rotation_difference(Vector(direction))
                     obj.location-=Vector(direction)*length*renderer.get('m_flForwardShift',0)*unit_scale
                     obj.scale=(max(1e-9,length*unit_scale),1,max(1e-9,radius*unit_scale))
                     obj['agr_trail_radius']=float(radius*unit_scale);obj.keyframe_insert('["agr_trail_radius"]',frame=frame)
                 else:
-                    radius=p['radius']*scalar(renderer.get('m_flRadiusScale'),default=1)*unit_scale
+                    radius=p['radius']*render_scalar(renderer.get('m_flRadiusScale'),context=context,default=1)*unit_scale
                     obj.scale=(radius,radius,radius)
                     if normal_aligned:
                         obj.rotation_quaternion=Vector((0,0,1)).rotation_difference(Vector(p['normal']).normalized())@Quaternion((0,0,1),p['rotation'][2])
