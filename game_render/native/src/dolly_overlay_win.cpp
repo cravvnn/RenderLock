@@ -646,9 +646,13 @@ void render_overlay(IDXGISwapChain* chain) {
         // A requested take may start while desktop controls own focus. The
         // validated game swapchain supplies frames independently of input focus;
         // do not block initialization while the controller waits for recording.
-        if (media_session_active() &&
-            (snapshot.state == video::State::starting ||
-             snapshot.state == video::State::recording || editor.focused)) {
+        // RenderLock asks for depth with its frame stream; the same verified
+        // scene tracker serves it without a Dolly recording session.
+        const bool stream_depth = dolly::stream::wants_depth();
+        if (stream_depth ||
+            (media_session_active() &&
+             (snapshot.state == video::State::starting ||
+              snapshot.state == video::State::recording || editor.focused))) {
             // The recorder reports the size only once a take exists. ReShade
             // also needs depth while merely editing, so fall back to the
             // current backbuffer dimensions.
@@ -671,7 +675,7 @@ void render_overlay(IDXGISwapChain* chain) {
                 // Depth observation also feeds ReShade's DEPTH semantic while
                 // its runtime is active, so depth-dependent effects work
                 // without ReShade's disabled automatic graphics hooks.
-                depth_live.request(video::wants_depth() || reshade_available());
+                depth_live.request(video::wants_depth() || reshade_available() || stream_depth);
                 depth::set_white_clear(video::wants_white_clear());
                 const bool matte_hooks =
                     (video::wants_white_clear() || video::wants_shot_only()) && !depth_live.hooks();
@@ -725,7 +729,8 @@ void render_overlay(IDXGISwapChain* chain) {
     // Capture runs after effects but before either editor's UI or path guides.
     const auto clean_frame = [](IDXGISwapChain* capture_chain, ID3D11Device* capture_device,
                                 ID3D11DeviceContext* capture_context, void* user) {
-        dolly::stream::capture(capture_chain, capture_device, capture_context);
+        dolly::stream::capture(capture_chain, capture_device, capture_context,
+                               static_cast<const depth::SceneFrame*>(user));
         const auto editor = editor_snapshot();
         const auto snapshot = video::status();
         if (!media_session_active() ||

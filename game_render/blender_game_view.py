@@ -109,6 +109,27 @@ def game_window_size(scene):
     return max(320, width), max(240, height)
 
 
+BACKGROUND_DEPTH = 1e10    # Blender's Depth value for empty background
+
+
+def wants_depth(scene):
+    """The scene renders a Depth (Z) pass, so bakes and renders also fetch game depth."""
+    return any(layer.use and layer.use_pass_z for layer in scene.view_layers)
+
+
+def depth_pass(depth, width, height):
+    """Game depth (Source units along the camera axis, top-down) -> Blender Depth pass values:
+    metres, bottom-up, sky at Blender's background depth, nearest-sampled to the render size."""
+    src_h, src_w = depth.shape
+    if (src_w, src_h) != (width, height):
+        ys = np.minimum(((np.arange(height) + 0.5) * src_h / height).astype(int), src_h - 1)
+        xs = np.minimum(((np.arange(width) + 0.5) * src_w / width).astype(int), src_w - 1)
+        depth = depth[ys][:, xs]
+    metres = depth[::-1].astype(np.float32) * UNIT
+    metres[~np.isfinite(metres)] = BACKGROUND_DEPTH
+    return metres
+
+
 def resample(array, width, height):
     """Bilinear resize of an HxWx4 uint8 image."""
     src_h, src_w = array.shape[:2]
@@ -443,7 +464,14 @@ class Session:
         self.held_frame = captured[frames]
         self.current_tick = int(tick)
 
-    def capture_range(self, start_tick, fps, poses, cancelled=lambda: False, timeout=600.0, clean=True):
+    def set_depth(self, on):
+        """Ask the game for each frame's scene depth too (only while it is needed)."""
+        if self.stream is not None:
+            self.stream.set_depth(bool(on))
+        self.depth_on = bool(on)
+
+    def capture_range(self, start_tick, fps, poses, cancelled=lambda: False, timeout=600.0, clean=True,
+                      depth=None):
         """Play the camera animation once, fixed-step, and keep each frame's game image.
 
         poses[k] is the camera for shot time k / fps. Returns {k: (meta, array)}.
@@ -462,6 +490,9 @@ class Session:
         self.preview = None
         timings, began = {}, time.monotonic()
         self.last_timings = timings
+        depth_before = getattr(self, "depth_on", False)
+        if depth is not None:
+            self.set_depth(depth)
         try:
             self.stream.set_camera(None)
             if clean:
@@ -507,6 +538,8 @@ class Session:
         finally:
             timings["captured"] = round(time.monotonic() - began, 2)
             print("[RenderLock game] bake timings", timings, flush=True)
+            if depth is not None:
+                self.set_depth(depth_before)
             try:
                 controller.clear_export_timing()
                 controller.stop()
@@ -530,6 +563,9 @@ class Session:
         array = np.frombuffer(pixels, dtype=np.uint8).reshape(meta["height"], meta["width"], 4)
         if meta["format"] in frame_stream.BGRA8:
             array = array[:, :, (2, 1, 0, 3)]
+        if meta.get("depth") is not None:
+            meta["depth"] = np.frombuffer(meta["depth"], dtype=np.float32).reshape(
+                meta["depth_height"], meta["depth_width"])
         self.frame_meta = meta
         self.received += 1
         return meta, array
@@ -622,9 +658,11 @@ def bake_info(scene):
 
 
 def bake_is_current(scene, clean=False):
+    """clean=True: good for final renders (reloaded replay, and depth when the scene renders it)."""
     bake = bake_info(scene)
     return bool(bake and bake.get("signature") == shot_signature(scene)
-                and bake.get("captured") == bake.get("requested") and (bake.get("clean") or not clean))
+                and bake.get("captured") == bake.get("requested")
+                and (not clean or (bake.get("clean") and (bake.get("depth") or not wants_depth(scene)))))
 
 
 def baked_frame(scene, frame, clean=False):
@@ -634,7 +672,11 @@ def baked_frame(scene, frame, clean=False):
         return None
     path = cache_folder(scene) / f"frame_{frame:06d}.npy"
     meta = bake["frames"].get(str(frame))
-    return (meta, np.load(path)) if meta and path.is_file() else None
+    if not meta or not path.is_file():
+        return None
+    depth = cache_folder(scene) / f"depth_{frame:06d}.npy"
+    meta = dict(meta, depth=np.load(depth) if clean and depth.is_file() else None)
+    return meta, np.load(path)
 
 
 def to_display_image(array):
@@ -705,6 +747,11 @@ class RenderLockGameEngine(bpy.types.RenderEngine):
         if SESSION.state in ("starting", "ready"):
             self.tag_redraw()
 
+    def update_render_passes(self, scene=None, renderlayer=None):
+        self.register_pass(scene, renderlayer, "Combined", 4, "RGBA", 'COLOR')
+        if renderlayer.use_pass_z:
+            self.register_pass(scene, renderlayer, "Depth", 1, "Z", 'VALUE')
+
     # F12 / Render Animation: scene camera, exact replay tick, settled game frame.
     def render(self, depsgraph):
         scene = depsgraph.scene
@@ -712,6 +759,8 @@ class RenderLockGameEngine(bpy.types.RenderEngine):
         height = int(scene.render.resolution_y * scene.render.resolution_percentage / 100)
         result = self.begin_result(0, 0, width, height)
         layer = result.layers[0].passes["Combined"]
+        depth_layer = result.layers[0].passes.get("Depth")
+        depth_requested = False
         try:
             if SESSION.state != "ready" or scene.camera is None:
                 self.report({'ERROR'}, "Connect to the game and set a scene camera first.")
@@ -723,6 +772,9 @@ class RenderLockGameEngine(bpy.types.RenderEngine):
                 # consecutive game frames that show the scene camera.
                 pose = camera_object_pose(scene, scene.camera)
                 SESSION.last_pose = pose
+                if depth_layer is not None:
+                    SESSION.set_depth(True)
+                    depth_requested = True
                 tick = scene_tick(scene)
                 SESSION.request_tick(tick, exact=True)
                 deadline = time.monotonic() + 180
@@ -746,8 +798,18 @@ class RenderLockGameEngine(bpy.types.RenderEngine):
             rgba[..., :3] = srgb_to_linear(rgba[..., :3])
             rgba[..., 3] = 1.0
             layer.rect.foreach_set(rgba.ravel())
+            if depth_layer is not None:
+                depth = meta.get("depth")
+                if depth is None:
+                    self.report({'WARNING'}, f"The game sent no depth for frame {frame}; "
+                                             "the Depth pass is empty.")
+                    depth_layer.rect.foreach_set(np.full(width * height, BACKGROUND_DEPTH, np.float32))
+                else:
+                    depth_layer.rect.foreach_set(depth_pass(depth, width, height).ravel())
             scene["renderlock_game_last_frame"] = {k: meta[k] for k in ("tick", "present", "seq")}
         finally:
+            if depth_requested:
+                SESSION.set_depth(False)
             self.end_result(result)
 
 
@@ -875,7 +937,7 @@ class RENDERLOCK_OT_game_bake(bpy.types.Operator):
                             play_after=self.play_after, render_after=self.render_after, cancel=False,
                             began=time.monotonic())
         args = (props.start_tick, fps, poses, frames, cache_folder(scene), bpy.path.abspath(props.replay_path),
-                self.clean, shot_signature(scene))
+                self.clean, shot_signature(scene), self.clean and wants_depth(scene))
         if self.wait:
             _bake_worker(*args)
             return _bake_finished(self) or {'FINISHED'}
@@ -886,24 +948,32 @@ class RENDERLOCK_OT_game_bake(bpy.types.Operator):
         return {'FINISHED'}
 
 
-def _bake_worker(start_tick, fps, poses, frames, folder, replay, clean, signature):
+def _bake_worker(start_tick, fps, poses, frames, folder, replay, clean, signature, depth=False):
     import json
     bake = SESSION.bake
     try:
-        captured = SESSION.capture_range(start_tick, fps, poses, cancelled=lambda: bake["cancel"], clean=clean)
+        captured = SESSION.capture_range(start_tick, fps, poses, cancelled=lambda: bake["cancel"], clean=clean,
+                                         depth=depth)
         if bake["cancel"]:
             bake["state"] = "cancelled"
             return
         bake["state"] = "saving"
         folder.mkdir(parents=True, exist_ok=True)
-        for old in folder.glob("frame_*.npy"):
+        for old in (*folder.glob("frame_*.npy"), *folder.glob("depth_*.npy")):
             old.unlink()
-        metas = {}
+        metas, depth_frames = {}, 0
         for k, (meta, array) in captured.items():
             np.save(folder / f"frame_{frames[k]:06d}.npy", np.ascontiguousarray(array))
             metas[str(frames[k])] = {key: meta[key] for key in ("tick", "phase", "present", "seq", "width", "height")}
+            if depth and meta.get("depth") is not None:
+                np.save(folder / f"depth_{frames[k]:06d}.npy", np.ascontiguousarray(meta["depth"]))
+                depth_frames += 1
+            elif depth:
+                metas[str(frames[k])]["depth_state"] = meta.get("depth_state", "missing")
+        bake["depth_missing"] = len(metas) - depth_frames if depth else 0
         (folder / "bake.json").write_text(json.dumps(dict(
             start_tick=start_tick, replay=replay, fps=fps, clean=bool(clean), signature=signature,
+            depth=bool(depth), depth_frames=depth_frames,
             requested=len(frames), captured=len(metas), frames=metas), indent=1))
         bake.update(state="done", done=len(metas), folder=str(folder))
     except Exception as error:
@@ -924,7 +994,9 @@ def _bake_finished(operator=None):
         missing = bake["total"] - bake["done"]
         SESSION.message = (f"Baked {bake['done']} of {bake['total']} frames in "
                            f"{time.monotonic() - bake['began']:.0f} s"
-                           + (f" ({missing} missing)" if missing else "") + ".")
+                           + (f" ({missing} missing)" if missing else "")
+                           + (f", no game depth on {bake['depth_missing']}" if bake.get("depth_missing") else "")
+                           + ".")
         scene = bpy.data.scenes.get(bake["scene"])
         if bake["play_after"] and scene is not None:
             _play_timeline(scene)
@@ -1751,7 +1823,11 @@ class RENDERLOCK_PT_shot_output(bpy.types.Panel):
         else:
             col.prop(render.image_settings, "color_mode", text="Color")
             if hasattr(render.image_settings, "color_depth"):
-                col.prop(render.image_settings, "color_depth", text="Depth")
+                col.prop(render.image_settings, "color_depth", text="Bit depth")
+        col.separator()
+        col.prop(context.view_layer, "use_pass_z", text="Depth pass")
+        if context.view_layer.use_pass_z and getattr(render.image_settings, "media_type", "") != "MULTI_LAYER_IMAGE":
+            col.label(text="Depth is saved with Save as: OpenEXR MultiLayer", icon='INFO')
         col.separator()
         sub = col.column(align=True)
         sub.prop(render, "resolution_x", text="Resolution X")

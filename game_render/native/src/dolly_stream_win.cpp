@@ -1,4 +1,5 @@
 #include "dolly_stream.hpp"
+#include "dolly_depth_scene.hpp"
 
 #include <Windows.h>
 #include <d3d11.h>
@@ -36,8 +37,10 @@ ViewNote last_view{};
 // Render-thread-only GPU state.
 struct Pending {
     bool used{};
+    bool depth{};  // a depth readback for this Present is queued
     SlotHeader tag{};
 };
+depth::Readback depth_queue;
 ID3D11Device* gpu_device{};
 std::array<ID3D11Texture2D*, kSlots> staging{};
 ID3D11Texture2D* resolve_target{};
@@ -58,6 +61,7 @@ void release_gpu() noexcept {
     }
     for (auto& slot : pending)
         slot = Pending{};
+    depth_queue.reset();
     gpu_device = nullptr;
     width = height = 0;
     format = DXGI_FORMAT_UNKNOWN;
@@ -130,7 +134,13 @@ bool ensure_gpu(ID3D11Device* device, const D3D11_TEXTURE2D_DESC& source) noexce
 }
 
 // Copy a mapped staging texture into the next mapping slot and publish it.
-void publish(const D3D11_MAPPED_SUBRESOURCE& mapped, const SlotHeader& tag) noexcept {
+bool has_depth_slots() noexcept {
+    return memory &&
+           kHeaderBytes + 2 * std::uint64_t(kSlots) * header()->slot_bytes <= mapping_bytes;
+}
+
+void publish(const D3D11_MAPPED_SUBRESOURCE& mapped, const SlotHeader& tag,
+             const depth::RawFrame* depth_frame) noexcept {
     std::lock_guard<std::mutex> lock(map_lock);
     if (!memory)
         return;
@@ -152,6 +162,26 @@ void publish(const D3D11_MAPPED_SUBRESOURCE& mapped, const SlotHeader& tag) noex
                     static_cast<const unsigned char*>(mapped.pData) + row * mapped.RowPitch,
                     row_bytes);
     SlotHeader written = tag;
+    if (depth_frame) {
+        const auto& frame = depth_frame->frame;
+        const std::uint64_t count = std::uint64_t(frame.width) * frame.height;
+        auto* values = reinterpret_cast<float*>(memory + kHeaderBytes +
+                                                (kSlots + index) * head->slot_bytes);
+        if (!has_depth_slots() || count * 4 > head->slot_bytes) {
+            written.depth_state = depth_failed;
+        } else if (depth::convert(depth_frame->pixels.data(), depth_frame->pixels.size(),
+                                  std::size_t(frame.width) * 4, frame.width, frame.height,
+                                  depth_frame->format, frame.projection, values,
+                                  std::size_t(count))) {
+            written.depth_state = depth_ok;
+            written.depth_width = frame.width;
+            written.depth_height = frame.height;
+            written.depth_near = frame.projection.near_clip;
+            written.depth_far = frame.projection.far_clip;
+        } else {
+            written.depth_state = depth_failed;
+        }
+    }
     written.width = width;
     written.height = height;
     written.row_bytes = std::uint32_t(row_bytes);
@@ -214,12 +244,15 @@ void note_view(std::int32_t tick, bool paused, double phase, const double pose[6
     ++last_view.serial;
 }
 
-void capture(IDXGISwapChain* chain, ID3D11Device* device, ID3D11DeviceContext* context) noexcept {
+void capture(IDXGISwapChain* chain, ID3D11Device* device, ID3D11DeviceContext* context,
+             const depth::SceneFrame* scene) noexcept {
+    bool want_depth = false;
     {
         std::lock_guard<std::mutex> lock(map_lock);
         if (!memory || !header()->enabled)
             return;
         ++header()->presents;
+        want_depth = header()->depth && has_depth_slots();
     }
     if (!chain || !device || !context)
         return;
@@ -242,23 +275,64 @@ void capture(IDXGISwapChain* chain, ID3D11Device* device, ID3D11DeviceContext* c
         return;
     }
     const std::uint64_t present = ++presents;
-    // Publish the frame copied two Presents ago (it is usually finished by now).
-    const auto ready = std::uint32_t((present + 1) % kSlots);
-    if (pending[ready].used) {
+    // Publish finished copies oldest first (usually the one from two Presents
+    // ago). A frame still waiting for its colour or depth holds back newer
+    // ones, so frames stay in order and each keeps its own depth.
+    for (std::uint64_t age = kSlots - 1; age >= 1; --age) {
+        if (present <= age)
+            continue;
+        const auto ready = std::uint32_t((present - age) % kSlots);
+        auto& slot = pending[ready];
+        if (!slot.used)
+            continue;
         D3D11_MAPPED_SUBRESOURCE mapped{};
-        const HRESULT result =
+        const HRESULT mapped_result =
             context->Map(staging[ready], 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &mapped);
-        if (SUCCEEDED(result)) {
-            publish(mapped, pending[ready].tag);
-            context->Unmap(staging[ready], 0);
-            pending[ready].used = false;
-        } else if (result != DXGI_ERROR_WAS_STILL_DRAWING) {
-            pending[ready].used = false;
+        if (mapped_result == DXGI_ERROR_WAS_STILL_DRAWING)
+            break;
+        if (FAILED(mapped_result)) {
+            slot = Pending{};
+            continue;
         }
+        depth::RawFrame depth_frame;
+        bool depth_ready = false, waiting = false;
+        if (slot.depth) {
+            for (;;) {
+                const auto result = depth_queue.poll(context, depth_frame);
+                if (result == depth::ReadbackResult::ready) {
+                    if (depth_frame.frame.sample < slot.tag.present)
+                        continue;  // depth of a colour copy that was dropped
+                    depth_ready = depth_frame.frame.sample == slot.tag.present;
+                    break;
+                }
+                if (result == depth::ReadbackResult::pending) {
+                    waiting = true;
+                    break;
+                }
+                if (result != depth::ReadbackResult::empty) {
+                    // A failed readback stays failed in the queue; start over.
+                    slot.tag.depth_state = depth_failed;
+                    depth_queue.reset();
+                    for (auto& other : pending)
+                        if (other.depth && &other != &slot) {
+                            other.depth = false;
+                            other.tag.depth_state = depth_failed;
+                        }
+                }
+                break;
+            }
+        }
+        if (waiting) {
+            context->Unmap(staging[ready], 0);
+            break;  // depth still on the GPU; try again next Present
+        }
+        publish(mapped, slot.tag, depth_ready ? &depth_frame : nullptr);
+        context->Unmap(staging[ready], 0);
+        slot = Pending{};
     }
     const auto target = std::uint32_t(present % kSlots);
     if (pending[target].used) {  // still not read back; drop the old copy
-        pending[target].used = false;
+        pending[target] = Pending{};
         std::lock_guard<std::mutex> lock(map_lock);
         if (memory)
             ++header()->dropped;
@@ -282,10 +356,31 @@ void capture(IDXGISwapChain* chain, ID3D11Device* device, ID3D11DeviceContext* c
             tag.pose[i] = last_view.pose[i];
         tag.camera_ack = last_view.ack;
     }
+    bool queued_depth = false;
+    if (want_depth) {
+        tag.depth_state = depth_missing;
+        depth::ProjectionBuffer calibration[14]{};
+        const auto count = scene ? scene->calibration(calibration, 14) : 0;
+        if (scene && scene->result == depth::SceneResult::ready && count && scene->width &&
+            scene->height && scene->texture()) {
+            const depth::Frame metadata{scene->width, scene->height, present, 0.0, {}};
+            const auto result =
+                depth_queue.enqueue(device, context, scene->texture(), metadata, calibration, count);
+            if (result == depth::ReadbackResult::ready)
+                queued_depth = true;
+            else if (result != depth::ReadbackResult::full)
+                tag.depth_state = depth_failed;
+        }
+    }
     LARGE_INTEGER now{};
     QueryPerformanceCounter(&now);
     tag.qpc = now.QuadPart;
-    pending[target] = Pending{true, tag};
+    pending[target] = Pending{true, queued_depth, tag};
+}
+
+bool wants_depth() noexcept {
+    std::lock_guard<std::mutex> lock(map_lock);
+    return memory && header()->enabled && header()->depth && has_depth_slots();
 }
 
 bool camera(double out[8]) noexcept {

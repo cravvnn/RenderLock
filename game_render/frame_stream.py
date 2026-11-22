@@ -2,7 +2,9 @@
 
 Layout matches native/include/dolly_stream.hpp. The controller process creates
 the mapping; the game's DLL opens it by the session token and publishes each
-clean Present (before Dolly's own UI) into one of three slots.
+clean Present (before Dolly's own UI) into one of three slots. With depth
+requested, each frame also carries the game's scene depth (linear camera-axis
+distance in Source units, float32, inf for the sky) from the same Present.
 """
 from __future__ import annotations
 
@@ -11,14 +13,15 @@ import struct
 import zlib
 
 MAGIC = b"DLYFRM01"
-VERSION = 1
+VERSION = 2
 SLOTS = 3
 HEADER_BYTES = 4096
 SLOT_HEADER_OFFSET = 256
 SLOT_HEADER_BYTES = 256
 HEADER = struct.Struct("<8sIIQIIQQQII160s")
-SLOT = struct.Struct("<QIIIIQQiId7dIIq")
+SLOT = struct.Struct("<QIIIIQQiId7dIIqIIIIdd")
 ENABLED_OFFSET = 24
+DEPTH_OFFSET = 28
 LATEST_OFFSET = 32
 CAMERA_OFFSET = 1024
 
@@ -26,6 +29,8 @@ CAMERA_OFFSET = 1024
 BGRA8 = {87, 91}          # B8G8R8A8_UNORM(_SRGB)
 RGBA8 = {28, 29}          # R8G8B8A8_UNORM(_SRGB)
 RGB10A2 = {24}            # R10G10B10A2_UNORM
+
+DEPTH_STATES = {0: "off", 1: "ok", 2: "missing", 3: "failed"}
 
 
 def mapping_name(token: str) -> str:
@@ -35,7 +40,8 @@ def mapping_name(token: str) -> str:
 class FrameStream:
     def __init__(self, token: str, max_width: int = 3840, max_height: int = 2160):
         self.slot_bytes = max_width * max_height * 4
-        size = HEADER_BYTES + SLOTS * self.slot_bytes
+        # Colour slots, then the same number of depth slots (float32 per pixel).
+        size = HEADER_BYTES + 2 * SLOTS * self.slot_bytes
         self._map = mmap.mmap(-1, size, tagname=mapping_name(token), access=mmap.ACCESS_WRITE)
         self._map[:HEADER_BYTES] = b"\0" * HEADER_BYTES
         self._map[:HEADER.size] = HEADER.pack(MAGIC, VERSION, SLOTS, self.slot_bytes, 0, 0, 0, 0, 0,
@@ -50,6 +56,10 @@ class FrameStream:
 
     def enable(self, on: bool = True):
         struct.pack_into("<I", self._map, ENABLED_OFFSET, 1 if on else 0)
+
+    def set_depth(self, on: bool = True):
+        """Also stream each frame's scene depth (costs a readback per frame)."""
+        struct.pack_into("<I", self._map, DEPTH_OFFSET, 1 if on else 0)
 
     def set_camera(self, pose=None):
         """Stream the game camera: (x, y, z, pitch, yaw, roll, hfov_deg, aspect) or None to release."""
@@ -83,12 +93,20 @@ class FrameStream:
             width, height, row_bytes, fmt = values[1:5]
             start = HEADER_BYTES + index * self.slot_bytes
             pixels = self._map[start:start + row_bytes * height]
+            depth_width, depth_height, depth_state = values[20:23]
+            depth = None
+            if depth_state == 1:
+                start = HEADER_BYTES + (SLOTS + index) * self.slot_bytes
+                depth = self._map[start:start + depth_width * depth_height * 4]
             if SLOT.unpack_from(self._map, base)[0] != latest:
                 continue  # overwritten while copying
             meta = dict(seq=latest, width=width, height=height, row_bytes=row_bytes, format=fmt,
                         present=values[5], view_serial=values[6], tick=values[7],
                         paused=bool(values[8]), phase=values[9], pose=list(values[10:17]),
-                        camera_ack=values[17], qpc=values[19])
+                        camera_ack=values[17], qpc=values[19],
+                        depth_state=DEPTH_STATES.get(depth_state, "failed"),
+                        depth_width=depth_width, depth_height=depth_height,
+                        depth_near=values[24], depth_far=values[25], depth=depth)
             self._seen = latest
             return meta, pixels
         return None
