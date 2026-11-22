@@ -2124,6 +2124,15 @@ def build_composite(scene, other):
         # The map catches the objects' shadows and bounce: the game frame times that ratio.
         # Deviations under a few percent are sampling noise, not shadow, so they are ignored.
         ratio = _socket(objects, "Shadow Catcher")
+        noisy = _socket(objects, "Noisy Shadow Catcher")
+        if noisy is not None:
+            # Cycles' own denoiser is guided by the map's albedo and normals, which prints the
+            # map's textures into the ratio. Denoise the raw ratio without that guidance instead.
+            clean = tree.nodes.new("CompositorNodeDenoise")
+            clean.location, clean.label = (-860, 420), "Catcher denoise"
+            clean.inputs["HDR"].default_value = True
+            links.new(noisy, clean.inputs["Image"])
+            ratio = clean.outputs["Image"]
         grey = tree.nodes.new("CompositorNodeRGBToBW")
         grey.location = (-700, 420)
         links.new(ratio, grey.inputs[0])

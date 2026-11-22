@@ -30,7 +30,7 @@ MAP_COLLECTION = "RenderLockMap"
 PROXY_COLLECTION = "RenderLockProxy"
 MANIFEST = "map-package.json"
 INDEX_VERSION = 2
-LIBRARY_VERSION = 1
+LIBRARY_VERSION = 2
 # Prepared maps keep VRF's glTF axes; RenderLock turns them +90 degrees about Z into
 # Source axes (agr.installed_map.blender_map_matrix with no scene origin or yaw).
 BASIS = ((0.0, -1.0, 0.0, 0.0), (1.0, 0.0, 0.0, 0.0), (0.0, 0.0, 1.0, 0.0), (0.0, 0.0, 0.0, 1.0))
@@ -201,7 +201,10 @@ def prepare(path, small=True):
     for obj in maps.all_objects:
         if obj.type in GEOMETRY_TYPES:
             obj.visible_camera = False
-            obj.is_shadow_catcher = False
+            # Every map piece is a shadow catcher, so in Cycles' catcher pass only the Blender
+            # objects count as shadow casters (catchers don't shadow each other there). Hidden from
+            # the camera, a catcher still lights, shadows and reflects the objects as usual.
+            obj.is_shadow_catcher = True
     swapped = 0
     full, smaller = root / "textures", root / "textures-1024"
     for image in bpy.data.images:
@@ -351,13 +354,13 @@ def set_catchers(collection, region, enable):
         if close and obj.library is not None:
             obj = obj.make_local() or obj
         if obj.library is None:
-            obj.visible_camera = close
-            obj.is_shadow_catcher = close
+            obj.visible_camera = close  # camera-visible catchers render transparent, carrying the shadow
+            obj.is_shadow_catcher = True
         catchers += close
     return catchers
 
 
-def add_light_probes(collection, region, scene):
+def add_light_probes(collection, region, scene, capture_distance=80.0, surfel_density=10, samples=1024):
     """EEVEE: bake the map's light (including the game's baked lighting on its surfaces)
     into a probe volume around the Blender objects, plus a reflection probe there."""
     import bpy
@@ -376,6 +379,11 @@ def add_light_probes(collection, region, scene):
     volume.capture_world = True
     volume.capture_indirect = True
     volume.capture_emission = True  # the map's surfaces carry the game's baked light
+    # Light reaches the objects from across the room (a lit stage, lamps, windows), not only
+    # from the walls next to them; a lighter surfel density keeps the bigger capture affordable.
+    volume.capture_distance = capture_distance
+    volume.surfel_density = surfel_density
+    volume.bake_samples = samples
     volume_obj = bpy.data.objects.new("RenderLock map light", volume)
     volume_obj.location = center
     volume_obj.scale = [s / 2 for s in size]
