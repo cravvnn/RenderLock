@@ -1705,6 +1705,11 @@ def _live_timer():
     except Exception:
         traceback.print_exc()
     try:
+        if SESSION.state == "ready" and SESSION.map_edit is not None and not SESSION.map_edit.synced:
+            blender_map_edit.sync(bpy.context.scene)
+    except Exception:
+        traceback.print_exc()
+    try:
         if SESSION.state == "ready" and SESSION.live_playing:
             tick = SESSION.replay_tick()
             for scene in bpy.data.scenes:

@@ -42,6 +42,7 @@ class MapEdit:
         self._map[:IDS_OFFSET] = b"\0" * IDS_OFFSET
         self._map[:HEADER.size] = HEADER.pack(MAGIC, VERSION, ID_CAPACITY, 0, 0, 0, 0, 0, 0, 0, 0, 0)
         self.hidden: list[int] = []
+        self.synced = False      # the scene's saved list was sent (Blender side)
         self._records = None
         self._records_serial = 0
 
@@ -96,3 +97,14 @@ def records_matching(lo, hi, box_lo, box_hi, tolerance=2.0):
     """Indices of records whose box equals [box_lo, box_hi] within `tolerance` (Source units)."""
     err = np.maximum(np.abs(lo - np.asarray(box_lo)).max(axis=1), np.abs(hi - np.asarray(box_hi)).max(axis=1))
     return np.nonzero(err <= tolerance)[0]
+
+
+def records_containing(lo, hi, point, exclude=(), margin=1.0):
+    """Indices of records whose box contains `point`, smallest box first."""
+    p = np.asarray(point, dtype=np.float32)
+    inside = np.all(lo - margin <= p, axis=1) & np.all(hi + margin >= p, axis=1)
+    if len(exclude):
+        inside[np.asarray([i for i in exclude if 0 <= i < len(lo)], dtype=np.int64)] = False
+    found = np.nonzero(inside)[0]
+    volume = np.prod(np.maximum(hi[found] - lo[found], 1.0), axis=1)
+    return found[np.argsort(volume, kind="stable")]
