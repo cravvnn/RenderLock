@@ -821,6 +821,7 @@ class RENDERLOCK_OT_game_connect(bpy.types.Operator):
             SESSION.adopt_tick_scene = context.scene.name
         context.scene.view_settings.view_transform = 'Standard'
         apply_camera_visibility(context.scene)
+        ensure_output(context.scene)
         width, height = game_window_size(context.scene)
         SESSION.start(bpy.path.abspath(props.game_path), replay, width, height, props.hide_hud)
         return {'FINISHED'}
@@ -951,8 +952,32 @@ def _redraw_views():
                 area.tag_redraw()
 
 
+_BLENDER_DEFAULT_OUTPUTS = {"/tmp\\", "/tmp/", "//", ""}
+
+
+def default_output(scene):
+    """Where renders go when the scene still has Blender's default "/tmp\\" (C:\\tmp on Windows)."""
+    name = bpy.path.clean_name(scene.name)
+    if bpy.data.filepath:
+        return f"//renders/{name}_"
+    return str(Path.home() / "Videos" / "RenderLock" / f"{name}_")
+
+
+def ensure_output(scene):
+    if scene.render.filepath.strip() in _BLENDER_DEFAULT_OUTPUTS:
+        scene.render.filepath = default_output(scene)
+
+
+def output_folder(scene):
+    path = bpy.path.abspath(scene.render.filepath)
+    return path if path.endswith(("/", "\\")) else os.path.dirname(path)
+
+
 def _render_animation():
     """Render Animation in a render window (works from timers too)."""
+    for scene in bpy.data.scenes:
+        if scene.render.engine == ENGINE:
+            ensure_output(scene)
     for window in bpy.context.window_manager.windows:
         area = next((a for a in window.screen.areas if a.type == 'VIEW_3D'), window.screen.areas[0])
         with bpy.context.temp_override(window=window, area=area):
@@ -1681,6 +1706,64 @@ class RENDERLOCK_PT_shot_settings(bpy.types.Panel):
             layout.operator(RENDERLOCK_OT_game_disconnect.bl_idname, icon='CANCEL')
 
 
+class RENDERLOCK_OT_open_output(bpy.types.Operator):
+    """Open the folder rendered frames and videos are saved to"""
+    bl_idname = "renderlock.open_output"
+    bl_label = "Open output folder"
+
+    def execute(self, context):
+        ensure_output(context.scene)
+        folder = output_folder(context.scene)
+        os.makedirs(folder, exist_ok=True)
+        os.startfile(folder)
+        return {'FINISHED'}
+
+
+class RENDERLOCK_PT_shot_output(bpy.types.Panel):
+    bl_label = "Output"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "RenderLock"
+    bl_parent_id = "RENDERLOCK_PT_shot"
+
+    @classmethod
+    def poll(cls, context):
+        return context.engine == ENGINE
+
+    def draw(self, context):
+        scene = context.scene
+        render = scene.render
+        layout = self.layout
+        layout.use_property_split = True
+        layout.use_property_decorate = False
+        col = layout.column()
+        col.prop(render, "filepath", text="Save to")
+        if render.filepath.strip() in _BLENDER_DEFAULT_OUTPUTS:
+            col.label(text=f"Will use {default_output(scene)}", icon='INFO')
+        if hasattr(render.image_settings, "media_type"):  # Blender 5: Image / Video first
+            col.prop(render.image_settings, "media_type", text="Save as")
+        if render.image_settings.file_format != 'FFMPEG':
+            col.prop(render.image_settings, "file_format", text="Format")
+        if render.image_settings.file_format == 'FFMPEG':
+            col.prop(render.ffmpeg, "format", text="Container")
+            col.prop(render.ffmpeg, "codec", text="Codec")
+            col.prop(render.ffmpeg, "constant_rate_factor", text="Quality")
+        else:
+            col.prop(render.image_settings, "color_mode", text="Color")
+            if hasattr(render.image_settings, "color_depth"):
+                col.prop(render.image_settings, "color_depth", text="Depth")
+        col.separator()
+        sub = col.column(align=True)
+        sub.prop(render, "resolution_x", text="Resolution X")
+        sub.prop(render, "resolution_y", text="Y")
+        col.prop(render, "resolution_percentage", text="Scale")
+        col.prop(render, "fps", text="Frame rate")
+        sub = col.column(align=True)
+        sub.prop(scene, "frame_start", text="Frames")
+        sub.prop(scene, "frame_end", text="End")
+        layout.operator(RENDERLOCK_OT_open_output.bl_idname, icon='FILE_FOLDER')
+
+
 def _all_panels(base=None):
     for panel in (base or bpy.types.Panel).__subclasses__():
         yield panel
@@ -1701,7 +1784,9 @@ CLASSES = (RenderLockGameSettings, RENDERLOCK_OT_game_connect, RENDERLOCK_OT_gam
            RENDERLOCK_OT_shot_capture, RENDERLOCK_OT_shot_replace, RENDERLOCK_OT_shot_delete,
            RENDERLOCK_OT_shot_goto, RENDERLOCK_OT_replay_step, RENDERLOCK_OT_replay_toggle,
            RENDERLOCK_OT_shot_play, RENDERLOCK_OT_shot_render, RENDERLOCK_OT_shot_stop,
-           RenderLockGameEngine, RENDERLOCK_PT_game, RENDERLOCK_PT_shot, RENDERLOCK_PT_shot_settings)
+           RENDERLOCK_OT_open_output,
+           RenderLockGameEngine, RENDERLOCK_PT_game, RENDERLOCK_PT_shot, RENDERLOCK_PT_shot_output,
+           RENDERLOCK_PT_shot_settings)
 
 
 def register():
