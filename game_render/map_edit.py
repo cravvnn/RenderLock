@@ -151,23 +151,32 @@ class MapEdit:
         """Give an empty scene object class the 'skip' flag; returns its id, or None.
 
         `request(command)` sends a console command to the game. The id is read from
-        the change the command makes to the class flag table the game publishes."""
+        the change the command makes to the class flag table the game publishes; a
+        class left flagged by an earlier session is cleared first so it shows up."""
         if self.spare_class is not None:
             return self.spare_class
         if not self.object_status()["class_table"]:
             return None
-        before = self.class_flags()
-        request(f"sc_setclassflags {name} 8")
-        deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            after = self.class_flags()
-            changed = [i for i in range(CLASS_SLOTS) if (after[i] & 8) and not (before[i] & 8)]
-            if len(changed) == 1:
-                self.spare_class = changed[0]
-                return changed[0]
-            time.sleep(0.05)
-        return None
 
+        def flip(value):
+            before = self.class_flags()
+            request(f"sc_setclassflags {name} {value}")
+            deadline = time.monotonic() + timeout
+            while time.monotonic() < deadline:
+                after = self.class_flags()
+                changed = [i for i in range(CLASS_SLOTS) if (after[i] & 8) != (before[i] & 8)]
+                if len(changed) == 1:
+                    return changed[0]
+                time.sleep(0.05)
+            return None
+
+        found = flip(8)
+        if found is None:            # already flagged: clear, then set again
+            found = flip(0)
+            if found is not None and flip(8) != found:
+                found = None
+        self.spare_class = found
+        return found
 
 OBJECT_LINE = re.compile(
     r"Object\s+(\d+): (0x[0-9A-Fa-f]+), class=\s*(\S+), "
@@ -191,11 +200,12 @@ def parse_objects(text):
 
 def dump_scene_objects(request, engine_log, world_name="Engine RenderingWorldSession", timeout=15.0):
     """The game world's scene objects via `sc_listworlds` / `sc_dumpworld`; the full
-    listing is read back from the engine's console log file."""
+    listing is read back from the engine's console log file. None when the listing
+    could not be read completely."""
     worlds = [m.groups() for m in WORLD_LINE.finditer(request("sc_listworlds"))]
     match = [w for w in worlds if w[2] == world_name]
     if not match:
-        return []
+        return None
     index, _address, _name, count = match[0]
     log = Path(engine_log)
     start = log.stat().st_size if log.is_file() else 0
@@ -210,21 +220,31 @@ def dump_scene_objects(request, engine_log, world_name="Engine RenderingWorldSes
             if len(objects) >= int(count):
                 break
         time.sleep(0.2)
-    return objects
+    return objects if len(objects) >= int(count) else None
+
+
+def identifies(o):
+    """An object can be told apart by its origin (world geometry sits at the world origin)."""
+    return max(abs(v) for v in o["origin"]) >= 1.0
+
+
+def same_object(o, key, tolerance=1.0):
+    """`o` (a dump entry) is the object saved as `key` = {"origin", "lo", "hi"}."""
+    return all(max(abs(a - b) for a, b in zip(o[k], key[k])) <= tolerance for k in ("origin", "lo", "hi"))
 
 
 def objects_inside(objects, box_lo, box_hi, classes=("Default",), margin=1.0):
     """Scene objects whose bounds lie inside [box_lo, box_hi]."""
     lo = np.asarray(box_lo, dtype=float) - margin
     hi = np.asarray(box_hi, dtype=float) + margin
-    return [o for o in objects if o["class"] in classes
+    return [o for o in objects if o["class"] in classes and identifies(o)
             and np.all(np.asarray(o["lo"]) >= lo) and np.all(np.asarray(o["hi"]) <= hi)]
 
 
 def objects_containing(objects, point, classes=("Default",), margin=1.0):
     """Scene objects whose bounds contain `point`, smallest first."""
     p = np.asarray(point, dtype=float)
-    hits = [o for o in objects if o["class"] in classes
+    hits = [o for o in objects if o["class"] in classes and identifies(o)
             and np.all(np.asarray(o["lo"]) - margin <= p) and np.all(np.asarray(o["hi"]) + margin >= p)]
     return sorted(hits, key=lambda o: float(np.prod(np.maximum(np.subtract(o["hi"], o["lo"]), 1.0))))
 

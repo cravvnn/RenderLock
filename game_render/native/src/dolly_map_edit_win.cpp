@@ -208,17 +208,38 @@ unsigned char* locate_class_table() noexcept {
     return class_table;
 }
 
-// Show every hidden object again (when its origin still matches).
+// Object memory can be freed by the engine at any time: every access to an
+// object goes through these guarded helpers so a stale address cannot fault.
+bool guarded_read(std::uint64_t address, void* out, std::size_t size) noexcept {
+    __try {
+        std::memcpy(out, reinterpret_cast<const void*>(address), size);
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+bool guarded_write(std::uint64_t address, std::uint8_t value) noexcept {
+    __try {
+        *reinterpret_cast<volatile std::uint8_t*>(address) = value;
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
+// The object's transform and class byte, when the object still has `origin`.
+bool read_object(std::uint64_t address, const float origin[3], std::uint8_t& cls) noexcept {
+    float transform[12];
+    return writable(address + kObjectTransform, kObjectClass + 1 - kObjectTransform) &&
+           guarded_read(address + kObjectTransform, transform, sizeof(transform)) &&
+           origin_matches(transform, origin) && guarded_read(address + kObjectClass, &cls, 1);
+}
+
+// Show every hidden object again (when it is still the object that was hidden).
 void restore_objects() noexcept {
     for (const auto& object : hidden_objects) {
-        if (!writable(object.address + kObjectTransform, 0x90))
-            continue;
-        float transform[12];
-        std::memcpy(transform, reinterpret_cast<const void*>(object.address + kObjectTransform),
-                    sizeof(transform));
-        if (origin_matches(transform, object.origin))
-            *reinterpret_cast<volatile std::uint8_t*>(object.address + kObjectClass) =
-                object.original_class;
+        std::uint8_t cls = 0;
+        if (read_object(object.address, object.origin, cls) && cls == objects_class)
+            guarded_write(object.address + kObjectClass, object.original_class);
     }
     hidden_objects.clear();
 }
@@ -241,20 +262,19 @@ void present_objects(bool controller, const std::vector<ObjectEntry>& entries, b
     if (spare >= kClassSlots || !(flags[spare] & 8))
         return; // the controller has not reserved a hidden class
     for (const auto& entry : entries) {
-        if (!writable(entry.address + kObjectTransform, 0x90))
+        // An origin at the world origin identifies nothing (world geometry and
+        // freed memory both read as zeros there).
+        if (std::fabs(entry.origin[0]) < 1.0f && std::fabs(entry.origin[1]) < 1.0f &&
+            std::fabs(entry.origin[2]) < 1.0f)
             continue;
-        float transform[12];
-        std::memcpy(transform, reinterpret_cast<const void*>(entry.address + kObjectTransform),
-                    sizeof(transform));
-        if (!origin_matches(transform, entry.origin))
+        std::uint8_t original = 0;
+        if (!read_object(entry.address, entry.origin, original))
             continue;
-        auto* cls = reinterpret_cast<volatile std::uint8_t*>(entry.address + kObjectClass);
-        const std::uint8_t original = *cls;
         if (original == spare || original >= kClassSlots || (flags[original] & 8))
             continue;
-        hidden_objects.push_back({entry.address, {entry.origin[0], entry.origin[1], entry.origin[2]},
-                                  original});
-        *cls = std::uint8_t(spare);
+        if (guarded_write(entry.address + kObjectClass, std::uint8_t(spare)))
+            hidden_objects.push_back(
+                {entry.address, {entry.origin[0], entry.origin[1], entry.origin[2]}, original});
     }
 }
 
@@ -399,7 +419,7 @@ void present(IDXGISwapChain* chain) noexcept {
             }
         }
         present_objects(controller, objects, have_objects, object_seq, spare);
-        if (have_objects) {
+        if (have_objects && class_table) {
             std::lock_guard<std::mutex> map(map_lock);
             if (memory) {
                 header()->objects_hidden = std::uint32_t(hidden_objects.size());

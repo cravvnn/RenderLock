@@ -102,3 +102,29 @@ def test_scene_dump_parsing():
     worlds = map_edit.WORLD_LINE.findall(
         "Scene World   8: 0x0000041411174980           'Engine RenderingWorldSession' [6771 objects] (dump)")
     assert worlds == [("8", "0x0000041411174980", "Engine RenderingWorldSession", "6771")]
+
+
+def test_class_already_flagged(pair):
+    editor, native = pair
+    struct.pack_into("<I", native, 108, 1)
+    native[map_edit.CLASS_FLAGS_OFFSET + 5] = 8      # left flagged by an earlier session
+    sent = []
+
+    def request(command):
+        sent.append(command)
+        native[map_edit.CLASS_FLAGS_OFFSET + 5] = 8 if command.endswith(" 8") else 0
+        return ""
+
+    assert editor.reserve_class(request, timeout=0.3) == 5
+    assert sent == ["sc_setclassflags InstancedMesh 8", "sc_setclassflags InstancedMesh 0",
+                    "sc_setclassflags InstancedMesh 8"]
+
+
+def test_object_identity():
+    lamp, world = map_edit.parse_objects(DUMP)[0], dict(map_edit.parse_objects(DUMP)[0])
+    world.update(origin=(0.0, 0.0, 0.0), lo=(-5000.0, -5000.0, -100.0), hi=(5000.0, 5000.0, 900.0))
+    assert map_edit.identifies(lamp) and not map_edit.identifies(world)
+    assert map_edit.objects_containing([lamp, world], (-904, 1630, 560)) == [lamp]
+    key = {"origin": [-904.0, 1648.0, 560.0], "lo": [-918.0, 1613.0, 521.0], "hi": [-890.0, 1648.0, 599.0]}
+    assert map_edit.same_object(lamp, key)
+    assert not map_edit.same_object(lamp, dict(key, hi=[-890.0, 1648.0, 640.0]))
