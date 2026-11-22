@@ -182,6 +182,11 @@ if(WIN32)
         target_link_libraries(player_draw_slots_tests PRIVATE minhook d3d11 d3dcompiler dxguid)
         add_test(NAME native_player_draw_slots_tests COMMAND player_draw_slots_tests)
         set_tests_properties(native_player_draw_slots_tests PROPERTIES TIMEOUT 30)
+        add_executable(map_edit_tests tests/map_edit_tests.cpp src/dolly_map_edit_win.cpp)
+        target_include_directories(map_edit_tests PRIVATE include)
+        target_link_libraries(map_edit_tests PRIVATE minhook d3d11 dxguid)
+        add_test(NAME native_map_edit_tests COMMAND map_edit_tests)
+        set_tests_properties(native_map_edit_tests PROPERTIES TIMEOUT 30)
         add_executable(depth_scene_smoke tests/depth_scene_smoke.cpp)
         target_link_libraries(depth_scene_smoke PRIVATE dolly_depth_scene d3dcompiler)
         add_test(NAME native_depth_scene_smoke COMMAND depth_scene_smoke)
@@ -202,6 +207,7 @@ if(WIN32)
         src/dolly_reshade_win.cpp
         src/dolly_media_win.cpp
         src/dolly_stream_win.cpp
+        src/dolly_map_edit_win.cpp
         src/dolly_sound_capture_win.cpp
         src/dolly_visualization_runtime_win.cpp
         vendor/imgui/imgui.cpp
