@@ -2218,6 +2218,23 @@ def objects_region(scene, margin=2.0, frames=None):
     return ([min(v[i] for v in los) - margin for i in range(3)], [max(v[i] for v in his) + margin for i in range(3)])
 
 
+def objects_outside(scene, stored):
+    """True when the Blender objects (at the current frame) reach outside a stored (lo, hi) region."""
+    collection = objects_collection(scene)
+    if collection is None or not stored:
+        return False
+    try:
+        lo, hi = json.loads(stored) if isinstance(stored, str) else stored
+    except (ValueError, TypeError):
+        return False
+    for obj in collection.all_objects:
+        if obj.type in game_map.GEOMETRY_TYPES and not obj.hide_render:
+            a, b = game_map._bounds(obj)
+            if any(a[i] < lo[i] or b[i] > hi[i] for i in range(3)):
+                return True
+    return False
+
+
 def _shot_frames(scene):
     return [scene.frame_start, (scene.frame_start + scene.frame_end) // 2, scene.frame_end, scene.frame_current]
 
@@ -2250,6 +2267,7 @@ def configure_objects_scene(scene):
     if loaded is not None:
         region = objects_region(scene, SHADOW_REACH, _shot_frames(scene)) if catch else None
         loaded["renderlock_catchers"] = game_map.set_catchers(loaded, region, catch)
+        loaded["renderlock_catch_region"] = json.dumps(region) if region else ""
     if other.world is None:
         other.world = scene.world
     build_composite(scene, other)
@@ -2656,6 +2674,13 @@ class RENDERLOCK_PT_shot_objects(bpy.types.Panel):
             row = col.row(align=True)
             row.operator(RENDERLOCK_OT_game_map_load.bl_idname, text="Reload around the shot", icon='FILE_REFRESH')
             row.operator(RENDERLOCK_OT_game_map_remove.bl_idname, text="", icon='X')
+            stored = loaded.get("renderlock_light_region" if props.objects_engine == 'BLENDER_EEVEE'
+                                else "renderlock_catch_region", "")
+            has_objects = bool(overlay_objects(scene))
+            if has_objects and (not stored or objects_outside(scene, stored)) and not busy and \
+                    (props.objects_engine == 'BLENDER_EEVEE' or props.map_shadows):
+                col.label(text="Your objects moved since the map light was updated." if stored
+                          else "Update the map light for your objects:", icon='ERROR')
             col.operator(RENDERLOCK_OT_game_map_relight.bl_idname, icon='LIGHTPROBE_VOLUME')
             if props.objects_engine == 'CYCLES':
                 col.prop(props, "map_shadows")
