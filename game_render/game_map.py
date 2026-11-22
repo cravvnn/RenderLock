@@ -100,7 +100,13 @@ def index_file(path):
 
 
 def library_file(path, small=True):
-    return cache_dir(path) / f"lighting-v{LIBRARY_VERSION}-{'1024' if small else 'full'}.blend"
+    """Per Blender version: an older Blender can't reliably link a file saved by a newer one."""
+    try:
+        import bpy
+        version = "b%d%d" % bpy.app.version[:2]
+    except ImportError:
+        version = "b"
+    return cache_dir(path) / f"lighting-v{LIBRARY_VERSION}-{'1024' if small else 'full'}-{version}.blend"
 
 
 def log_file(path):
