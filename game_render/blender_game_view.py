@@ -1866,6 +1866,39 @@ def _compatible_panels():
 
 OBJECTS_COLLECTION = "Blender objects"
 COMPOSITE_TREE = "RenderLock game + Blender objects"
+MERGE_EFFECT = "RenderLock: Blender objects"
+
+
+def merge_in_use(scene):
+    """The compositor runs the RenderLock merge (5.3 effects stack, or 5.2's node group)."""
+    effects = getattr(scene, "compositor_effects", None)
+    if effects is not None:
+        return any(e.name == MERGE_EFFECT and e.node_group and e.node_group.name.startswith(COMPOSITE_TREE)
+                   for e in effects)
+    tree = scene.compositing_node_group
+    return tree is not None and tree.name.startswith(COMPOSITE_TREE)
+
+
+def _use_merge(scene, tree):
+    effects = getattr(scene, "compositor_effects", None)
+    if effects is None:  # Blender 5.2: one compositor node group
+        scene.compositing_node_group = tree
+    else:  # Blender 5.3+: an effect in the compositor stack
+        effect = effects.get(MERGE_EFFECT) or effects.new(name=MERGE_EFFECT)
+        effect.node_group = tree
+    scene.render.use_compositing = True
+
+
+def _drop_merge(scene):
+    effects = getattr(scene, "compositor_effects", None)
+    if effects is None:
+        tree = scene.compositing_node_group
+        if tree is not None and tree.name.startswith(COMPOSITE_TREE):
+            scene.compositing_node_group = None
+    else:
+        effect = effects.get(MERGE_EFFECT)
+        if effect is not None:
+            effects.remove(effect)
 
 
 def objects_scene(scene):
@@ -1907,7 +1940,10 @@ def build_composite(scene, other):
     if tree is None:
         tree = bpy.data.node_groups.new(COMPOSITE_TREE + f" ({scene.name})", "CompositorNodeTree")
     tree.nodes.clear()
-    if not any(item.in_out == 'OUTPUT' for item in tree.interface.items_tree if item.item_type == 'SOCKET'):
+    sockets = [item for item in tree.interface.items_tree if item.item_type == 'SOCKET']
+    if not any(item.in_out == 'INPUT' for item in sockets):  # an effects stack passes an image in
+        tree.interface.new_socket("Image", in_out='INPUT', socket_type='NodeSocketColor')
+    if not any(item.in_out == 'OUTPUT' for item in sockets):
         tree.interface.new_socket("Image", in_out='OUTPUT', socket_type='NodeSocketColor')
     game = tree.nodes.new("CompositorNodeRLayers")
     game.scene, game.label, game.location = scene, "Game", (-500, 150)
@@ -1928,8 +1964,7 @@ def build_composite(scene, other):
     links.new(_socket(objects, "Depth"), merge.inputs["Depth B"])
     links.new(merge.outputs["Result"], output.inputs[0])
     links.new(merge.outputs["Result"], viewer.inputs["Image"])
-    scene.compositing_node_group = tree
-    scene.render.use_compositing = True
+    _use_merge(scene, tree)
     return tree
 
 
@@ -1982,9 +2017,9 @@ class RENDERLOCK_OT_remove_blender_objects(bpy.types.Operator):
     def execute(self, context):
         scene = context.scene
         other = objects_scene(scene)
-        tree = scene.compositing_node_group
-        if tree is not None and tree.name.startswith(COMPOSITE_TREE):
-            scene.compositing_node_group = None
+        _drop_merge(scene)
+        tree = bpy.data.node_groups.get(COMPOSITE_TREE + f" ({scene.name})")
+        if tree is not None:
             bpy.data.node_groups.remove(tree)
         if other is not None and other != scene:
             bpy.data.scenes.remove(other)
@@ -2025,8 +2060,7 @@ class RENDERLOCK_PT_shot_objects(bpy.types.Panel):
         layout.label(text=f'"{collection.name if collection else OBJECTS_COLLECTION}": {count} objects',
                      icon='OUTLINER_COLLECTION')
         layout.label(text="Shown in renders (F12 / Render shot), lit by EEVEE.", icon='INFO')
-        tree = scene.compositing_node_group
-        if tree is None or not tree.name.startswith(COMPOSITE_TREE):
+        if not merge_in_use(scene):
             layout.label(text="The compositor no longer uses the RenderLock merge.", icon='ERROR')
             layout.operator(RENDERLOCK_OT_add_blender_objects.bl_idname, text="Restore the merge", icon='FILE_REFRESH')
         layout.operator(RENDERLOCK_OT_remove_blender_objects.bl_idname, icon='X')
