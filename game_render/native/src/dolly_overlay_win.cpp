@@ -14,6 +14,7 @@
 #include "dolly_player_capture.hpp"
 #include "dolly_media.hpp"
 #include "dolly_stream.hpp"
+#include "dolly_map_edit.hpp"
 #include "dolly_reshade.hpp"
 #include "MinHook.h"
 #include <d3d11_1.h>
@@ -910,6 +911,8 @@ HRESULT STDMETHODCALLTYPE present_hook(IDXGISwapChain* chain, UINT interval, UIN
     }
     HRESULT result;
     {
+        if (!(flags & DXGI_PRESENT_TEST))
+            map_edit::present(chain);
         DiagnosticTimer timer(diagnostic_present_last_us, diagnostic_present_max_us,
                               diagnostic_present_active_ms);
         result = original_present(chain, interval, flags);
@@ -1048,6 +1051,7 @@ bool discover_swapchain_methods(void*& present, void*& resize) noexcept {
         // This only records resource metadata; no capture or game draw is armed.
         if (player_capture::layout_hook_requested())
             player_capture::install_layout_hook(dummy_device);
+        map_edit::install(dummy_device);
     }
     release(dummy_context);
     release(dummy_device);

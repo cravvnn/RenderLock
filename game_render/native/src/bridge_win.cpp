@@ -36,6 +36,7 @@
 #include "dolly_visualization_runtime.hpp"
 #include "dolly_media.hpp"
 #include "dolly_stream.hpp"
+#include "dolly_map_edit.hpp"
 #include "dolly_video.hpp"
 #include "dolly_confetti.hpp"
 #include "dolly_prop_runtime.hpp"
@@ -1823,6 +1824,7 @@ static DWORD WINAPI worker(void*) {
                 visualization_worker_tick(nullptr, false);
                 media_worker_tick(nullptr, false);
                 dolly::stream::worker_tick(nullptr, false);
+                dolly::map_edit::worker_tick(nullptr, false);
                 video::shutdown();
                 break;
             }
@@ -1830,6 +1832,7 @@ static DWORD WINAPI worker(void*) {
             visualization_worker_tick(mapping.c_str(), now_seconds() - gHeartbeatTime.load() < 2.0);
             media_worker_tick(mapping.c_str(), now_seconds() - gHeartbeatTime.load() < 2.0);
             dolly::stream::worker_tick(mapping.c_str(), now_seconds() - gHeartbeatTime.load() < 2.0);
+            dolly::map_edit::worker_tick(mapping.c_str(), now_seconds() - gHeartbeatTime.load() < 2.0);
             const auto diagnostic_now = GetTickCount64();
             if (!sound_capture_available() && sound_attempts < 8 &&
                 diagnostic_now >= next_sound_probe) {
@@ -2117,6 +2120,7 @@ static DWORD WINAPI worker(void*) {
         visualization_worker_tick(nullptr, false);
         media_worker_tick(nullptr, false);
         dolly::stream::worker_tick(nullptr, false);
+        dolly::map_edit::worker_tick(nullptr, false);
         gWorkerError = 99;
         if (!gHookInstalled)
             startup_status(

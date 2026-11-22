@@ -59,6 +59,10 @@ viewport_layer = importlib.reload(viewport_layer)
 # Blender 5.3+: the engine writes the game's depth into the viewport, so Blender objects
 # drawn live over the game frame are hidden by game walls (and so are Blender's overlays).
 WRITES_VIEWPORT_DEPTH = "bl_write_viewport_depth" in bpy.types.RenderEngine.bl_rna.properties
+import map_edit  # noqa: E402
+import blender_map_edit  # noqa: E402
+map_edit = importlib.reload(map_edit)
+blender_map_edit = importlib.reload(blender_map_edit)
 
 ENGINE = "RENDERLOCK_GAME"
 UNIT = 0.0254          # metres per Source unit (RenderLock scene coordinates)
@@ -174,6 +178,7 @@ class Session:
     def __init__(self):
         self.controller = None
         self.stream = None
+        self.map_edit = None         # hides static map pieces in the game
         self.state = "idle"          # idle, starting, ready, failed, closed
         self.message = ""
         self.lock = threading.Lock()
@@ -234,6 +239,7 @@ class Session:
             self.stream = frame_stream.FrameStream(bridge.token, 3840, 2160)
             self.stream.enable(True)
             self.live_depth = False  # a new stream starts without depth
+            self.map_edit = map_edit.MapEdit(bridge.token)
             if hide_hud:
                 self.set_hud(False)
             if self.solid_heroes:
@@ -265,12 +271,15 @@ class Session:
         try:
             if self.stream:
                 self.stream.close()
+            if self.map_edit:
+                self.map_edit.close()
             if self.controller:
                 self.controller.close()
         except Exception:
             traceback.print_exc()
         finally:
             self.stream = None
+            self.map_edit = None
             self.controller = None
             self.state, self.message = "closed", "Disconnected."
         threading.Thread(target=_close_game, args=(pid,), daemon=True).start()
@@ -1799,6 +1808,11 @@ def _live_timer():
     except Exception:
         traceback.print_exc()
     try:
+        if SESSION.state == "ready" and SESSION.map_edit is not None and not SESSION.map_edit.synced:
+            blender_map_edit.sync(bpy.context.scene)
+    except Exception:
+        traceback.print_exc()
+    try:
         if SESSION.state == "ready" and SESSION.live_playing:
             tick = SESSION.replay_tick()
             for scene in bpy.data.scenes:
@@ -2710,7 +2724,7 @@ CLASSES = (RenderLockGameSettings, RENDERLOCK_OT_game_connect, RENDERLOCK_OT_gam
            RENDERLOCK_OT_cycles_use_gpu,
            RenderLockGameEngine, RENDERLOCK_PT_game, RENDERLOCK_PT_shot, RENDERLOCK_PT_shot_output,
            RENDERLOCK_PT_shot_objects,
-           RENDERLOCK_PT_shot_settings)
+           RENDERLOCK_PT_shot_settings) + blender_map_edit.CLASSES
 
 
 def register():
