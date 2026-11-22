@@ -328,38 +328,7 @@ class Session:
             with controller._op_lock:
                 controller.stop()
                 controller._stop_event.clear()
-                # The previous settle leaves a one-shot pause goal armed; resuming
-                # clears it, otherwise the next forward jump stops at the old tick.
-                controller._request("demo_resume; demo_pause", allow_error=True)
-                timings["release"] = time.monotonic() - began
-                offset = getattr(self, "seek_offset", None)
-                if offset is not None and int(tick) > 2 * TICK_RATE:
-                    # The replay's demo/server clock offset is fixed; the settle seeks
-                    # two seconds early itself, so skip the jump onto the tick.
-                    controller._last_seek_details = {"target_tick": int(tick), "actual_tick": int(tick),
-                                                     "verified": True, "game_tick_offset": offset}
-                    positioned, start = {"tick": int(tick)}, 0.0
-                else:
-                    positioned = controller._seek(project, 0)
-                    start = controller._seek_shot_time(project, 0, positioned)
-                    if controller._last_seek_details.get("verified"):
-                        self.seek_offset = controller._last_seek_details.get("game_tick_offset")
-                timings["seek"] = time.monotonic() - began
-                controller._warmup_timescale = 4  # 2 s of replay settles in about half a second
-                try:
-                    warmed = controller._warm_replay_for_shot(project, start, positioned, calibrate=False)
-                    if not warmed.get("replay_warmup", {}).get("performed"):
-                        raise RuntimeError(warmed.get("replay_warmup", {}).get("reason", "not settled"))
-                except Exception:
-                    traceback.print_exc()
-                    # Fall back to the plain exact jump (also refreshes the clock offset).
-                    self.seek_offset = None
-                    positioned = controller._seek(project, 0)
-                    start = controller._seek_shot_time(project, 0, positioned)
-                finally:
-                    controller._warmup_timescale = 1
-                    controller._request("demo_timescale 1", allow_error=True)
-                timings["settle"] = time.monotonic() - began
+                positioned, start = self._quick_settle(project, int(tick), timings, began)
                 controller.enter_native_flight(pose=project.evaluate(start))
                 timings["camera"] = time.monotonic() - began
         finally:
@@ -368,6 +337,47 @@ class Session:
             print("[RenderLock game] jump timings", self.last_timings, flush=True)
         self.live_playing = False
         self.current_tick = int(tick)
+
+    def _quick_settle(self, project, tick, timings, began):
+        """Seek, settle two seconds of replay at 4x speed, pause exactly on `tick`. No reload.
+
+        Caller holds the controller's op lock. Returns Dolly's (positioned, start).
+        """
+        controller = self.controller
+        # The previous settle leaves a one-shot pause goal armed; resuming
+        # clears it, otherwise the next forward jump stops at the old tick.
+        controller._request("demo_resume; demo_pause", allow_error=True)
+        timings["release"] = time.monotonic() - began
+        offset = getattr(self, "seek_offset", None)
+        if offset is not None and tick > 2 * TICK_RATE:
+            # The replay's demo/server clock offset is fixed; the settle seeks
+            # two seconds early itself, so skip the jump onto the tick.
+            controller._last_seek_details = {"target_tick": tick, "actual_tick": tick,
+                                             "verified": True, "game_tick_offset": offset}
+            positioned, start = {"tick": tick}, 0.0
+        else:
+            positioned = controller._seek(project, 0)
+            start = controller._seek_shot_time(project, 0, positioned)
+            if controller._last_seek_details.get("verified"):
+                self.seek_offset = controller._last_seek_details.get("game_tick_offset")
+        timings["seek"] = time.monotonic() - began
+        controller._warmup_timescale = 4  # 2 s of replay settles in about half a second
+        try:
+            warmed = controller._warm_replay_for_shot(project, start, positioned, calibrate=False)
+            if not warmed.get("replay_warmup", {}).get("performed"):
+                raise RuntimeError(warmed.get("replay_warmup", {}).get("reason", "not settled"))
+            positioned = warmed
+        except Exception:
+            traceback.print_exc()
+            # Fall back to the plain exact jump (also refreshes the clock offset).
+            self.seek_offset = None
+            positioned = controller._seek(project, 0)
+            start = controller._seek_shot_time(project, 0, positioned)
+        finally:
+            controller._warmup_timescale = 1
+            controller._request("demo_timescale 1", allow_error=True)
+        timings["settle"] = time.monotonic() - began
+        return positioned, start
 
     def toggle_live(self):
         """Dolly's pause/resume: the replay runs in real time while the Blender camera stays live."""
@@ -433,10 +443,12 @@ class Session:
         self.held_frame = captured[frames]
         self.current_tick = int(tick)
 
-    def capture_range(self, start_tick, fps, poses, cancelled=lambda: False, timeout=600.0):
+    def capture_range(self, start_tick, fps, poses, cancelled=lambda: False, timeout=600.0, clean=True):
         """Play the camera animation once, fixed-step, and keep each frame's game image.
 
         poses[k] is the camera for shot time k / fps. Returns {k: (meta, array)}.
+        clean=True reloads the replay once first (no leftover effects, for final
+        renders); clean=False only settles from where the replay is (previews).
         """
         from dolly.path import Project
         keys = [_keyframe(k / fps, pose) for k, pose in enumerate(poses)]
@@ -448,13 +460,32 @@ class Session:
         self.seeking = True
         self.capturing = True
         self.preview = None
+        timings, began = {}, time.monotonic()
+        self.last_timings = timings
         try:
             self.stream.set_camera(None)
-            controller.prepare_native_recording(project)
+            if clean:
+                controller.prepare_native_recording(project)
+                warmed, controller._recording_warmup = controller._recording_warmup, None
+                controller._recording_replay = None
+            else:
+                with controller._op_lock:
+                    controller.stop()
+                    controller._stop_event.clear()
+                    positioned, start = self._quick_settle(project, int(start_tick), timings, began)
+                warmed = {"project": project.to_dict(), "start": start, "positioned": positioned}
+            timings["prepared"] = round(time.monotonic() - began, 2)
             controller.set_export_timing(fps)
             while self.poll_frame() is not None:
                 pass  # drain frames from before the shot
-            controller.play(project, speed=1, rate=60, frozen=False)
+            # Dolly's play() reloads the replay again unless a recorder holds a
+            # prepared take; hand it the replay positioned above instead.
+            controller._prepare_native_shot_replay = lambda *_args, **_kw: warmed
+            try:
+                controller.play(project, speed=1, rate=60, frozen=False)
+            finally:
+                del controller._prepare_native_shot_replay
+            timings["started"] = round(time.monotonic() - began, 2)
             deadline = time.monotonic() + timeout
             last = len(poses) - 1
             while time.monotonic() < deadline and not cancelled():
@@ -474,6 +505,8 @@ class Session:
                 if len(frames) == len(poses):
                     break
         finally:
+            timings["captured"] = round(time.monotonic() - began, 2)
+            print("[RenderLock game] bake timings", timings, flush=True)
             try:
                 controller.clear_export_timing()
                 controller.stop()
@@ -553,12 +586,29 @@ def cache_folder(scene):
 _BAKE_INFO = {}
 
 
-def baked_frame(scene, frame):
-    """A frame captured by "Bake game frames" for this scene's replay range, if any."""
-    folder = cache_folder(scene)
-    path = folder / f"frame_{frame:06d}.npy"
-    info = folder / "bake.json"
-    if not path.is_file() or not info.is_file():
+def shot_signature(scene):
+    """Changes whenever anything that the baked frames depend on changes."""
+    import hashlib
+    import json
+    camera = scene.camera
+    props = scene.renderlock_game
+    parts = [props.start_tick, bpy.path.abspath(props.replay_path), scene.frame_start, scene.frame_end,
+             scene.render.fps, scene.render.fps_base, render_size(scene), camera.name if camera else None]
+    if camera is not None:
+        curves = [fc for target in (camera, camera.data) for fc in _fcurves(target)]
+        for fc in curves:
+            parts.append([fc.data_path, fc.array_index] + [
+                [round(v, 5) for v in (*k.co, *k.handle_left, *k.handle_right)] + [k.interpolation]
+                for k in fc.keyframe_points])
+        parts.append([round(v, 5) for row in camera.matrix_world for v in row] + [round(camera.data.lens, 4)]
+                     if not curves else None)
+    return hashlib.sha1(json.dumps(parts, default=str).encode()).hexdigest()[:16]
+
+
+def bake_info(scene):
+    """bake.json of this scene's replay range, or None."""
+    info = cache_folder(scene) / "bake.json"
+    if not info.is_file():
         return None
     import json
     stamp = (str(info), info.stat().st_mtime_ns)
@@ -568,8 +618,23 @@ def baked_frame(scene, frame):
     if bake.get("start_tick") != scene.renderlock_game.start_tick or bake.get("replay") != \
             bpy.path.abspath(scene.renderlock_game.replay_path):
         return None
+    return bake
+
+
+def bake_is_current(scene, clean=False):
+    bake = bake_info(scene)
+    return bool(bake and bake.get("signature") == shot_signature(scene)
+                and bake.get("captured") == bake.get("requested") and (bake.get("clean") or not clean))
+
+
+def baked_frame(scene, frame, clean=False):
+    """A frame captured by a bake of this scene's replay range, if any."""
+    bake = bake_info(scene)
+    if bake is None or (clean and not bake.get("clean")):
+        return None
+    path = cache_folder(scene) / f"frame_{frame:06d}.npy"
     meta = bake["frames"].get(str(frame))
-    return (meta, np.load(path)) if meta else None
+    return (meta, np.load(path)) if meta and path.is_file() else None
 
 
 def to_display_image(array):
@@ -646,7 +711,7 @@ class RenderLockGameEngine(bpy.types.RenderEngine):
                 self.report({'ERROR'}, "Connect to the game and set a scene camera first.")
                 return
             frame = scene.frame_current
-            got = baked_frame(scene, frame)
+            got = baked_frame(scene, frame, clean=True) if bake_is_current(scene, clean=True) else None
             if got is None:
                 # Exact single frame: settle the replay on this tick, then wait for
                 # consecutive game frames that show the scene camera.
@@ -757,6 +822,10 @@ class RENDERLOCK_OT_game_bake(bpy.types.Operator):
     bl_label = "Bake game frames"
 
     play_after: bpy.props.BoolProperty(default=False, options={'SKIP_SAVE'})
+    render_after: bpy.props.BoolProperty(default=False, options={'SKIP_SAVE'})
+    clean: bpy.props.BoolProperty(name="Reload replay first", default=True, options={'SKIP_SAVE'},
+                                  description="Reload the replay once before baking, so no effects linger "
+                                              "from earlier playback (final renders)")
     wait: bpy.props.BoolProperty(default=False, options={'SKIP_SAVE'},
                                  description="Block until done (scripts)")
 
@@ -772,6 +841,9 @@ class RENDERLOCK_OT_game_bake(bpy.types.Operator):
         if not 18 <= fps <= 120:
             self.report({'ERROR'}, "Use a scene frame rate from 18 to 120 fps for game frames.")
             return {'CANCELLED'}
+        camera = shot_camera(scene)
+        if camera is not None:
+            fix_shot_rotation(camera)
         original = scene.frame_current
         frames = list(range(scene.frame_start, scene.frame_end + 1))
         poses, previous_yaw = [], None
@@ -789,8 +861,10 @@ class RENDERLOCK_OT_game_bake(bpy.types.Operator):
             SESSION.suppress_follow -= 1
         props = scene.renderlock_game
         SESSION.bake = dict(state="baking", done=0, total=len(frames), error=None, scene=scene.name,
-                            play_after=self.play_after, cancel=False)
-        args = (props.start_tick, fps, poses, frames, cache_folder(scene), bpy.path.abspath(props.replay_path))
+                            play_after=self.play_after, render_after=self.render_after, cancel=False,
+                            began=time.monotonic())
+        args = (props.start_tick, fps, poses, frames, cache_folder(scene), bpy.path.abspath(props.replay_path),
+                self.clean, shot_signature(scene))
         if self.wait:
             _bake_worker(*args)
             return _bake_finished(self) or {'FINISHED'}
@@ -801,11 +875,11 @@ class RENDERLOCK_OT_game_bake(bpy.types.Operator):
         return {'FINISHED'}
 
 
-def _bake_worker(start_tick, fps, poses, frames, folder, replay):
+def _bake_worker(start_tick, fps, poses, frames, folder, replay, clean, signature):
     import json
     bake = SESSION.bake
     try:
-        captured = SESSION.capture_range(start_tick, fps, poses, cancelled=lambda: bake["cancel"])
+        captured = SESSION.capture_range(start_tick, fps, poses, cancelled=lambda: bake["cancel"], clean=clean)
         if bake["cancel"]:
             bake["state"] = "cancelled"
             return
@@ -818,7 +892,7 @@ def _bake_worker(start_tick, fps, poses, frames, folder, replay):
             np.save(folder / f"frame_{frames[k]:06d}.npy", np.ascontiguousarray(array))
             metas[str(frames[k])] = {key: meta[key] for key in ("tick", "phase", "present", "seq", "width", "height")}
         (folder / "bake.json").write_text(json.dumps(dict(
-            start_tick=start_tick, replay=replay, fps=fps,
+            start_tick=start_tick, replay=replay, fps=fps, clean=bool(clean), signature=signature,
             requested=len(frames), captured=len(metas), frames=metas), indent=1))
         bake.update(state="done", done=len(metas), folder=str(folder))
     except Exception as error:
@@ -837,11 +911,14 @@ def _bake_finished(operator=None):
         SESSION.message = "Bake cancelled."
     else:
         missing = bake["total"] - bake["done"]
-        SESSION.message = (f"Baked {bake['done']} of {bake['total']} frames"
+        SESSION.message = (f"Baked {bake['done']} of {bake['total']} frames in "
+                           f"{time.monotonic() - bake['began']:.0f} s"
                            + (f" ({missing} missing)" if missing else "") + ".")
         scene = bpy.data.scenes.get(bake["scene"])
         if bake["play_after"] and scene is not None:
             _play_timeline(scene)
+        if bake["render_after"] and scene is not None and not missing:
+            _render_animation()
     if operator is not None:
         operator.report({'WARNING'} if bake["state"] != "done" else {'INFO'}, SESSION.message)
     _redraw_views()
@@ -862,6 +939,15 @@ def _redraw_views():
         for area in window.screen.areas:
             if area.type in ('VIEW_3D', 'PROPERTIES'):
                 area.tag_redraw()
+
+
+def _render_animation():
+    """Render Animation in a render window (works from timers too)."""
+    for window in bpy.context.window_manager.windows:
+        area = next((a for a in window.screen.areas if a.type == 'VIEW_3D'), window.screen.areas[0])
+        with bpy.context.temp_override(window=window, area=area):
+            bpy.ops.render.render('INVOKE_DEFAULT', animation=True)
+        return
 
 
 def _play_timeline(scene):
@@ -1082,21 +1168,61 @@ def free_view_at(context, matrix, lens):
     space.lens = 2.0 * lens  # the viewport uses a 72 mm sensor at its default zoom
 
 
+def upright_euler(rotation, reference):
+    """XYZ euler for a 3x3 rotation, on the branch without a half-turn of roll.
+
+    Every orientation has two XYZ eulers, (x, y, z) and (x+pi, pi-y, z+pi).
+    Blender interpolates each angle separately, so two keys on different
+    branches make the camera roll over in between.
+    """
+    from mathutils import Euler
+    a = rotation.to_euler('XYZ')
+    b = Euler((a.x + math.pi, math.pi - a.y, a.z + math.pi), 'XYZ')
+    best = min((a, b), key=lambda e: abs(math.remainder(e.y, 2 * math.pi)))
+    best.make_compatible(reference)
+    return best
+
+
+def fix_shot_rotation(camera):
+    """Move every rotation key onto the upright branch, continuous with the key before it."""
+    from mathutils import Euler
+    curves = {fc.array_index: fc for fc in _fcurves(camera) if fc.data_path == "rotation_euler"}
+    if len(curves) != 3:
+        return
+    frames = sorted({round(k.co.x, 3) for fc in curves.values() for k in fc.keyframe_points})
+    previous = None
+    for frame in frames:
+        current = Euler([curves[i].evaluate(frame) for i in range(3)], 'XYZ')
+        fixed = upright_euler(current.to_matrix(), previous or current)
+        for i in range(3):
+            delta = fixed[i] - current[i]
+            if abs(delta) < 1e-6:
+                continue
+            for key in curves[i].keyframe_points:
+                if abs(key.co.x - frame) < 1e-3:
+                    key.co.y += delta
+                    key.handle_left.y += delta
+                    key.handle_right.y += delta
+        previous = fixed
+    for fc in curves.values():
+        fc.update()
+
+
 def capture_view(context, frame, view):
     """Key the shot camera at `frame` with `view` (from current_view)."""
     scene = context.scene
     camera = shot_camera(scene, create=True)
     if view is not None:
         matrix, lens = view
-        reference = camera.rotation_euler.copy()
-        camera.matrix_world = matrix
-        camera.rotation_euler.make_compatible(reference)
+        camera.location = matrix.translation
+        camera.rotation_euler = upright_euler(matrix.to_3x3().normalized(), camera.rotation_euler.copy())
         camera.data.sensor_fit = 'HORIZONTAL'
         camera.data.sensor_width = 36.0
         camera.data.lens = lens
     camera.keyframe_insert("location", frame=frame)
     camera.keyframe_insert("rotation_euler", frame=frame)
     camera.data.keyframe_insert("lens", frame=frame)
+    fix_shot_rotation(camera)
     if view is not None:
         free_view_at(context, *view)  # keep flying from here, like Dolly's free camera
     return camera
@@ -1264,8 +1390,31 @@ class RENDERLOCK_OT_shot_play(_ShotOperator, bpy.types.Operator):
             return {'CANCELLED'}
         if _animation_playing(context):
             bpy.ops.screen.animation_cancel(restore_frame=False)
-        # Bakes in the background, then plays the baked frames in the viewport.
-        return bpy.ops.renderlock.game_bake(play_after=True)
+        fix_shot_rotation(shot_camera(scene))
+        if bake_is_current(scene):
+            _play_timeline(scene)  # nothing changed since the last bake
+            return {'FINISHED'}
+        # Preview: settle from where the replay is (no reload), bake in the
+        # background, then play the baked frames in the viewport.
+        return bpy.ops.renderlock.game_bake(play_after=True, clean=False)
+
+
+class RENDERLOCK_OT_shot_render(_ShotOperator, bpy.types.Operator):
+    """Render shot: bake the shot from a freshly loaded replay (if needed), then Render Animation"""
+    bl_idname = "renderlock.shot_render"
+    bl_label = "Render shot"
+
+    def execute(self, context):
+        scene = context.scene
+        if SESSION.live_playing:
+            SESSION.toggle_live()
+        if _animation_playing(context):
+            bpy.ops.screen.animation_cancel(restore_frame=False)
+        fix_shot_rotation(shot_camera(scene))
+        if bake_is_current(scene, clean=True):
+            _render_animation()
+            return {'FINISHED'}
+        return bpy.ops.renderlock.game_bake(render_after=True, clean=True)
 
 
 class RENDERLOCK_OT_shot_stop(_ShotOperator, bpy.types.Operator):
@@ -1449,7 +1598,11 @@ class RENDERLOCK_PT_shot(bpy.types.Panel):
         row.scale_y = 1.3
         row.operator(RENDERLOCK_OT_shot_play.bl_idname, text="Play shot" + _key("play_path"), icon='PLAY')
         row.operator(RENDERLOCK_OT_shot_stop.bl_idname, text="", icon='SNAP_FACE')
-        layout.operator("render.render", text="Render shot", icon='RENDER_ANIMATION').animation = True
+        layout.operator(RENDERLOCK_OT_shot_render.bl_idname, text="Render shot", icon='RENDER_ANIMATION')
+        if keys:
+            ready = ("render-ready" if bake_is_current(scene, clean=True)
+                     else "preview baked" if bake_is_current(scene) else "not baked yet")
+            layout.label(text=f"Shot frames: {ready}", icon='CHECKMARK' if ready != "not baked yet" else 'DOT')
         if SESSION.message:
             layout.label(text=SESSION.message[:80])
 
@@ -1495,7 +1648,7 @@ CLASSES = (RenderLockGameSettings, RENDERLOCK_OT_game_connect, RENDERLOCK_OT_gam
            RENDERLOCK_OT_game_bake, RENDERLOCK_OT_game_start_here,
            RENDERLOCK_OT_shot_capture, RENDERLOCK_OT_shot_replace, RENDERLOCK_OT_shot_delete,
            RENDERLOCK_OT_shot_goto, RENDERLOCK_OT_replay_step, RENDERLOCK_OT_replay_toggle,
-           RENDERLOCK_OT_shot_play, RENDERLOCK_OT_shot_stop,
+           RENDERLOCK_OT_shot_play, RENDERLOCK_OT_shot_render, RENDERLOCK_OT_shot_stop,
            RenderLockGameEngine, RENDERLOCK_PT_game, RENDERLOCK_PT_shot, RENDERLOCK_PT_shot_settings)
 
 
