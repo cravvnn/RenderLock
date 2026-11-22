@@ -1862,13 +1862,184 @@ def _compatible_panels():
             if isinstance(getattr(p, "COMPAT_ENGINES", None), set) and "BLENDER_RENDER" in p.COMPAT_ENGINES]
 
 
+# --------------------------------------------------------------------------- Blender objects
+
+OBJECTS_COLLECTION = "Blender objects"
+COMPOSITE_TREE = "RenderLock game + Blender objects"
+
+
+def objects_scene(scene):
+    """The EEVEE scene that renders this scene's Blender objects, if it was set up."""
+    return bpy.data.scenes.get(scene.get("renderlock_objects_scene", "")) if scene else None
+
+
+def objects_collection(scene):
+    return bpy.data.collections.get(scene.get("renderlock_objects_collection", OBJECTS_COLLECTION))
+
+
+def sync_objects_scene(scene):
+    """Match the objects scene to the game scene: size, frame rate, range, camera."""
+    other = objects_scene(scene)
+    if other is None or other == scene:
+        return
+    for attr in ("resolution_x", "resolution_y", "resolution_percentage", "pixel_aspect_x", "pixel_aspect_y",
+                 "fps", "fps_base"):
+        if getattr(other.render, attr) != getattr(scene.render, attr):
+            setattr(other.render, attr, getattr(scene.render, attr))
+    other.frame_start, other.frame_end = scene.frame_start, scene.frame_end
+    if other.frame_current != scene.frame_current:
+        other.frame_set(scene.frame_current)
+    camera = scene.camera
+    if camera is not None:
+        if camera.name not in other.collection.all_objects:
+            other.collection.objects.link(camera)
+        if other.camera != camera:
+            other.camera = camera
+
+
+def _socket(node, name):
+    return node.outputs.get(name) or node.inputs.get(name)
+
+
+def build_composite(scene, other):
+    """Compositor: game frame and Blender objects merged by depth (Z Combine, soft edges)."""
+    tree = bpy.data.node_groups.get(COMPOSITE_TREE + f" ({scene.name})")
+    if tree is None:
+        tree = bpy.data.node_groups.new(COMPOSITE_TREE + f" ({scene.name})", "CompositorNodeTree")
+    tree.nodes.clear()
+    if not any(item.in_out == 'OUTPUT' for item in tree.interface.items_tree if item.item_type == 'SOCKET'):
+        tree.interface.new_socket("Image", in_out='OUTPUT', socket_type='NodeSocketColor')
+    game = tree.nodes.new("CompositorNodeRLayers")
+    game.scene, game.label, game.location = scene, "Game", (-500, 150)
+    objects = tree.nodes.new("CompositorNodeRLayers")
+    objects.scene, objects.label, objects.location = other, "Blender objects", (-500, -200)
+    merge = tree.nodes.new("CompositorNodeZcombine")
+    merge.location = (-100, 0)
+    merge.inputs["Use Alpha"].default_value = True
+    merge.inputs["Anti-Alias"].default_value = True
+    output = tree.nodes.new("NodeGroupOutput")
+    output.location = (200, 50)
+    viewer = tree.nodes.new("CompositorNodeViewer")
+    viewer.location = (200, -120)
+    links = tree.links
+    links.new(_socket(game, "Image"), merge.inputs["A"])
+    links.new(_socket(game, "Depth"), merge.inputs["Depth A"])
+    links.new(_socket(objects, "Image"), merge.inputs["B"])
+    links.new(_socket(objects, "Depth"), merge.inputs["Depth B"])
+    links.new(merge.outputs["Result"], output.inputs[0])
+    links.new(merge.outputs["Result"], viewer.inputs["Image"])
+    scene.compositing_node_group = tree
+    scene.render.use_compositing = True
+    return tree
+
+
+class RENDERLOCK_OT_add_blender_objects(bpy.types.Operator):
+    """Render objects from the "Blender objects" collection with EEVEE and place them in the game
+    frame by depth: game walls and heroes hide them, and they hide what is behind them"""
+    bl_idname = "renderlock.add_blender_objects"
+    bl_label = "Add Blender objects"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        scene = context.scene
+        collection = objects_collection(scene)
+        if collection is None:
+            collection = bpy.data.collections.new(OBJECTS_COLLECTION)
+        if collection.name not in scene.collection.children:
+            scene.collection.children.link(collection)
+        other = objects_scene(scene)
+        if other is None:
+            other = bpy.data.scenes.new(f"{scene.name} · Blender objects")
+            other.world = scene.world
+        other.render.engine = 'BLENDER_EEVEE'
+        other.render.film_transparent = True
+        for layer in other.view_layers:
+            layer.use_pass_z = True
+        if collection.name not in other.collection.children:
+            other.collection.children.link(collection)
+        scene["renderlock_objects_scene"] = other.name
+        scene["renderlock_objects_collection"] = collection.name
+        for layer in scene.view_layers:
+            layer.use_pass_z = True  # game depth is what the objects are merged against
+        sync_objects_scene(scene)
+        build_composite(scene, other)
+        # New objects go into the collection.
+        layer_collection = next((c for c in context.view_layer.layer_collection.children
+                                 if c.collection == collection), None)
+        if layer_collection is not None:
+            context.view_layer.active_layer_collection = layer_collection
+        self.report({'INFO'}, f'Add objects to the "{collection.name}" collection; they appear in '
+                              "renders (F12 / Render shot), merged with the game by depth.")
+        return {'FINISHED'}
+
+
+class RENDERLOCK_OT_remove_blender_objects(bpy.types.Operator):
+    """Stop merging Blender objects into renders (the collection and its objects are kept)"""
+    bl_idname = "renderlock.remove_blender_objects"
+    bl_label = "Stop adding Blender objects"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        scene = context.scene
+        other = objects_scene(scene)
+        tree = scene.compositing_node_group
+        if tree is not None and tree.name.startswith(COMPOSITE_TREE):
+            scene.compositing_node_group = None
+            bpy.data.node_groups.remove(tree)
+        if other is not None and other != scene:
+            bpy.data.scenes.remove(other)
+        scene.pop("renderlock_objects_scene", None)
+        return {'FINISHED'}
+
+
+@bpy.app.handlers.persistent
+def _objects_render_init(*_args):
+    for scene in bpy.data.scenes:
+        if scene.render.engine == ENGINE and objects_scene(scene) is not None:
+            sync_objects_scene(scene)
+
+
+class RENDERLOCK_PT_shot_objects(bpy.types.Panel):
+    bl_label = "Blender objects"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "RenderLock"
+    bl_parent_id = "RENDERLOCK_PT_shot"
+    bl_options = {'DEFAULT_CLOSED'}
+
+    @classmethod
+    def poll(cls, context):
+        return context.engine == ENGINE
+
+    def draw(self, context):
+        scene = context.scene
+        layout = self.layout
+        other = objects_scene(scene)
+        if other is None:
+            layout.label(text="Put your own objects into the game shot.")
+            layout.label(text="Game walls and heroes hide them by depth.")
+            layout.operator(RENDERLOCK_OT_add_blender_objects.bl_idname, icon='ADD')
+            return
+        collection = objects_collection(scene)
+        count = len(collection.all_objects) if collection else 0
+        layout.label(text=f'"{collection.name if collection else OBJECTS_COLLECTION}": {count} objects',
+                     icon='OUTLINER_COLLECTION')
+        layout.label(text="Shown in renders (F12 / Render shot), lit by EEVEE.", icon='INFO')
+        tree = scene.compositing_node_group
+        if tree is None or not tree.name.startswith(COMPOSITE_TREE):
+            layout.label(text="The compositor no longer uses the RenderLock merge.", icon='ERROR')
+            layout.operator(RENDERLOCK_OT_add_blender_objects.bl_idname, text="Restore the merge", icon='FILE_REFRESH')
+        layout.operator(RENDERLOCK_OT_remove_blender_objects.bl_idname, icon='X')
+
+
 CLASSES = (RenderLockGameSettings, RENDERLOCK_OT_game_connect, RENDERLOCK_OT_game_disconnect,
            RENDERLOCK_OT_game_bake, RENDERLOCK_OT_game_start_here,
            RENDERLOCK_OT_shot_capture, RENDERLOCK_OT_shot_replace, RENDERLOCK_OT_shot_delete,
            RENDERLOCK_OT_shot_goto, RENDERLOCK_OT_replay_step, RENDERLOCK_OT_replay_toggle,
            RENDERLOCK_OT_shot_play, RENDERLOCK_OT_shot_render, RENDERLOCK_OT_shot_stop,
-           RENDERLOCK_OT_open_output,
+           RENDERLOCK_OT_open_output, RENDERLOCK_OT_add_blender_objects, RENDERLOCK_OT_remove_blender_objects,
            RenderLockGameEngine, RENDERLOCK_PT_game, RENDERLOCK_PT_shot, RENDERLOCK_PT_shot_output,
+           RENDERLOCK_PT_shot_objects,
            RENDERLOCK_PT_shot_settings)
 
 
@@ -1881,6 +2052,9 @@ def register():
     for handler in [h for h in bpy.app.handlers.frame_change_post if h.__name__ == "_frame_changed"]:
         bpy.app.handlers.frame_change_post.remove(handler)  # an earlier run of this script
     bpy.app.handlers.frame_change_post.append(_frame_changed)
+    for handler in [h for h in bpy.app.handlers.render_init if h.__name__ == "_objects_render_init"]:
+        bpy.app.handlers.render_init.remove(handler)
+    bpy.app.handlers.render_init.append(_objects_render_init)
     register_keymap()
     if not bpy.app.timers.is_registered(_live_timer):
         bpy.app.timers.register(_live_timer, first_interval=0.5, persistent=True)
@@ -1892,6 +2066,8 @@ def unregister():
         bpy.app.timers.unregister(_live_timer)
     for handler in [h for h in bpy.app.handlers.frame_change_post if h.__name__ == "_frame_changed"]:
         bpy.app.handlers.frame_change_post.remove(handler)
+    for handler in [h for h in bpy.app.handlers.render_init if h.__name__ == "_objects_render_init"]:
+        bpy.app.handlers.render_init.remove(handler)
     for panel in _compatible_panels():
         panel.COMPAT_ENGINES.discard(ENGINE)
     del bpy.types.Scene.renderlock_game
