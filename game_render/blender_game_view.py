@@ -996,6 +996,11 @@ class RenderLockGameSettings(bpy.types.PropertyGroup):
         name="Match the map's look", default=True, update=lambda self, context: configure_objects_scene(_scene_of(self)),
         description="Show objects with the view transform the map's lights were tuned for (AgX), "
                     "like the rest of RenderLock's map scenes")
+    map_light_strength: bpy.props.FloatProperty(
+        name="Map light strength", default=2.0, min=0.0, soft_max=4.0, max=20.0,
+        update=lambda self, context: _on_light_strength(_scene_of(self)),
+        description="EEVEE: how strongly the game map's light reaches your objects. EEVEE's light probes catch "
+                    "about half of what Cycles does indoors; 2.0 matched Cycles in tests")
     map_guide: bpy.props.BoolProperty(
         name="Map guide in viewport", default=True, update=lambda self, context: _on_map_guide(_scene_of(self)),
         description="Show the map's light proxy around the shot in Solid view for placing objects. "
@@ -2296,6 +2301,12 @@ def configure_objects_scene(scene):
     build_composite(scene, other)
 
 
+def _on_light_strength(scene):
+    loaded = map_collection(objects_scene(scene)) if scene else None
+    if loaded is not None:
+        game_map.set_light_strength(loaded, scene.renderlock_game.map_light_strength)
+
+
 def _on_map_guide(scene):
     guide = guide_collection(scene)
     if guide is not None:
@@ -2427,7 +2438,7 @@ def _bake_map_light(job):
         return
     _gpu_busy(True)
     try:
-        game_map.add_light_probes(loaded, region, other)
+        game_map.add_light_probes(loaded, region, other, strength=scene.renderlock_game.map_light_strength)
     finally:
         _gpu_busy(False)
     loaded["renderlock_light_region"] = json.dumps(region)
@@ -2708,6 +2719,7 @@ class RENDERLOCK_PT_shot_objects(bpy.types.Panel):
             if props.objects_engine == 'CYCLES':
                 col.prop(props, "map_shadows")
             else:
+                col.prop(props, "map_light_strength")
                 col.label(text="Shadows on the game need Cycles.", icon='INFO')
             col.prop(props, "match_look")
             col.prop(props, "map_guide")
