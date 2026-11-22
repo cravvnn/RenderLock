@@ -360,8 +360,8 @@ def set_catchers(collection, region, enable):
     return catchers
 
 
-def add_light_probes(collection, region, scene, capture_distance=80.0, surfel_density=10, samples=1024, clamp=None,
-                     strength=2.0, capture_world=True):
+def add_light_probes(collection, region, scene, capture_distance=80.0, surfel_density=10, samples=1024, clamp=0.5,
+                     strength=3.5, capture_world=False):
     """EEVEE: bake the map's light (including the game's baked lighting on its surfaces)
     into a probe volume around the Blender objects, plus a reflection probe there."""
     import bpy
@@ -378,7 +378,10 @@ def add_light_probes(collection, region, scene, capture_distance=80.0, surfel_de
     volume.resolution_x, volume.resolution_y, volume.resolution_z = (
         max(2, min(32, math.ceil(size[i] / spacing) + 1)) for i in range(3))
     volume.capture_world = capture_world
-    volume.capture_indirect = True
+    # The map's surfaces already emit the game's finished lighting, bounces included, so the bake
+    # only gathers that emission. The clamp matters most: a few tiny, extremely bright emitters
+    # otherwise tint objects blue once enough samples find them (measured against Cycles).
+    volume.capture_indirect = False
     volume.capture_emission = True  # the map's surfaces carry the game's baked light
     # Light reaches the objects from across the room (a lit stage, lamps, windows), not only
     # from the walls next to them; a lighter surfel density keeps the bigger capture affordable.

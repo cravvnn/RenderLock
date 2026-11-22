@@ -999,10 +999,10 @@ class RenderLockGameSettings(bpy.types.PropertyGroup):
         description="Show objects with the view transform the map's lights were tuned for (AgX), "
                     "like the rest of RenderLock's map scenes")
     map_light_strength: bpy.props.FloatProperty(
-        name="Map light strength", default=2.0, min=0.0, soft_max=4.0, max=20.0,
+        name="Map light strength", default=3.5, min=0.0, soft_max=6.0, max=20.0,
         update=lambda self, context: _on_light_strength(_scene_of(self)),
         description="EEVEE: how strongly the game map's light reaches your objects. EEVEE's light probes catch "
-                    "about half of what Cycles does indoors; 2.0 matched Cycles in tests")
+                    "less of it than Cycles does; 3.5 came closest to Cycles in tests")
     map_guide: bpy.props.BoolProperty(
         name="Map guide in viewport", default=True, update=lambda self, context: _on_map_guide(_scene_of(self)),
         description="Show the map's light proxy around the shot in Solid view for placing objects. "
