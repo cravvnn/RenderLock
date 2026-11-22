@@ -36,6 +36,7 @@ def test_round_trip():
         count = struct.unpack_from("<I", native, map_edit.HIDE_COUNT_OFFSET)[0]
         ids = np.frombuffer(native, np.uint32, count, map_edit.IDS_OFFSET).tolist()
         assert ids == [0, 2]
+        assert struct.unpack_from("<Q", native, map_edit.HIDE_HASH_OFFSET)[0] == 0xABCDEF
         assert not editor.applied(seq)
         struct.pack_into("<Q", native, 32, seq)         # native applied it
         assert editor.applied(seq)

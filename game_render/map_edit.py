@@ -25,7 +25,8 @@ RECORDS_OFFSET = IDS_OFFSET + 4 * ID_CAPACITY
 RECORD_BYTES = 32
 MAX_RECORDS = 262144
 SIZE = RECORDS_OFFSET + RECORD_BYTES * MAX_RECORDS
-HEADER = struct.Struct("<8sIIQIIQIIQQI")
+HEADER = struct.Struct("<8sIIQIIQIIQQIIQ")
+HIDE_HASH_OFFSET = 72
 HIDE_SEQ_OFFSET = 16
 HIDE_COUNT_OFFSET = 24
 STATUS = struct.Struct("<QIIQQI")  # at offset 32
@@ -40,7 +41,7 @@ class MapEdit:
     def __init__(self, token: str):
         self._map = mmap.mmap(-1, SIZE, tagname=mapping_name(token), access=mmap.ACCESS_WRITE)
         self._map[:IDS_OFFSET] = b"\0" * IDS_OFFSET
-        self._map[:HEADER.size] = HEADER.pack(MAGIC, VERSION, ID_CAPACITY, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+        self._map[:HEADER.size] = HEADER.pack(MAGIC, VERSION, ID_CAPACITY, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
         self.hidden: list[int] = []
         self.synced = False      # the scene's saved list was sent (Blender side)
         self._records = None
@@ -69,8 +70,12 @@ class MapEdit:
             self._records_serial = state["serial"]
         return self._records
 
-    def set_hidden(self, ids):
-        """Replace the hide list (record indices); an empty list shows the stock map."""
+    def set_hidden(self, ids, table_hash=None):
+        """Replace the hide list (record indices); an empty list shows the stock map.
+
+        `table_hash` (hex, as status()["hash"]) names the table the indices belong to;
+        it defaults to the table the game shows now. The game ignores a list made
+        for another table."""
         ids = sorted({int(i) for i in ids if 0 <= int(i) < 2**32})[:ID_CAPACITY]
         seq = struct.unpack_from("<Q", self._map, HIDE_SEQ_OFFSET)[0]
         seq = seq + 1 if seq % 2 == 0 else seq + 2          # odd: writing
@@ -78,6 +83,8 @@ class MapEdit:
         if ids:
             self._map[IDS_OFFSET:IDS_OFFSET + 4 * len(ids)] = np.asarray(ids, dtype=np.uint32).tobytes()
         struct.pack_into("<I", self._map, HIDE_COUNT_OFFSET, len(ids))
+        digest = table_hash if table_hash is not None else self.status()["hash"]
+        struct.pack_into("<Q", self._map, HIDE_HASH_OFFSET, int(digest, 16))
         struct.pack_into("<Q", self._map, HIDE_SEQ_OFFSET, seq + 1)
         self.hidden = ids
         return seq + 1

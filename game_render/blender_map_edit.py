@@ -69,7 +69,7 @@ def sync(scene):
         return
     digest, ids = saved(scene)
     if ids and digest == state["hash"]:
-        editor.set_hidden(ids)
+        editor.set_hidden(ids, digest)
     editor.synced = True
 
 
@@ -92,7 +92,7 @@ def _editor(operator, scene):
 
 def _apply(operator, scene, editor, digest, ids, added):
     save(scene, digest, ids)
-    editor.set_hidden(ids)
+    editor.set_hidden(ids, digest)
     editor.synced = True
     operator.report({'INFO'}, f"Hid {added} game map pieces ({len(set(ids))} hidden in all).")
 

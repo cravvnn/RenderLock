@@ -203,6 +203,7 @@ void present(IDXGISwapChain* chain) noexcept {
         std::uint64_t seq = 0;
         bool have_list = false;
         bool controller = false;
+        std::uint64_t list_hash = 0;
         {
             std::lock_guard<std::mutex> lock(map_lock);
             controller = memory != nullptr;
@@ -210,6 +211,7 @@ void present(IDXGISwapChain* chain) noexcept {
                 auto* head = header();
                 seq = head->hide_seq;
                 MemoryBarrier();
+                list_hash = head->hide_hash;
                 if (!(seq & 1)) {
                     const std::uint32_t count = head->hide_count;
                     if (count <= head->id_capacity) {
@@ -238,6 +240,8 @@ void present(IDXGISwapChain* chain) noexcept {
             ids.clear();
             seq = ~0ull;
         }
+        if (have_list && list_hash && list_hash != table_hash)
+            ids.clear(); // made for another map build: show the stock map
         std::vector<unsigned char> data = table_original;
         const auto records = std::uint32_t(data.size() / kRecordBytes);
         hidden = hide_records(data.data(), records, ids.data(), std::uint32_t(ids.size()));

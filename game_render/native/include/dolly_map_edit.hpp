@@ -17,6 +17,8 @@
 //   48  u64 records_serial native: bumps when the game creates a new table
 //   56  u64 records_hash  native: FNV-1a 64 of the original table
 //   64  u32 records_capacity
+//   72  u64 hide_hash     controller: records_hash the list was made for
+//                         (0 = any); a list for another table is not applied
 //   4096                  hide ids (u32 record indices), id_capacity entries
 //   kRecordsOffset        the original records, 32 bytes each:
 //                         float min[3], u32 aggregate, float max[3], u32 first
@@ -48,8 +50,11 @@ struct Header {
     std::uint64_t records_serial;
     std::uint64_t records_hash;
     std::uint32_t records_capacity;
+    std::uint32_t reserved2;
+    std::uint64_t hide_hash;
 };
 #pragma pack(pop)
+static_assert(sizeof(Header) == 80, "mapedit header layout");
 
 // The fragment bounds table has a distinctive shape: 32-byte structured
 // records, GPU-writable, created with data, boxes ordered (min <= max) and the
