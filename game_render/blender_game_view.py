@@ -695,7 +695,13 @@ class RenderLockGameEngine(bpy.types.RenderEngine):
             image.update()
             self._texture = gpu.texture.from_image(image)
         if self._texture is not None:
-            draw_texture_2d(self._texture, (0, 0), region.width, region.height)
+            x, y, w, h = 0, 0, region.width, region.height
+            if self._shown and self._shown[0] == "baked":
+                # Shot playback: the whole baked frame, letterboxed, never stretched.
+                aspect = self._texture.width / max(1, self._texture.height)
+                w, h = (region.width, region.width / aspect) if region.width / max(1, region.height) < aspect                     else (region.height * aspect, region.height)
+                x, y = (region.width - w) / 2, (region.height - h) / 2
+            draw_texture_2d(self._texture, (x, y), w, h)
         if SESSION.state in ("starting", "ready"):
             self.tag_redraw()
 
@@ -1511,8 +1517,35 @@ def _key(action):
     return f"  ({label})" if label else ""
 
 
+_HIDDEN_OVERLAYS = {}
+
+
+def _shot_overlays(playing):
+    """Hide viewport overlays (camera outlines, gizmos, grid) while a shot plays back; restore after."""
+    for window in bpy.context.window_manager.windows:
+        for area in window.screen.areas:
+            if area.type != 'VIEW_3D':
+                continue
+            space = area.spaces.active
+            key = space.as_pointer()
+            if playing and space.shading.type == 'RENDERED' and key not in _HIDDEN_OVERLAYS:
+                _HIDDEN_OVERLAYS[key] = (space.overlay.show_overlays, space.show_gizmo)
+                space.overlay.show_overlays = False
+                space.show_gizmo = False
+            elif not playing and key in _HIDDEN_OVERLAYS:
+                space.overlay.show_overlays, space.show_gizmo = _HIDDEN_OVERLAYS.pop(key)
+    if not playing:
+        _HIDDEN_OVERLAYS.clear()
+
+
 def _live_timer():
     """While replay time runs, the timeline follows the game (Dolly's P)."""
+    try:
+        playing = _animation_playing() and any(s.render.engine == ENGINE for s in bpy.data.scenes)
+        if playing or _HIDDEN_OVERLAYS:
+            _shot_overlays(playing)
+    except Exception:
+        traceback.print_exc()
     try:
         if SESSION.state == "ready" and SESSION.live_playing:
             tick = SESSION.replay_tick()
