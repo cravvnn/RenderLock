@@ -60,6 +60,26 @@ int main() {
     check(std::memcmp(edited.data() + 3 * 32 + 12, data.data() + 3 * 32 + 12, 4) == 0, "aggregate word kept");
     check(std::memcmp(edited.data() + 3 * 32 + 28, data.data() + 3 * 32 + 28, 4) == 0, "first word kept");
     check(std::memcmp(edited.data() + 4 * 32, data.data() + 4 * 32, 32) == 0, "others untouched");
+    // Class flag table: two agreeing visibility tests resolve to one table.
+    std::vector<unsigned char> code(256, 0x90);
+    const unsigned char test_a[] = {0x0f, 0xb6, 0x87, 0xb3, 0x00, 0x00, 0x00, 0x48, 0x8d, 0x0d,
+                                    0, 0, 0, 0, 0xf6, 0x04, 0x08, 0x08};
+    auto place = [&](std::size_t at, std::int32_t target_rva, std::uint64_t code_rva) {
+        std::memcpy(code.data() + at, test_a, sizeof(test_a));
+        const std::int32_t rel = std::int32_t(target_rva - std::int64_t(code_rva + at + 3 + 11));
+        std::memcpy(code.data() + at + 3 + 7, &rel, 4);
+    };
+    place(10, 0x9000, 0x1000);
+    check(find_class_table(code.data(), 0x1000, code.size()) == 0, "one match is not enough");
+    place(100, 0x9000, 0x1000);
+    check(find_class_table(code.data(), 0x1000, code.size()) == 0x9000, "two agreeing matches");
+    place(180, 0x9100, 0x1000);
+    check(find_class_table(code.data(), 0x1000, code.size()) == 0, "disagreeing matches");
+    const float transform[12] = {1, 0, 0, -904, 0, 1, 0, 1648, 0, 0, 1, 560};
+    const float near_origin[3] = {-904.2f, 1648.0f, 560.3f};
+    const float far_origin[3] = {-904.0f, 1650.0f, 560.0f};
+    check(origin_matches(transform, near_origin), "origin within half a unit");
+    check(!origin_matches(transform, far_origin), "origin elsewhere");
     if (!failures)
         std::puts("map edit tests passed");
     return failures ? 1 : 0;

@@ -5,6 +5,7 @@
 #include <dxgi.h>
 #include <MinHook.h>
 
+#include <cmath>
 #include <cstring>
 #include <mutex>
 #include <string>
@@ -55,15 +56,52 @@ std::uint32_t hide_records(unsigned char* table, std::uint32_t records,
     return hidden;
 }
 
+std::uint64_t find_class_table(const unsigned char* code, std::uint64_t code_rva,
+                               std::uint64_t code_size) noexcept {
+    // ... B3 00 00 00 | 48 8D 0D rel32 | F6 04 08 08
+    static constexpr unsigned char head[] = {0xb3, 0x00, 0x00, 0x00, 0x48, 0x8d, 0x0d};
+    static constexpr unsigned char tail[] = {0xf6, 0x04, 0x08, 0x08};
+    if (!code || code_size < 15)
+        return 0;
+    std::uint64_t found = 0;
+    unsigned matches = 0;
+    for (std::uint64_t i = 0; i + 15 <= code_size; ++i) {
+        if (std::memcmp(code + i, head, sizeof(head)) != 0 ||
+            std::memcmp(code + i + 11, tail, sizeof(tail)) != 0)
+            continue;
+        std::int32_t rel = 0;
+        std::memcpy(&rel, code + i + 7, 4);
+        const std::uint64_t target = code_rva + i + 11 + std::int64_t(rel);
+        if (matches && target != found)
+            return 0; // disagreeing matches: not the layout this was written for
+        found = target;
+        ++matches;
+    }
+    return matches >= 2 ? found : 0;
+}
+
+bool origin_matches(const float transform[12], const float origin[3]) noexcept {
+    for (int k = 0; k < 3; ++k) {
+        const float value = transform[4 * k + 3];
+        if (!(std::fabs(value - origin[k]) <= 0.5f))
+            return false;
+    }
+    return true;
+}
+
 namespace {
 using CreateBufferFn = HRESULT(STDMETHODCALLTYPE*)(ID3D11Device*, const D3D11_BUFFER_DESC*,
                                                    const D3D11_SUBRESOURCE_DATA*, ID3D11Buffer**);
 CreateBufferFn original_create = nullptr;
 
 // The newest bounds table the game created, and its original contents.
+struct Table {
+    ID3D11Buffer* buffer = nullptr;
+    std::vector<unsigned char> original;
+};
 std::mutex table_lock;
-ID3D11Buffer* table_buffer = nullptr;
-std::vector<unsigned char> table_original;
+Table table;
+std::vector<Table> retired; // replaced tables still to be restored and released
 std::uint64_t table_serial = 0;
 std::uint64_t table_hash = 0;
 
@@ -78,15 +116,29 @@ ULONGLONG next_open{};
 std::uint64_t shown_seq = ~0ull;
 std::uint64_t shown_serial = 0;
 bool shown_edits = false;
+struct HiddenObject {
+    std::uint64_t address;
+    float origin[3];
+    std::uint8_t original_class;
+};
+std::vector<HiddenObject> hidden_objects;
+std::uint64_t objects_seq = ~0ull;
+std::uint32_t objects_class = ~0u;
+unsigned char* class_table = nullptr;
+bool class_table_searched = false;
 
-std::uint64_t fnv(const unsigned char* data, std::size_t size) noexcept {
+// Fingerprint of a table: FNV-1a over every record's box and last word. The
+// per-aggregate word (bytes 12-15) differs between game launches, so it is left
+// out; boxes and order are fixed for a map build.
+std::uint64_t fingerprint(const unsigned char* data, std::size_t size) noexcept {
     std::uint64_t h = 1469598103934665603ull;
     for (std::size_t i = 0; i < size; ++i)
-        h = (h ^ data[i]) * 1099511628211ull;
+        if (i % kRecordBytes < 12 || i % kRecordBytes >= 16)
+            h = (h ^ data[i]) * 1099511628211ull;
     return h;
 }
 
-Header* header() noexcept { return reinterpret_cast<Header*>(memory); }
+volatile Header* header() noexcept { return reinterpret_cast<volatile Header*>(memory); }
 
 void close_mapping() noexcept {
     if (memory)
@@ -108,19 +160,122 @@ HRESULT STDMETHODCALLTYPE create_buffer(ID3D11Device* device, const D3D11_BUFFER
                                desc->BindFlags, desc->MiscFlags, init->pSysMem))
             return hr;
         const auto* bytes = static_cast<const unsigned char*>(init->pSysMem);
-        std::vector<unsigned char> copy(bytes, bytes + desc->ByteWidth);
-        const auto hash = fnv(copy.data(), copy.size());
-        (*out)->AddRef();
+        Table made{*out, std::vector<unsigned char>(bytes, bytes + desc->ByteWidth)};
+        const auto hash = fingerprint(made.original.data(), made.original.size());
+        made.buffer->AddRef();
         std::lock_guard<std::mutex> lock(table_lock);
-        if (table_buffer)
-            table_buffer->Release();
-        table_buffer = *out;
-        table_original.swap(copy);
+        if (table.buffer)
+            retired.push_back(std::move(table)); // restored on the render thread
+        table = std::move(made);
         table_hash = hash;
         ++table_serial;
     } catch (...) {
     }
     return hr;
+}
+
+// Readable and writable committed memory for [address, address + size).
+bool writable(std::uint64_t address, std::size_t size) noexcept {
+    MEMORY_BASIC_INFORMATION info{};
+    if (!address || !VirtualQuery(reinterpret_cast<void*>(address), &info, sizeof(info)))
+        return false;
+    const auto end = reinterpret_cast<std::uint64_t>(info.BaseAddress) + info.RegionSize;
+    constexpr DWORD rw = PAGE_READWRITE | PAGE_EXECUTE_READWRITE;
+    return info.State == MEM_COMMIT && (info.Protect & rw) && !(info.Protect & PAGE_GUARD) &&
+           address + size <= end;
+}
+
+unsigned char* locate_class_table() noexcept {
+    if (class_table_searched)
+        return class_table;
+    class_table_searched = true;
+    const auto module = reinterpret_cast<const unsigned char*>(GetModuleHandleW(L"scenesystem.dll"));
+    if (!module)
+        return nullptr;
+    const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(module);
+    const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS64*>(module + dos->e_lfanew);
+    const auto* section = IMAGE_FIRST_SECTION(nt);
+    for (unsigned i = 0; i < nt->FileHeader.NumberOfSections; ++i, ++section) {
+        if (std::memcmp(section->Name, ".text", 5) != 0)
+            continue;
+        const auto rva = find_class_table(module + section->VirtualAddress, section->VirtualAddress,
+                                          section->Misc.VirtualSize);
+        if (rva && rva + kClassSlots <= nt->OptionalHeader.SizeOfImage &&
+            writable(reinterpret_cast<std::uint64_t>(module) + rva, kClassSlots))
+            class_table = const_cast<unsigned char*>(module + rva);
+        break;
+    }
+    return class_table;
+}
+
+// Show every hidden object again (when its origin still matches).
+void restore_objects() noexcept {
+    for (const auto& object : hidden_objects) {
+        if (!writable(object.address + kObjectTransform, 0x90))
+            continue;
+        float transform[12];
+        std::memcpy(transform, reinterpret_cast<const void*>(object.address + kObjectTransform),
+                    sizeof(transform));
+        if (origin_matches(transform, object.origin))
+            *reinterpret_cast<volatile std::uint8_t*>(object.address + kObjectClass) =
+                object.original_class;
+    }
+    hidden_objects.clear();
+}
+
+void present_objects(bool controller, const std::vector<ObjectEntry>& entries, bool have_list,
+                     std::uint64_t seq, std::uint32_t spare) noexcept {
+    auto* flags = locate_class_table();
+    if (!flags)
+        return;
+    if (!controller) {
+        restore_objects();
+        objects_seq = ~0ull;
+        return;
+    }
+    if (!have_list || (seq == objects_seq && spare == objects_class))
+        return;
+    restore_objects();
+    objects_seq = seq;
+    objects_class = spare;
+    if (spare >= kClassSlots || !(flags[spare] & 8))
+        return; // the controller has not reserved a hidden class
+    for (const auto& entry : entries) {
+        if (!writable(entry.address + kObjectTransform, 0x90))
+            continue;
+        float transform[12];
+        std::memcpy(transform, reinterpret_cast<const void*>(entry.address + kObjectTransform),
+                    sizeof(transform));
+        if (!origin_matches(transform, entry.origin))
+            continue;
+        auto* cls = reinterpret_cast<volatile std::uint8_t*>(entry.address + kObjectClass);
+        const std::uint8_t original = *cls;
+        if (original == spare || original >= kClassSlots || (flags[original] & 8))
+            continue;
+        hidden_objects.push_back({entry.address, {entry.origin[0], entry.origin[1], entry.origin[2]},
+                                  original});
+        *cls = std::uint8_t(spare);
+    }
+}
+
+void upload(IDXGISwapChain* chain, ID3D11Buffer* buffer, const void* data) noexcept {
+    ID3D11Device* device = nullptr;
+    if (FAILED(chain->GetDevice(__uuidof(ID3D11Device), reinterpret_cast<void**>(&device))) ||
+        !device)
+        return;
+    ID3D11Device* owner = nullptr;
+    buffer->GetDevice(&owner);
+    if (owner == device) {
+        ID3D11DeviceContext* context = nullptr;
+        device->GetImmediateContext(&context);
+        if (context) {
+            context->UpdateSubresource(buffer, 0, nullptr, data, 0, 0);
+            context->Release();
+        }
+    }
+    if (owner)
+        owner->Release();
+    device->Release();
 }
 } // namespace
 
@@ -130,12 +285,12 @@ bool install(ID3D11Device* device) noexcept {
     const auto init = MH_Initialize();
     if (init != MH_OK && init != MH_ERROR_ALREADY_INITIALIZED)
         return false;
-    auto** table = *reinterpret_cast<void***>(device);
-    if (MH_CreateHook(table[3], reinterpret_cast<void*>(&create_buffer),
+    auto** vtable = *reinterpret_cast<void***>(device);
+    if (MH_CreateHook(vtable[3], reinterpret_cast<void*>(&create_buffer),
                       reinterpret_cast<void**>(&original_create)) != MH_OK)
         return false;
-    if (MH_EnableHook(table[3]) != MH_OK) {
-        MH_RemoveHook(table[3]);
+    if (MH_EnableHook(vtable[3]) != MH_OK) {
+        MH_RemoveHook(vtable[3]);
         original_create = nullptr;
         return false;
     }
@@ -166,10 +321,9 @@ void worker_tick(const wchar_t* session_name, bool connected) noexcept {
                 return;
             }
             mapping_bytes = info.RegionSize;
-            const auto* head = header();
             if (mapping_bytes < kRecordsOffset ||
-                std::memcmp(head->magic, kMagic, sizeof(kMagic)) != 0 ||
-                head->version != kVersion || head->id_capacity > kIdCapacity) {
+                std::memcmp(const_cast<const char*>(header()->magic), kMagic, sizeof(kMagic)) != 0 ||
+                header()->version != kVersion) {
                 close_mapping();
                 return;
             }
@@ -177,14 +331,14 @@ void worker_tick(const wchar_t* session_name, bool connected) noexcept {
                 std::uint32_t((mapping_bytes - kRecordsOffset) / kRecordBytes);
         }
         // Publish the game's table once per new table.
-        std::lock_guard<std::mutex> table(table_lock);
+        std::lock_guard<std::mutex> tables(table_lock);
         auto* head = header();
         if (!table_serial || head->records_serial == table_serial)
             return;
-        const std::uint64_t records = table_original.size() / kRecordBytes;
+        const std::uint64_t records = table.original.size() / kRecordBytes;
         head->record_count = 0;
-        if (records <= head->records_capacity) {
-            std::memcpy(memory + kRecordsOffset, table_original.data(), table_original.size());
+        if (records <= (mapping_bytes - kRecordsOffset) / kRecordBytes) {
+            std::memcpy(memory + kRecordsOffset, table.original.data(), table.original.size());
             head->records_hash = table_hash;
             head->record_count = std::uint32_t(records);
         }
@@ -200,68 +354,98 @@ void present(IDXGISwapChain* chain) noexcept {
         return;
     try {
         std::vector<std::uint32_t> ids;
-        std::uint64_t seq = 0;
-        bool have_list = false;
-        bool controller = false;
-        std::uint64_t list_hash = 0;
+        std::vector<ObjectEntry> objects;
+        std::uint64_t seq = 0, list_hash = 0, object_seq = 0;
+        std::uint32_t spare = ~0u;
+        bool have_list = false, have_objects = false, controller = false;
         {
             std::lock_guard<std::mutex> lock(map_lock);
             controller = memory != nullptr;
             if (memory) {
                 auto* head = header();
+                if (class_table)
+                    std::memcpy(const_cast<std::uint8_t*>(head->class_flags), class_table,
+                                kClassSlots);
+                head->class_table = class_table ? 1 : 0;
                 seq = head->hide_seq;
                 MemoryBarrier();
-                list_hash = head->hide_hash;
-                if (!(seq & 1)) {
+                // Fragment list: copy only when it changed (or the table did).
+                if (!(seq & 1) && (seq != shown_seq || table_serial != shown_serial)) {
+                    list_hash = head->hide_hash;
                     const std::uint32_t count = head->hide_count;
-                    if (count <= head->id_capacity) {
+                    if (count <= kIdCapacity) {
                         const auto* source =
                             reinterpret_cast<const std::uint32_t*>(memory + kIdsOffset);
                         ids.assign(source, source + count);
                         MemoryBarrier();
                         have_list = head->hide_seq == seq;
                     }
+                } else if (!(seq & 1)) {
+                    have_list = true; // unchanged
+                }
+                object_seq = head->object_seq;
+                MemoryBarrier();
+                spare = head->spare_class;
+                if (!(object_seq & 1)) {
+                    const std::uint32_t count = head->object_count;
+                    if (count <= kObjectCapacity) {
+                        const auto* source =
+                            reinterpret_cast<const ObjectEntry*>(memory + kObjectsOffset);
+                        objects.assign(source, source + count);
+                        MemoryBarrier();
+                        have_objects = head->object_seq == object_seq;
+                    }
                 }
             }
         }
-        std::uint32_t hidden = 0;
-        {
-        std::lock_guard<std::mutex> lock(table_lock);
-        if (!table_buffer)
-            return;
-        if (have_list) {
-            if (seq == shown_seq && table_serial == shown_serial)
-                return;
-        } else {
-            // No controller (or it is mid-write): restore the stock map once
-            // when the controller went away; otherwise keep what is shown.
-            if (controller || !shown_edits || table_serial != shown_serial)
-                return;
-            ids.clear();
-            seq = ~0ull;
+        present_objects(controller, objects, have_objects, object_seq, spare);
+        if (have_objects) {
+            std::lock_guard<std::mutex> map(map_lock);
+            if (memory) {
+                header()->objects_hidden = std::uint32_t(hidden_objects.size());
+                MemoryBarrier();
+                header()->object_applied_seq = object_seq;
+            }
         }
-        if (have_list && list_hash && list_hash != table_hash)
-            ids.clear(); // made for another map build: show the stock map
-        std::vector<unsigned char> data = table_original;
-        const auto records = std::uint32_t(data.size() / kRecordBytes);
-        hidden = hide_records(data.data(), records, ids.data(), std::uint32_t(ids.size()));
-        ID3D11Device* device = nullptr;
-        if (FAILED(chain->GetDevice(__uuidof(ID3D11Device), reinterpret_cast<void**>(&device))) ||
-            !device)
-            return;
-        ID3D11DeviceContext* context = nullptr;
-        device->GetImmediateContext(&context);
-        device->Release();
-        if (!context)
-            return;
-        context->UpdateSubresource(table_buffer, 0, nullptr, data.data(), 0, 0);
-        context->Release();
-        shown_seq = seq;
-        shown_serial = table_serial;
-        shown_edits = hidden != 0;
+
+        std::uint32_t hidden = 0;
+        bool applied = false;
+        {
+            std::lock_guard<std::mutex> lock(table_lock);
+            for (auto& old : retired) {
+                if (shown_edits)
+                    upload(chain, old.buffer, old.original.data());
+                old.buffer->Release();
+            }
+            retired.clear();
+            if (!table.buffer)
+                return;
+            const bool changed = table_serial != shown_serial;
+            if (have_list) {
+                if (seq == shown_seq && !changed)
+                    return;
+            } else {
+                // No controller (or it is mid-write): restore the stock map
+                // once the controller went away; otherwise keep what is shown.
+                if (controller || (!shown_edits && !changed))
+                    return;
+                ids.clear();
+                seq = ~0ull;
+            }
+            if (list_hash != table_hash)
+                ids.clear(); // made for another table (or no table): stock map
+            std::vector<unsigned char> data = table.original;
+            const auto records = std::uint32_t(data.size() / kRecordBytes);
+            hidden = hide_records(data.data(), records, ids.data(), std::uint32_t(ids.size()));
+            if (hidden || shown_edits)
+                upload(chain, table.buffer, data.data());
+            shown_seq = seq;
+            shown_serial = table_serial;
+            shown_edits = hidden != 0;
+            applied = have_list;
         }
         std::lock_guard<std::mutex> map(map_lock);
-        if (memory && have_list) {
+        if (memory && applied) {
             header()->applied_hidden = hidden;
             MemoryBarrier();
             header()->applied_seq = seq;
