@@ -134,6 +134,28 @@ def depth_pass(depth, width, height):
     return metres
 
 
+def depth_preview(depth):
+    """Game depth -> top-down RGBA uint8 for the viewport: near is bright, far is dark,
+    log-scaled between the 1st and 99th percentile, sky black."""
+    finite = np.isfinite(depth)
+    out = np.zeros(depth.shape + (4,), np.uint8)
+    out[..., 3] = 255
+    if not finite.any():
+        return out
+    sample = depth[::4, ::4]
+    sample = np.log(np.maximum(sample[np.isfinite(sample)], 1e-3))
+    lo, hi = np.percentile(sample, (1, 99)) if sample.size else (0.0, 1.0)
+    value = (np.log(np.maximum(np.where(finite, depth, 1.0), 1e-3)) - lo) / max(hi - lo, 1e-6)
+    grey = ((1.0 - np.clip(value, 0.0, 1.0)) * 255).astype(np.uint8)
+    grey[~finite] = 0
+    out[..., 0] = out[..., 1] = out[..., 2] = grey
+    return out
+
+
+def viewport_depth(scene):
+    return scene.renderlock_game.viewport_view == 'DEPTH'
+
+
 def resample(array, width, height):
     """Bilinear resize of an HxWx4 uint8 image."""
     src_h, src_w = array.shape[:2]
@@ -182,6 +204,7 @@ class Session:
         self.live_playing = False
         self.suppress_follow = 0
         self.capturing = False       # a capture thread owns the frame stream
+        self.live_depth = False      # viewport depth view streams depth while idle
         self.preview = None          # newest frame it saw, for the viewport
         self.bake = None             # {"done", "total", "state", "error", ...} while baking
 
@@ -223,6 +246,7 @@ class Session:
             bridge = self.controller._native_bridge()
             self.stream = frame_stream.FrameStream(bridge.token, 3840, 2160)
             self.stream.enable(True)
+            self.live_depth = False  # a new stream starts without depth
             if hide_hud:
                 self.set_hud(False)
             self.state, self.message = "ready", "Connected. The viewport shows the game."
@@ -468,6 +492,14 @@ class Session:
         self.held_frame = captured[frames]
         self.current_tick = int(tick)
 
+    def want_live_depth(self, on):
+        """Viewport depth view: stream depth while idle (bakes and renders set their own)."""
+        on = bool(on)
+        if getattr(self, "live_depth", False) != on:
+            self.live_depth = on
+            if not self.capturing:
+                self.set_depth(on)
+
     def set_depth(self, on):
         """Ask the game for each frame's scene depth too (only while it is needed)."""
         if self.stream is not None:
@@ -494,7 +526,6 @@ class Session:
         self.preview = None
         timings, began = {}, time.monotonic()
         self.last_timings = timings
-        depth_before = getattr(self, "depth_on", False)
         if depth is not None:
             self.set_depth(depth)
         try:
@@ -543,7 +574,7 @@ class Session:
             timings["captured"] = round(time.monotonic() - began, 2)
             print("[RenderLock game] bake timings", timings, flush=True)
             if depth is not None:
-                self.set_depth(depth_before)
+                self.set_depth(getattr(self, "live_depth", False))
             try:
                 controller.clear_export_timing()
                 controller.stop()
@@ -669,7 +700,7 @@ def bake_is_current(scene, clean=False):
                 and (not clean or (bake.get("clean") and (bake.get("depth") or not wants_depth(scene)))))
 
 
-def baked_frame(scene, frame, clean=False):
+def baked_frame(scene, frame, clean=False, depth=None):
     """A frame captured by a bake of this scene's replay range, if any."""
     bake = bake_info(scene)
     if bake is None or (clean and not bake.get("clean")):
@@ -678,8 +709,9 @@ def baked_frame(scene, frame, clean=False):
     meta = bake["frames"].get(str(frame))
     if not meta or not path.is_file():
         return None
-    depth = cache_folder(scene) / f"depth_{frame:06d}.npy"
-    meta = dict(meta, depth=np.load(depth) if clean and depth.is_file() else None)
+    depth_path = cache_folder(scene) / f"depth_{frame:06d}.npy"
+    meta = dict(meta, depth=np.load(depth_path) if (clean if depth is None else depth) and depth_path.is_file()
+                else None)
     return meta, np.load(path)
 
 
@@ -721,21 +753,26 @@ class RenderLockGameEngine(bpy.types.RenderEngine):
             got, shown = SESSION.preview, ("preview", SESSION.preview[0]["seq"] if SESSION.preview else None)
         elif _animation_playing(context):
             frame = context.scene.frame_current
-            shown = ("baked", frame)
-            got = baked_frame(context.scene, frame) if shown != self._shown else None
+            shown = ("baked", frame, viewport_depth(context.scene))
+            got = baked_frame(context.scene, frame, depth=viewport_depth(context.scene)) \
+                if shown != self._shown else None
         else:
+            SESSION.want_live_depth(viewport_depth(context.scene))
             got = SESSION.poll_frame()
-            shown = ("live", got[0]["seq"] if got else None)
+            shown = ("live", got[0]["seq"] if got else None, viewport_depth(context.scene))
         if got is not None and shown == self._shown:
             got = None  # already on screen
         if got is not None:
             self._shown = shown
             meta, array = got
+            if viewport_depth(context.scene) and meta.get("depth") is not None:
+                array = depth_preview(meta["depth"])  # frames without depth (preview bakes) stay in colour
+            height, width = array.shape[:2]
             image = bpy.data.images.get(IMAGE_NAME)
-            if image is None or tuple(image.size) != (meta["width"], meta["height"]):
+            if image is None or tuple(image.size) != (width, height):
                 if image is not None:
                     bpy.data.images.remove(image)
-                image = bpy.data.images.new(IMAGE_NAME, meta["width"], meta["height"], alpha=True)
+                image = bpy.data.images.new(IMAGE_NAME, width, height, alpha=True)
                 image.colorspace_settings.name = "Non-Color"
             image.pixels.foreach_set(to_display_image(array))
             image.update()
@@ -813,7 +850,7 @@ class RenderLockGameEngine(bpy.types.RenderEngine):
             scene["renderlock_game_last_frame"] = {k: meta[k] for k in ("tick", "present", "seq")}
         finally:
             if depth_requested:
-                SESSION.set_depth(False)
+                SESSION.set_depth(getattr(SESSION, "live_depth", False))
             self.end_result(result)
 
 
@@ -866,6 +903,11 @@ class RenderLockGameSettings(bpy.types.PropertyGroup):
     follow_timeline: bpy.props.BoolProperty(name="Follow timeline", default=True,
                                             description="Seek the replay when the frame changes")
     selected_key: bpy.props.IntProperty(name="Selected camera frame", default=-1)
+    viewport_view: bpy.props.EnumProperty(
+        name="Viewport shows", default='GAME',
+        items=[('GAME', "Game", "The game's image", 'IMAGE_RGB', 0),
+               ('DEPTH', "Depth", "The game's scene depth: near is bright, far is dark, sky black", 'IMAGE_ZDEPTH', 1)],
+        description="What the rendered viewport shows")
     show_shot_camera: bpy.props.BoolProperty(
         name="Show shot camera in viewport", default=False, update=lambda self, context: apply_camera_visibility(context.scene),
         description="Draw the RenderLock Shot camera object over the game view (hidden by default, like Dolly)")
@@ -1706,6 +1748,7 @@ class RENDERLOCK_PT_shot(bpy.types.Panel):
             layout.label(text="Starting Deadlock…", icon='TIME')
             layout.label(text=SESSION.message[:80])
             return
+        layout.row().prop(props, "viewport_view", expand=True)
         if SESSION.bake is not None:
             bake = SESSION.bake
             box = layout.box()
