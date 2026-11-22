@@ -182,6 +182,7 @@ class Session:
         self.live_playing = False
         self.suppress_follow = 0
         self.capturing = False       # a capture thread owns the frame stream
+        self.solid_heroes = True     # turn off the game's near-camera hero fade on connect
         self.preview = None          # newest frame it saw, for the viewport
         self.bake = None             # {"done", "total", "state", "error", ...} while baking
 
@@ -225,6 +226,8 @@ class Session:
             self.stream.enable(True)
             if hide_hud:
                 self.set_hud(False)
+            if self.solid_heroes:
+                self.set_hero_fade(False)
             self.state, self.message = "ready", "Connected. The viewport shows the game."
             if self.adopt_tick_scene:
                 bpy.app.timers.register(self._adopt_tick, first_interval=0.5)
@@ -278,6 +281,16 @@ class Session:
                 self.controller._request(command, timeout=3, allow_error=True)
             except Exception:
                 traceback.print_exc()
+
+    def set_hero_fade(self, fade):
+        """The game fades heroes that are close to the camera; close-ups want them solid."""
+        if not self.controller:
+            return
+        try:  # Dolly's near-player opacity fix, restored with the session
+            if bool(self.controller._near_opacity_restore) == bool(fade):
+                self.controller.near_player_opacity_fix()
+        except Exception:
+            traceback.print_exc()
 
     def replay_tick(self):
         """The replay tick the game shows now (None if unknown)."""
@@ -847,6 +860,12 @@ def _on_hud(self, context):
         SESSION.set_hud(not self.hide_hud)
 
 
+def _on_hero_fade(self, context):
+    SESSION.solid_heroes = self.solid_heroes
+    if SESSION.state == "ready":
+        SESSION.set_hero_fade(not self.solid_heroes)
+
+
 class RenderLockGameSettings(bpy.types.PropertyGroup):
     game_path: bpy.props.StringProperty(name="Deadlock folder", subtype='DIR_PATH',
                                         default="B:/SteamLibrary/steamapps/common/Deadlock")
@@ -861,6 +880,9 @@ class RenderLockGameSettings(bpy.types.PropertyGroup):
     height: bpy.props.IntProperty(name="Game height", default=0, min=0, max=4320,
                                   description="Game window height; 0 uses the scene's render resolution")
     hide_hud: bpy.props.BoolProperty(name="Hide health bars and HUD", default=True, update=_on_hud)
+    solid_heroes: bpy.props.BoolProperty(
+        name="Solid heroes up close", default=True, update=_on_hero_fade,
+        description="Stop the game fading heroes out when the camera gets close to them (close-ups)")
     cache_dir: bpy.props.StringProperty(name="Baked frames", subtype='DIR_PATH',
                                         default="//renderlock_game_frames")
     follow_timeline: bpy.props.BoolProperty(name="Follow timeline", default=True,
@@ -889,6 +911,7 @@ class RENDERLOCK_OT_game_connect(bpy.types.Operator):
         apply_camera_visibility(context.scene)
         ensure_output(context.scene)
         width, height = game_window_size(context.scene)
+        SESSION.solid_heroes = props.solid_heroes
         SESSION.start(bpy.path.abspath(props.game_path), replay, width, height, props.hide_hud)
         return {'FINISHED'}
 
@@ -1134,6 +1157,7 @@ class RENDERLOCK_PT_game(bpy.types.Panel):
         row.prop(props, "width")
         row.prop(props, "height")
         col.prop(props, "hide_hud")
+        col.prop(props, "solid_heroes")
         col.prop(props, "follow_timeline")
         col.prop(props, "cache_dir")
         row = layout.row()
@@ -1778,6 +1802,7 @@ class RENDERLOCK_PT_shot_settings(bpy.types.Panel):
         props = context.scene.renderlock_game
         layout = self.layout
         layout.prop(props, "hide_hud")
+        layout.prop(props, "solid_heroes")
         layout.prop(props, "follow_timeline")
         layout.prop(props, "show_shot_camera")
         layout.prop(props, "cache_dir")
