@@ -741,6 +741,8 @@ class RenderLockGameEngine(bpy.types.RenderEngine):
     bl_use_preview = False
     bl_use_postprocess = True
     bl_write_viewport_depth = True  # Blender 5.3+: see view_draw
+    bl_use_shading_nodes_custom = False  # Blender objects use normal materials: keep the Shader Editor
+    bl_use_eevee_viewport = True  # Material Preview shading works as usual
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -982,7 +984,7 @@ class RenderLockGameSettings(bpy.types.PropertyGroup):
         description="The map is hidden from the camera, so its textures only show in reflections and "
                     "bounced light. The smaller copies use far less graphics memory")
     objects_engine: bpy.props.EnumProperty(
-        name="Render objects with", default='BLENDER_EEVEE', update=lambda self, context: configure_objects_scene(_scene_of(self)),
+        name="Render objects with", default='BLENDER_EEVEE', update=lambda self, context: _on_objects_engine(self, context),
         items=[('BLENDER_EEVEE', "EEVEE", "Fast. The map lights and shadows your objects"),
                ('CYCLES', "Cycles", "Slower, path traced. Can also put your objects' shadows onto the game")])
     map_shadows: bpy.props.BoolProperty(
@@ -2003,13 +2005,42 @@ def _all_panels(base=None):
         yield from _all_panels(panel)
 
 
-def _compatible_panels():
-    """Generic Properties panels (output, camera, object, ...) that any engine can use.
+# Properties tabs whose settings belong to the Blender objects (lights, materials, object
+# visibility). They follow the engine chosen under "Render objects with".
+OBJECT_PANEL_CONTEXTS = {"data", "material", "object"}
 
-    Blender marks these with BLENDER_RENDER; EEVEE/Cycles-only render settings are skipped.
-    """
-    return [p for p in _all_panels()
-            if isinstance(getattr(p, "COMPAT_ENGINES", None), set) and "BLENDER_RENDER" in p.COMPAT_ENGINES]
+
+def _panel_wanted(panel, objects_engine):
+    engines = panel.COMPAT_ENGINES - {ENGINE}
+    if getattr(panel, "bl_context", "") in OBJECT_PANEL_CONTEXTS and             getattr(panel, "bl_space_type", "") in {'PROPERTIES', 'NODE_EDITOR'}:
+        return objects_engine in engines
+    # Everything else (output, camera presets, physics, ...): only what any engine can use.
+    # EEVEE/Cycles render settings stay hidden; the Blender objects panel sets those.
+    return "BLENDER_RENDER" in engines
+
+
+def apply_panels(objects_engine=None):
+    """Show Blender's own settings panels for this engine (None removes it everywhere)."""
+    for panel in _all_panels():
+        engines = getattr(panel, "COMPAT_ENGINES", None)
+        if not isinstance(engines, set):
+            continue
+        wanted = objects_engine is not None and _panel_wanted(panel, objects_engine)
+        if wanted != (ENGINE in engines):
+            # Cycles panels share one set between all their classes, so each panel gets its own.
+            panel.COMPAT_ENGINES = (engines | {ENGINE}) if wanted else (engines - {ENGINE})
+
+
+def _on_objects_engine(self, context):
+    apply_panels(self.objects_engine)
+    configure_objects_scene(_scene_of(self))
+
+
+@bpy.app.handlers.persistent
+def _panels_for_file(*_args):
+    scene = getattr(bpy.context, "scene", None)
+    props = getattr(scene, "renderlock_game", None) if scene else None
+    apply_panels(props.objects_engine if props else 'BLENDER_EEVEE')
 
 
 # --------------------------------------------------------------------------- Blender objects
@@ -2743,8 +2774,10 @@ def register():
     for cls in CLASSES:
         bpy.utils.register_class(cls)
     bpy.types.Scene.renderlock_game = bpy.props.PointerProperty(type=RenderLockGameSettings)
-    for panel in _compatible_panels():
-        panel.COMPAT_ENGINES.add(ENGINE)
+    _panels_for_file()
+    for handler in [h for h in bpy.app.handlers.load_post if h.__name__ == "_panels_for_file"]:
+        bpy.app.handlers.load_post.remove(handler)
+    bpy.app.handlers.load_post.append(_panels_for_file)
     for handler in [h for h in bpy.app.handlers.frame_change_post if h.__name__ == "_frame_changed"]:
         bpy.app.handlers.frame_change_post.remove(handler)  # an earlier run of this script
     bpy.app.handlers.frame_change_post.append(_frame_changed)
@@ -2773,8 +2806,9 @@ def unregister():
         viewport_layer.free()
     except Exception:
         pass
-    for panel in _compatible_panels():
-        panel.COMPAT_ENGINES.discard(ENGINE)
+    for handler in [h for h in bpy.app.handlers.load_post if h.__name__ == "_panels_for_file"]:
+        bpy.app.handlers.load_post.remove(handler)
+    apply_panels(None)
     del bpy.types.Scene.renderlock_game
     for cls in reversed(CLASSES):
         bpy.utils.unregister_class(cls)
