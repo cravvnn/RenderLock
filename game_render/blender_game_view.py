@@ -156,6 +156,9 @@ class Session:
         self.wanted_exact = False
         self.live_playing = False
         self.suppress_follow = 0
+        self.capturing = False       # a capture thread owns the frame stream
+        self.preview = None          # newest frame it saw, for the viewport
+        self.bake = None             # {"done", "total", "state", "error", ...} while baking
 
     # ---- lifecycle
     def start(self, game, demo, width, height, hide_hud):
@@ -273,6 +276,8 @@ class Session:
         return None
 
     def push_camera(self, pose):
+        if self.capturing:
+            return  # the shot's own camera path drives the game
         if pose is not None:
             self.last_pose = tuple(pose)
         if self.stream is not None:
@@ -441,6 +446,8 @@ class Session:
         project.validate()
         controller, frames = self.controller, {}
         self.seeking = True
+        self.capturing = True
+        self.preview = None
         try:
             self.stream.set_camera(None)
             controller.prepare_native_recording(project)
@@ -457,10 +464,13 @@ class Session:
                         break
                     time.sleep(0.001)
                     continue
+                self.preview = got
                 phase = got[0]["phase"]
                 k = int(round(phase * fps))
                 if abs(phase * fps - k) < 0.05 and 0 <= k <= last and k not in frames:
                     frames[k] = got
+                    if self.bake is not None:
+                        self.bake["done"] = len(frames)
                 if len(frames) == len(poses):
                     break
         finally:
@@ -471,6 +481,7 @@ class Session:
             except Exception:
                 traceback.print_exc()
             self.current_tick = None
+            self.capturing = False
             self.seeking = False
         return frames
 
@@ -539,6 +550,9 @@ def cache_folder(scene):
     return Path(folder)
 
 
+_BAKE_INFO = {}
+
+
 def baked_frame(scene, frame):
     """A frame captured by "Bake game frames" for this scene's replay range, if any."""
     folder = cache_folder(scene)
@@ -547,7 +561,10 @@ def baked_frame(scene, frame):
     if not path.is_file() or not info.is_file():
         return None
     import json
-    bake = json.loads(info.read_text())
+    stamp = (str(info), info.stat().st_mtime_ns)
+    if _BAKE_INFO.get("stamp") != stamp:
+        _BAKE_INFO.update(stamp=stamp, bake=json.loads(info.read_text()))
+    bake = _BAKE_INFO["bake"]
     if bake.get("start_tick") != scene.renderlock_game.start_tick or bake.get("replay") != \
             bpy.path.abspath(scene.renderlock_game.replay_path):
         return None
@@ -576,6 +593,7 @@ class RenderLockGameEngine(bpy.types.RenderEngine):
         super().__init__(*args, **kwargs)
         self._texture = None
         self._texture_seq = None
+        self._shown = None
 
     # Viewport: the view drives the game camera, the newest game frame is drawn.
     def view_update(self, context, depsgraph):
@@ -587,11 +605,20 @@ class RenderLockGameEngine(bpy.types.RenderEngine):
             hfov = 2 * math.atan(1.0 / rv3d.window_matrix[0][0])
             SESSION.push_camera(source_pose(rv3d.view_matrix.inverted(), hfov,
                                             region.width / max(1, region.height)))
-        got = SESSION.poll_frame()
-        if _animation_playing(context):
-            baked = baked_frame(context.scene, context.scene.frame_current)
-            got = baked if baked is not None else None
+        if SESSION.capturing:
+            # A bake or run-up reads the stream itself; show what it last saw.
+            got, shown = SESSION.preview, ("preview", SESSION.preview[0]["seq"] if SESSION.preview else None)
+        elif _animation_playing(context):
+            frame = context.scene.frame_current
+            shown = ("baked", frame)
+            got = baked_frame(context.scene, frame) if shown != self._shown else None
+        else:
+            got = SESSION.poll_frame()
+            shown = ("live", got[0]["seq"] if got else None)
+        if got is not None and shown == self._shown:
+            got = None  # already on screen
         if got is not None:
+            self._shown = shown
             meta, array = got
             image = bpy.data.images.get(IMAGE_NAME)
             if image is None or tuple(image.size) != (meta["width"], meta["height"]):
@@ -729,11 +756,17 @@ class RENDERLOCK_OT_game_bake(bpy.types.Operator):
     bl_idname = "renderlock.game_bake"
     bl_label = "Bake game frames"
 
+    play_after: bpy.props.BoolProperty(default=False, options={'SKIP_SAVE'})
+    wait: bpy.props.BoolProperty(default=False, options={'SKIP_SAVE'},
+                                 description="Block until done (scripts)")
+
     def execute(self, context):
-        import json
         scene = context.scene
         if SESSION.state != "ready" or scene.camera is None:
             self.report({'ERROR'}, "Connect to the game and set a scene camera first.")
+            return {'CANCELLED'}
+        if SESSION.bake is not None:
+            self.report({'ERROR'}, "A bake is already running.")
             return {'CANCELLED'}
         fps = scene.render.fps / scene.render.fps_base
         if not 18 <= fps <= 120:
@@ -742,18 +775,41 @@ class RENDERLOCK_OT_game_bake(bpy.types.Operator):
         original = scene.frame_current
         frames = list(range(scene.frame_start, scene.frame_end + 1))
         poses, previous_yaw = [], None
-        for frame in frames:
-            scene.frame_set(frame)
-            pose = list(camera_object_pose(scene, scene.camera))
-            if previous_yaw is not None:  # continuous yaw for interpolation
-                pose[4] += round((previous_yaw - pose[4]) / 360) * 360
-            previous_yaw = pose[4]
-            poses.append(tuple(pose))
-        scene.frame_set(original)
+        SESSION.suppress_follow += 1
+        try:
+            for frame in frames:
+                scene.frame_set(frame)
+                pose = list(camera_object_pose(scene, scene.camera))
+                if previous_yaw is not None:  # continuous yaw for interpolation
+                    pose[4] += round((previous_yaw - pose[4]) / 360) * 360
+                previous_yaw = pose[4]
+                poses.append(tuple(pose))
+            scene.frame_set(original)
+        finally:
+            SESSION.suppress_follow -= 1
         props = scene.renderlock_game
-        start_tick = props.start_tick
-        captured = SESSION.capture_range(start_tick, fps, poses)
-        folder = cache_folder(scene)
+        SESSION.bake = dict(state="baking", done=0, total=len(frames), error=None, scene=scene.name,
+                            play_after=self.play_after, cancel=False)
+        args = (props.start_tick, fps, poses, frames, cache_folder(scene), bpy.path.abspath(props.replay_path))
+        if self.wait:
+            _bake_worker(*args)
+            return _bake_finished(self) or {'FINISHED'}
+        # The game plays the shot in a thread so Blender stays responsive.
+        threading.Thread(target=_bake_worker, args=args, name="renderlock-game-bake", daemon=True).start()
+        bpy.app.timers.register(_bake_timer, first_interval=0.2)
+        self.report({'INFO'}, f"Baking {len(frames)} frames in the game…")
+        return {'FINISHED'}
+
+
+def _bake_worker(start_tick, fps, poses, frames, folder, replay):
+    import json
+    bake = SESSION.bake
+    try:
+        captured = SESSION.capture_range(start_tick, fps, poses, cancelled=lambda: bake["cancel"])
+        if bake["cancel"]:
+            bake["state"] = "cancelled"
+            return
+        bake["state"] = "saving"
         folder.mkdir(parents=True, exist_ok=True)
         for old in folder.glob("frame_*.npy"):
             old.unlink()
@@ -762,12 +818,64 @@ class RENDERLOCK_OT_game_bake(bpy.types.Operator):
             np.save(folder / f"frame_{frames[k]:06d}.npy", np.ascontiguousarray(array))
             metas[str(frames[k])] = {key: meta[key] for key in ("tick", "phase", "present", "seq", "width", "height")}
         (folder / "bake.json").write_text(json.dumps(dict(
-            start_tick=start_tick, replay=bpy.path.abspath(props.replay_path), fps=fps,
+            start_tick=start_tick, replay=replay, fps=fps,
             requested=len(frames), captured=len(metas), frames=metas), indent=1))
-        missing = len(frames) - len(metas)
-        level = {'WARNING'} if missing else {'INFO'}
-        self.report(level, f"Baked {len(metas)} of {len(frames)} frames into {folder}")
-        return {'FINISHED'}
+        bake.update(state="done", done=len(metas), folder=str(folder))
+    except Exception as error:
+        traceback.print_exc()
+        bake.update(state="failed", error=str(error))
+
+
+def _bake_finished(operator=None):
+    """Main thread, after the worker: report and optionally start playback."""
+    bake, SESSION.bake = SESSION.bake, None
+    if bake is None:
+        return None
+    if bake["state"] == "failed":
+        SESSION.message = f"Bake failed: {bake['error']}"
+    elif bake["state"] == "cancelled":
+        SESSION.message = "Bake cancelled."
+    else:
+        missing = bake["total"] - bake["done"]
+        SESSION.message = (f"Baked {bake['done']} of {bake['total']} frames"
+                           + (f" ({missing} missing)" if missing else "") + ".")
+        scene = bpy.data.scenes.get(bake["scene"])
+        if bake["play_after"] and scene is not None:
+            _play_timeline(scene)
+    if operator is not None:
+        operator.report({'WARNING'} if bake["state"] != "done" else {'INFO'}, SESSION.message)
+    _redraw_views()
+    return None
+
+
+def _bake_timer():
+    if SESSION.bake is None:
+        return None
+    if SESSION.bake["state"] in ("done", "failed", "cancelled"):
+        return _bake_finished()
+    _redraw_views()
+    return 0.2
+
+
+def _redraw_views():
+    for window in bpy.context.window_manager.windows:
+        for area in window.screen.areas:
+            if area.type in ('VIEW_3D', 'PROPERTIES'):
+                area.tag_redraw()
+
+
+def _play_timeline(scene):
+    """Start timeline playback from the shot start (works from timers too)."""
+    set_frame_quietly(scene, scene.frame_start)
+    if _animation_playing():
+        return
+    for window in bpy.context.window_manager.windows:
+        area = next((a for a in window.screen.areas if a.type == 'VIEW_3D'), None)
+        if area is None:
+            continue
+        with bpy.context.temp_override(window=window, area=area):
+            bpy.ops.screen.animation_play()
+        return
 
 
 class RENDERLOCK_OT_game_start_here(bpy.types.Operator):
@@ -856,7 +964,8 @@ def _frame_changed(scene, _depsgraph=None):
     props = getattr(scene, "renderlock_game", None)
     if props is None or not props.follow_timeline or SESSION.state != "ready":
         return
-    if scene.render.engine != ENGINE or SESSION.suppress_follow or SESSION.live_playing:
+    if scene.render.engine != ENGINE or SESSION.suppress_follow or SESSION.live_playing \
+            or SESSION.bake is not None:
         return
     if _animation_playing(bpy.context):
         return  # Play shot previews baked frames; no seeking while the timeline plays
@@ -944,25 +1053,60 @@ def _view3d(context):
     return None, None, None
 
 
-def capture_view(context, frame):
-    """Key the shot camera at `frame` from what the viewport shows now."""
+def current_view(context):
+    """(world matrix, lens mm on a 36 mm sensor) of what the viewport shows now.
+
+    Read this before moving the timeline: a frame change snaps an animated
+    camera back onto its keys.
+    """
+    _space, rv3d, _region = _view3d(context)
+    if rv3d is None:
+        return None
+    if rv3d.view_perspective == 'CAMERA' and context.scene.camera is not None:
+        camera = context.scene.camera
+        return camera.matrix_world.copy(), camera.data.lens
+    hfov = 2 * math.atan(1.0 / rv3d.window_matrix[0][0])
+    return rv3d.view_matrix.inverted(), 36.0 / (2 * math.tan(hfov / 2))
+
+
+def free_view_at(context, matrix, lens):
+    """Put the viewport (not the shot camera) at this pose so flying never moves a key."""
+    from mathutils import Vector
+    space, rv3d, _region = _view3d(context)
+    if rv3d is None:
+        return
+    rv3d.view_perspective = 'PERSP'
+    location, rotation, _scale = matrix.decompose()
+    rv3d.view_rotation = rotation
+    rv3d.view_location = location + rotation @ Vector((0.0, 0.0, -rv3d.view_distance))
+    space.lens = 2.0 * lens  # the viewport uses a 72 mm sensor at its default zoom
+
+
+def capture_view(context, frame, view):
+    """Key the shot camera at `frame` with `view` (from current_view)."""
     scene = context.scene
     camera = shot_camera(scene, create=True)
-    space, rv3d, region = _view3d(context)
-    if rv3d is not None and rv3d.view_perspective != 'CAMERA':
+    if view is not None:
+        matrix, lens = view
         reference = camera.rotation_euler.copy()
-        matrix = rv3d.view_matrix.inverted()
-        hfov = 2 * math.atan(1.0 / rv3d.window_matrix[0][0])
         camera.matrix_world = matrix
         camera.rotation_euler.make_compatible(reference)
         camera.data.sensor_fit = 'HORIZONTAL'
-        camera.data.lens = camera.data.sensor_width / (2 * math.tan(hfov / 2))
+        camera.data.sensor_width = 36.0
+        camera.data.lens = lens
     camera.keyframe_insert("location", frame=frame)
     camera.keyframe_insert("rotation_euler", frame=frame)
     camera.data.keyframe_insert("lens", frame=frame)
-    if rv3d is not None:
-        rv3d.view_perspective = 'CAMERA'  # look through the shot like Dolly's held view
+    if view is not None:
+        free_view_at(context, *view)  # keep flying from here, like Dolly's free camera
     return camera
+
+
+def seek_to_frame(scene, frame):
+    """Move the timeline and the replay together (works with Follow timeline off too)."""
+    set_frame_quietly(scene, frame)
+    if SESSION.state == "ready":
+        SESSION.request_tick(scene_tick(scene))
 
 
 def _need_ready(operator):
@@ -975,7 +1119,7 @@ def _need_ready(operator):
 class _ShotOperator:
     @classmethod
     def poll(cls, context):
-        return context.engine == ENGINE and SESSION.state == "ready"
+        return context.engine == ENGINE and SESSION.state == "ready" and SESSION.bake is None
 
 
 class RENDERLOCK_OT_shot_capture(_ShotOperator, bpy.types.Operator):
@@ -991,8 +1135,10 @@ class RENDERLOCK_OT_shot_capture(_ShotOperator, bpy.types.Operator):
         if tick is None:
             self.report({'ERROR'}, "The replay tick is not known yet.")
             return {'CANCELLED'}
+        view = current_view(context)
         camera = shot_camera(scene)
-        if not shot_keys(camera):
+        keys = shot_keys(camera)
+        if not keys:
             # Like Dolly: the first capture is time zero and sets the shot's start tick.
             props.start_tick = tick
             frame = scene.frame_start
@@ -1001,12 +1147,19 @@ class RENDERLOCK_OT_shot_capture(_ShotOperator, bpy.types.Operator):
             if frame < scene.frame_start:
                 self.report({'ERROR'}, "This moment is before the shot start. Move the replay forward.")
                 return {'CANCELLED'}
+        replaced = frame in keys
         set_frame_quietly(scene, frame)
         SESSION.current_tick = tick
-        camera = capture_view(context, frame)
-        scene.frame_end = max(scene.frame_end if shot_keys(camera)[:-1] else frame, frame)
+        camera = capture_view(context, frame, view)
+        keys = shot_keys(camera)
+        scene.frame_end = max(keys[-1], scene.frame_start)
         props.selected_key = frame
-        self.report({'INFO'}, f"Camera {shot_keys(camera).index(frame) + 1} at {match_time(tick)}")
+        number = keys.index(frame) + 1
+        if replaced:
+            self.report({'WARNING'}, f"Camera {number} replaced: the replay is still at {match_time(tick)}. "
+                                     f"Move the replay forward before capturing the next camera.")
+        else:
+            self.report({'INFO'}, f"Camera {number} at {match_time(tick)}")
         return {'FINISHED'}
 
 
@@ -1024,7 +1177,7 @@ class RENDERLOCK_OT_shot_replace(_ShotOperator, bpy.types.Operator):
         if frame not in keys:
             self.report({'ERROR'}, "Select a captured camera first.")
             return {'CANCELLED'}
-        capture_view(context, frame)
+        capture_view(context, frame, current_view(context))
         return {'FINISHED'}
 
 
@@ -1065,10 +1218,10 @@ class RENDERLOCK_OT_shot_goto(_ShotOperator, bpy.types.Operator):
             later = [k for k in keys if k > current] if self.step > 0 else [k for k in keys if k < current][::-1]
             frame = later[0] if later else (keys[-1] if self.step > 0 else keys[0])
         scene.renderlock_game.selected_key = frame
-        scene.frame_set(frame)  # the timeline handler moves the replay
-        _space, rv3d, _region = _view3d(context)
-        if rv3d is not None:
-            rv3d.view_perspective = 'CAMERA'
+        seek_to_frame(scene, frame)
+        camera = shot_camera(scene)
+        if camera is not None:  # fly on from this camera's view; the key itself stays put
+            free_view_at(context, camera.matrix_world.copy(), camera.data.lens)
         return {'FINISHED'}
 
 
@@ -1083,7 +1236,7 @@ class RENDERLOCK_OT_replay_step(_ShotOperator, bpy.types.Operator):
         fps = scene.render.fps / scene.render.fps_base
         if SESSION.live_playing:
             SESSION.toggle_live()
-        scene.frame_set(scene.frame_current + int(round(self.seconds * fps)))
+        seek_to_frame(scene, scene.frame_current + int(round(self.seconds * fps)))
         return {'FINISHED'}
 
 
@@ -1106,12 +1259,13 @@ class RENDERLOCK_OT_shot_play(_ShotOperator, bpy.types.Operator):
         scene = context.scene
         if SESSION.live_playing:
             SESSION.toggle_live()
-        if bpy.ops.renderlock.game_bake() != {'FINISHED'}:
+        if len(shot_keys(shot_camera(scene))) < 2:
+            self.report({'ERROR'}, "Capture at least two cameras at different replay moments first.")
             return {'CANCELLED'}
-        set_frame_quietly(scene, scene.frame_start)
-        if not _animation_playing(context):
-            bpy.ops.screen.animation_play()
-        return {'FINISHED'}
+        if _animation_playing(context):
+            bpy.ops.screen.animation_cancel(restore_frame=False)
+        # Bakes in the background, then plays the baked frames in the viewport.
+        return bpy.ops.renderlock.game_bake(play_after=True)
 
 
 class RENDERLOCK_OT_shot_stop(_ShotOperator, bpy.types.Operator):
@@ -1119,7 +1273,13 @@ class RENDERLOCK_OT_shot_stop(_ShotOperator, bpy.types.Operator):
     bl_idname = "renderlock.shot_stop"
     bl_label = "Stop"
 
+    @classmethod
+    def poll(cls, context):
+        return context.engine == ENGINE and SESSION.state == "ready"
+
     def execute(self, context):
+        if SESSION.bake is not None:
+            SESSION.bake["cancel"] = True
         if _animation_playing(context):
             bpy.ops.screen.animation_cancel(restore_frame=False)
         if SESSION.live_playing:
@@ -1241,6 +1401,13 @@ class RENDERLOCK_PT_shot(bpy.types.Panel):
         if SESSION.state == "starting":
             layout.label(text="Starting Deadlock…", icon='TIME')
             layout.label(text=SESSION.message[:80])
+            return
+        if SESSION.bake is not None:
+            bake = SESSION.bake
+            box = layout.box()
+            box.label(text=f"Baking in the game: {bake['done']} / {bake['total']} frames"
+                      if bake["state"] == "baking" else "Saving baked frames…", icon='RENDER_ANIMATION')
+            box.operator(RENDERLOCK_OT_shot_stop.bl_idname, text="Cancel", icon='CANCEL')
             return
         tick = SESSION.frame_meta["tick"] if SESSION.frame_meta else SESSION.current_tick
         box = layout.box()
