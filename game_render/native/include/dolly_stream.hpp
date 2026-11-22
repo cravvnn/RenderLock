@@ -69,8 +69,13 @@ struct SlotHeader {
     // Depth of the same Present, in the depth slot with the same index.
     std::uint32_t depth_width, depth_height;
     std::uint32_t depth_state;   // DepthState
-    std::uint32_t depth_reserved;
+    std::uint32_t depth_reserved;  // bit 0: game camera fields below are valid
     double depth_near, depth_far;  // clip range of that view (game units)
+    // The engine's own camera for that depth (depth_reserved bit 0 = valid):
+    // position (game units), forward and up unit vectors, and the projection's
+    // x/y scale (clip-from-view [0][0] and [1][1]).
+    double game_position[3], game_forward[3], game_up[3];
+    double game_proj_x, game_proj_y;
 };
 enum DepthState : std::uint32_t {
     depth_off = 0,          // not requested or the mapping has no depth slots

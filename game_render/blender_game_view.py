@@ -992,6 +992,9 @@ def _bake_worker(start_tick, fps, poses, frames, folder, replay, clean, signatur
         for k, (meta, array) in captured.items():
             np.save(folder / f"frame_{frames[k]:06d}.npy", np.ascontiguousarray(array))
             metas[str(frames[k])] = {key: meta[key] for key in ("tick", "phase", "present", "seq", "width", "height")}
+            if meta.get("game_camera"):  # the engine's own camera for this frame (with depth)
+                metas[str(frames[k])]["game_camera"] = {key: list(value) if isinstance(value, tuple) else value
+                                                        for key, value in meta["game_camera"].items()}
             if depth and meta.get("depth") is not None:
                 np.save(folder / f"depth_{frames[k]:06d}.npy", np.ascontiguousarray(meta["depth"]))
                 depth_frames += 1

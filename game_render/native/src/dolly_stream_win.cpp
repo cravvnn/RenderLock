@@ -178,6 +178,17 @@ void publish(const D3D11_MAPPED_SUBRESOURCE& mapped, const SlotHeader& tag,
             written.depth_height = frame.height;
             written.depth_near = frame.projection.near_clip;
             written.depth_far = frame.projection.far_clip;
+            const auto& p = frame.projection;
+            if (p.view_valid) {
+                for (int i = 0; i < 3; ++i) {
+                    written.game_position[i] = p.position[i];
+                    written.game_forward[i] = p.forward[i];
+                    written.game_up[i] = p.up[i];
+                }
+                written.game_proj_x = p.projection_matrix[0];
+                written.game_proj_y = p.projection_matrix[5];
+                written.depth_reserved = 1;
+            }
         } else {
             written.depth_state = depth_failed;
         }

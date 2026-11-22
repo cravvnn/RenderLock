@@ -19,7 +19,7 @@ HEADER_BYTES = 4096
 SLOT_HEADER_OFFSET = 256
 SLOT_HEADER_BYTES = 256
 HEADER = struct.Struct("<8sIIQIIQQQII160s")
-SLOT = struct.Struct("<QIIIIQQiId7dIIqIIIIdd")
+SLOT = struct.Struct("<QIIIIQQiId7dIIqIIIIdd11d")
 ENABLED_OFFSET = 24
 DEPTH_OFFSET = 28
 LATEST_OFFSET = 32
@@ -106,7 +106,9 @@ class FrameStream:
                         camera_ack=values[17], qpc=values[19],
                         depth_state=DEPTH_STATES.get(depth_state, "failed"),
                         depth_width=depth_width, depth_height=depth_height,
-                        depth_near=values[24], depth_far=values[25], depth=depth)
+                        depth_near=values[24], depth_far=values[25], depth=depth,
+                        game_camera=dict(position=values[26:29], forward=values[29:32], up=values[32:35],
+                                         proj_x=values[35], proj_y=values[36]) if values[23] & 1 else None)
             self._seen = latest
             return meta, pixels
         return None
