@@ -800,6 +800,9 @@ class RenderLockGameSettings(bpy.types.PropertyGroup):
     follow_timeline: bpy.props.BoolProperty(name="Follow timeline", default=True,
                                             description="Seek the replay when the frame changes")
     selected_key: bpy.props.IntProperty(name="Selected camera frame", default=-1)
+    show_shot_camera: bpy.props.BoolProperty(
+        name="Show shot camera in viewport", default=False, update=lambda self, context: apply_camera_visibility(context.scene),
+        description="Draw the RenderLock Shot camera object over the game view (hidden by default, like Dolly)")
 
 
 class RENDERLOCK_OT_game_connect(bpy.types.Operator):
@@ -817,6 +820,7 @@ class RENDERLOCK_OT_game_connect(bpy.types.Operator):
         if not props.start_tick:
             SESSION.adopt_tick_scene = context.scene.name
         context.scene.view_settings.view_transform = 'Standard'
+        apply_camera_visibility(context.scene)
         width, height = game_window_size(context.scene)
         SESSION.start(bpy.path.abspath(props.game_path), replay, width, height, props.hide_hud)
         return {'FINISHED'}
@@ -1107,6 +1111,17 @@ def shot_camera(scene, create=False):
     return camera
 
 
+def apply_camera_visibility(scene):
+    """The shot camera is a path, not something to look at: hide it over the game view."""
+    camera = next((o for o in scene.objects if o.get("renderlock_shot")), None)
+    if camera is None:
+        return
+    try:
+        camera.hide_set(not scene.renderlock_game.show_shot_camera)
+    except RuntimeError:
+        pass  # not in the active view layer
+
+
 def shot_keys(camera):
     """Frames of the shot's captured cameras, in order."""
     if camera is None:
@@ -1229,6 +1244,7 @@ def capture_view(context, frame, view):
     camera.keyframe_insert("rotation_euler", frame=frame)
     camera.data.keyframe_insert("lens", frame=frame)
     fix_shot_rotation(camera)
+    apply_camera_visibility(scene)
     if view is not None:
         free_view_at(context, *view)  # keep flying from here, like Dolly's free camera
     return camera
@@ -1397,6 +1413,7 @@ class RENDERLOCK_OT_shot_play(_ShotOperator, bpy.types.Operator):
         if _animation_playing(context):
             bpy.ops.screen.animation_cancel(restore_frame=False)
         fix_shot_rotation(shot_camera(scene))
+        apply_camera_visibility(scene)
         if bake_is_current(scene):
             _play_timeline(scene)  # nothing changed since the last bake
             return {'FINISHED'}
@@ -1417,6 +1434,7 @@ class RENDERLOCK_OT_shot_render(_ShotOperator, bpy.types.Operator):
         if _animation_playing(context):
             bpy.ops.screen.animation_cancel(restore_frame=False)
         fix_shot_rotation(shot_camera(scene))
+        apply_camera_visibility(scene)
         if bake_is_current(scene, clean=True):
             _render_animation()
             return {'FINISHED'}
@@ -1657,6 +1675,7 @@ class RENDERLOCK_PT_shot_settings(bpy.types.Panel):
         layout = self.layout
         layout.prop(props, "hide_hud")
         layout.prop(props, "follow_timeline")
+        layout.prop(props, "show_shot_camera")
         layout.prop(props, "cache_dir")
         if SESSION.state in ("starting", "ready"):
             layout.operator(RENDERLOCK_OT_game_disconnect.bl_idname, icon='CANCEL')
