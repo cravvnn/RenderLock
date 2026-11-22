@@ -360,7 +360,8 @@ def set_catchers(collection, region, enable):
     return catchers
 
 
-def add_light_probes(collection, region, scene, capture_distance=80.0, surfel_density=10, samples=1024):
+def add_light_probes(collection, region, scene, capture_distance=80.0, surfel_density=10, samples=1024, clamp=None,
+                     strength=2.0, capture_world=True):
     """EEVEE: bake the map's light (including the game's baked lighting on its surfaces)
     into a probe volume around the Blender objects, plus a reflection probe there."""
     import bpy
@@ -376,7 +377,7 @@ def add_light_probes(collection, region, scene, capture_distance=80.0, surfel_de
     volume = bpy.data.lightprobes.new("RenderLock map light", 'VOLUME')
     volume.resolution_x, volume.resolution_y, volume.resolution_z = (
         max(2, min(32, math.ceil(size[i] / spacing) + 1)) for i in range(3))
-    volume.capture_world = True
+    volume.capture_world = capture_world
     volume.capture_indirect = True
     volume.capture_emission = True  # the map's surfaces carry the game's baked light
     # Light reaches the objects from across the room (a lit stage, lamps, windows), not only
@@ -384,6 +385,11 @@ def add_light_probes(collection, region, scene, capture_distance=80.0, surfel_de
     volume.capture_distance = capture_distance
     volume.surfel_density = surfel_density
     volume.bake_samples = samples
+    # EEVEE's probe volume catches about half of the map light that Cycles path traces in enclosed
+    # spaces (measured in the Midtown theatre: 1.8x and 2.3x); the strength makes up for it.
+    volume.intensity = strength
+    if clamp is not None:
+        volume.clamp_direct = volume.clamp_indirect = clamp
     volume_obj = bpy.data.objects.new("RenderLock map light", volume)
     volume_obj.location = center
     volume_obj.scale = [s / 2 for s in size]
@@ -398,6 +404,12 @@ def add_light_probes(collection, region, scene, capture_distance=80.0, surfel_de
     with bpy.context.temp_override(scene=scene, view_layer=scene.view_layers[0]):
         bpy.ops.object.lightprobe_cache_bake(subset='ALL')
     return volume_obj, sphere_obj
+
+
+def set_light_strength(collection, strength):
+    for obj in collection.objects:
+        if obj.get(PROBE_TAG) and obj.type == 'LIGHT_PROBE' and obj.data.type == 'VOLUME':
+            obj.data.intensity = strength
 
 
 def apply_eevee(scene, settings):
