@@ -14,6 +14,7 @@ bl_info = {
     "category": "Render",
 }
 
+import json
 import math
 import os
 import subprocess
@@ -27,6 +28,7 @@ import bpy
 import gpu
 import numpy as np
 from gpu_extras.presets import draw_texture_2d
+from mathutils import Matrix
 
 def _root():
     """This file's folder, also when run from Blender's Text Editor (where __file__ is only a name)."""
@@ -50,6 +52,13 @@ import frame_stream  # noqa: E402
 # Running the script again (Text Editor) must pick up an updated stream layout too,
 # or Blender and the game's native helper disagree and no frames arrive.
 frame_stream = importlib.reload(frame_stream)
+import game_map  # noqa: E402
+game_map = importlib.reload(game_map)
+import viewport_layer  # noqa: E402
+viewport_layer = importlib.reload(viewport_layer)
+# Blender 5.3+: the engine writes the game's depth into the viewport, so Blender objects
+# drawn live over the game frame are hidden by game walls (and so are Blender's overlays).
+WRITES_VIEWPORT_DEPTH = "bl_write_viewport_depth" in bpy.types.RenderEngine.bl_rna.properties
 
 ENGINE = "RENDERLOCK_GAME"
 UNIT = 0.0254          # metres per Source unit (RenderLock scene coordinates)
@@ -224,6 +233,7 @@ class Session:
             bridge = self.controller._native_bridge()
             self.stream = frame_stream.FrameStream(bridge.token, 3840, 2160)
             self.stream.enable(True)
+            self.live_depth = False  # a new stream starts without depth
             if hide_hud:
                 self.set_hud(False)
             if self.solid_heroes:
@@ -481,6 +491,14 @@ class Session:
         self.held_frame = captured[frames]
         self.current_tick = int(tick)
 
+    def want_live_depth(self, on):
+        """The live viewport wants depth (Blender objects drawn over the game)."""
+        on = bool(on)
+        if getattr(self, "live_depth", False) != on:
+            self.live_depth = on
+            if not self.capturing:
+                self.set_depth(on)
+
     def set_depth(self, on):
         """Ask the game for each frame's scene depth too (only while it is needed)."""
         if self.stream is not None:
@@ -556,7 +574,7 @@ class Session:
             timings["captured"] = round(time.monotonic() - began, 2)
             print("[RenderLock game] bake timings", timings, flush=True)
             if depth is not None:
-                self.set_depth(depth_before)
+                self.set_depth(getattr(self, "live_depth", False))
             try:
                 controller.clear_export_timing()
                 controller.stop()
@@ -682,7 +700,7 @@ def bake_is_current(scene, clean=False):
                 and (not clean or (bake.get("clean") and (bake.get("depth") or not wants_depth(scene)))))
 
 
-def baked_frame(scene, frame, clean=False):
+def baked_frame(scene, frame, clean=False, depth=None):
     """A frame captured by a bake of this scene's replay range, if any."""
     bake = bake_info(scene)
     if bake is None or (clean and not bake.get("clean")):
@@ -691,8 +709,9 @@ def baked_frame(scene, frame, clean=False):
     meta = bake["frames"].get(str(frame))
     if not meta or not path.is_file():
         return None
-    depth = cache_folder(scene) / f"depth_{frame:06d}.npy"
-    meta = dict(meta, depth=np.load(depth) if clean and depth.is_file() else None)
+    depth_path = cache_folder(scene) / f"depth_{frame:06d}.npy"
+    wanted = clean if depth is None else depth
+    meta = dict(meta, depth=np.load(depth_path) if wanted and depth_path.is_file() else None)
     return meta, np.load(path)
 
 
@@ -712,12 +731,14 @@ class RenderLockGameEngine(bpy.types.RenderEngine):
     bl_label = "Deadlock (replay)"
     bl_use_preview = False
     bl_use_postprocess = True
+    bl_write_viewport_depth = True  # Blender 5.3+: see view_draw
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._texture = None
         self._texture_seq = None
         self._shown = None
+        self._depth = None
 
     # Viewport: the view drives the game camera, the newest game frame is drawn.
     def view_update(self, context, depsgraph):
@@ -729,14 +750,17 @@ class RenderLockGameEngine(bpy.types.RenderEngine):
             hfov = 2 * math.atan(1.0 / rv3d.window_matrix[0][0])
             SESSION.push_camera(source_pose(rv3d.view_matrix.inverted(), hfov,
                                             region.width / max(1, region.height)))
+        overlay = overlay_objects(context.scene) if WRITES_VIEWPORT_DEPTH and rv3d is not None \
+            and rv3d.is_perspective else []
         if SESSION.capturing:
             # A bake or run-up reads the stream itself; show what it last saw.
             got, shown = SESSION.preview, ("preview", SESSION.preview[0]["seq"] if SESSION.preview else None)
         elif _animation_playing(context):
             frame = context.scene.frame_current
             shown = ("baked", frame)
-            got = baked_frame(context.scene, frame) if shown != self._shown else None
+            got = baked_frame(context.scene, frame, depth=bool(overlay)) if shown != self._shown else None
         else:
+            SESSION.want_live_depth(bool(overlay))
             got = SESSION.poll_frame()
             shown = ("live", got[0]["seq"] if got else None)
         if got is not None and shown == self._shown:
@@ -753,16 +777,64 @@ class RenderLockGameEngine(bpy.types.RenderEngine):
             image.pixels.foreach_set(to_display_image(array))
             image.update()
             self._texture = gpu.texture.from_image(image)
-        if self._texture is not None:
-            x, y, w, h = 0, 0, region.width, region.height
-            if self._shown and self._shown[0] == "baked":
-                # Shot playback: the whole baked frame, letterboxed, never stretched.
-                aspect = self._texture.width / max(1, self._texture.height)
-                w, h = (region.width, region.width / aspect) if region.width / max(1, region.height) < aspect                     else (region.height * aspect, region.height)
-                x, y = (region.width - w) / 2, (region.height - h) / 2
-            draw_texture_2d(self._texture, (x, y), w, h)
+            self._depth = None
+            if overlay and meta.get("depth") is not None:
+                try:
+                    self._depth = viewport_layer.depth_texture(meta["depth"])
+                except Exception:
+                    traceback.print_exc()
+        if not WRITES_VIEWPORT_DEPTH:
+            if self._texture is not None:
+                x, y, w, h = self._frame_rect(region)
+                draw_texture_2d(self._texture, (x, y), w, h)
+        else:
+            self._draw_layers(context, depsgraph, region, rv3d, overlay)
         if SESSION.state in ("starting", "ready"):
             self.tag_redraw()
+
+    def _frame_rect(self, region):
+        x, y, w, h = 0, 0, region.width, region.height
+        if self._texture is not None and self._shown and self._shown[0] == "baked":
+            # Shot playback: the whole baked frame, letterboxed, never stretched.
+            aspect = self._texture.width / max(1, self._texture.height)
+            w, h = (region.width, region.width / aspect) if region.width / max(1, region.height) < aspect \
+                else (region.height * aspect, region.height)
+            x, y = (region.width - w) / 2, (region.height - h) / 2
+        return x, y, w, h
+
+    def _draw_layers(self, context, depsgraph, region, rv3d, overlay):
+        """Blender 5.3+: game image and game depth, then the Blender objects depth-tested against it.
+        The viewport uses this depth as is, so the whole region always gets a depth value."""
+        layer = viewport_layer
+        full = (0, 0, region.width, region.height)
+        try:
+            gpu.state.color_mask_set(False, False, False, False)
+            layer.draw_game(None, None, rv3d.window_matrix if rv3d else Matrix.Identity(4), *full, *full[2:])
+            gpu.state.color_mask_set(True, True, True, True)
+            if self._texture is None:
+                return
+            x, y, w, h = self._frame_rect(region)
+            baked = bool(self._shown and self._shown[0] == "baked")
+            camera = context.scene.camera
+            if baked and camera is not None:
+                # The baked frame shows the shot camera, letterboxed inside the region.
+                view = camera.matrix_world.inverted()
+                projection = camera.calc_matrix_camera(depsgraph, x=self._texture.width, y=self._texture.height)
+                gpu.state.viewport_set(int(x), int(y), max(1, int(w)), max(1, int(h)))
+                layer.draw_game(self._texture, self._depth if overlay else None, projection,
+                                0, 0, int(w), int(h), int(w), int(h))
+            else:
+                view, projection = rv3d.view_matrix, rv3d.window_matrix
+                layer.draw_game(self._texture, self._depth if overlay else None, projection,
+                                x, y, w, h, region.width, region.height)
+            if overlay and (not baked or camera is not None):
+                layer.draw_objects(overlay, depsgraph, view, projection)
+        except Exception:
+            traceback.print_exc()
+        finally:
+            gpu.state.color_mask_set(True, True, True, True)
+            gpu.state.viewport_set(0, 0, region.width, region.height)
+            gpu.state.depth_test_set('NONE')
 
     def update_render_passes(self, scene=None, renderlayer=None):
         self.register_pass(scene, renderlayer, "Combined", 4, "RGBA", 'COLOR')
@@ -826,7 +898,7 @@ class RenderLockGameEngine(bpy.types.RenderEngine):
             scene["renderlock_game_last_frame"] = {k: meta[k] for k in ("tick", "present", "seq")}
         finally:
             if depth_requested:
-                SESSION.set_depth(False)
+                SESSION.set_depth(getattr(SESSION, "live_depth", False))
             self.end_result(result)
 
 
@@ -888,6 +960,37 @@ class RenderLockGameSettings(bpy.types.PropertyGroup):
     follow_timeline: bpy.props.BoolProperty(name="Follow timeline", default=True,
                                             description="Seek the replay when the frame changes")
     selected_key: bpy.props.IntProperty(name="Selected camera frame", default=-1)
+    map_path: bpy.props.StringProperty(
+        name="Map", subtype='FILE_PATH',
+        description="RenderLockMap.blend from a RenderLock map download or Build from game "
+                    "(keep its map-package.json and texture folders beside it)")
+    map_radius: bpy.props.FloatProperty(
+        name="Around the shot", default=100.0, min=20.0, max=1000.0, subtype='DISTANCE', unit='LENGTH',
+        description="Load map pieces within this distance of the camera anywhere in the shot. "
+                    "Every map light is always loaded")
+    map_small_textures: bpy.props.BoolProperty(
+        name="Smaller map textures (1024 px)", default=True,
+        description="The map is hidden from the camera, so its textures only show in reflections and "
+                    "bounced light. The smaller copies use far less graphics memory")
+    objects_engine: bpy.props.EnumProperty(
+        name="Render objects with", default='BLENDER_EEVEE', update=lambda self, context: configure_objects_scene(_scene_of(self)),
+        items=[('BLENDER_EEVEE', "EEVEE", "Fast. The map lights and shadows your objects"),
+               ('CYCLES', "Cycles", "Slower, path traced. Can also put your objects' shadows onto the game")])
+    map_shadows: bpy.props.BoolProperty(
+        name="Shadows on the game", default=True, update=lambda self, context: configure_objects_scene(_scene_of(self)),
+        description="Cycles only: your objects' shadows and bounced light fall onto the game's world "
+                    "(the map catches them)")
+    objects_samples: bpy.props.IntProperty(
+        name="Samples", default=64, min=1, max=4096, update=lambda self, context: configure_objects_scene(_scene_of(self)),
+        description="Cycles samples for the Blender objects (denoised)")
+    match_look: bpy.props.BoolProperty(
+        name="Match the map's look", default=True, update=lambda self, context: configure_objects_scene(_scene_of(self)),
+        description="Show objects with the view transform the map's lights were tuned for (AgX), "
+                    "like the rest of RenderLock's map scenes")
+    map_guide: bpy.props.BoolProperty(
+        name="Map guide in viewport", default=True, update=lambda self, context: _on_map_guide(_scene_of(self)),
+        description="Show the map's light proxy around the shot in Solid view for placing objects. "
+                    "It never renders and cannot be selected")
     show_shot_camera: bpy.props.BoolProperty(
         name="Show shot camera in viewport", default=False, update=lambda self, context: apply_camera_visibility(context.scene),
         description="Draw the RenderLock Shot camera object over the game view (hidden by default, like Dolly)")
@@ -1929,6 +2032,32 @@ def _drop_merge(scene):
             effects.remove(effect)
 
 
+def overlay_objects(scene):
+    """Blender objects drawn live over the game in the rendered viewport."""
+    if scene is None or objects_scene(scene) is None:
+        return []
+    collection = objects_collection(scene)
+    if collection is None:
+        return []
+    return [obj for obj in collection.all_objects
+            if obj.type in {'MESH', 'CURVE', 'SURFACE', 'META', 'FONT'} and obj.visible_get()]
+
+
+@bpy.app.handlers.persistent
+def _overlay_geometry_changed(scene, depsgraph):
+    names = set()
+    for update in depsgraph.updates:
+        if not update.is_updated_geometry:
+            continue
+        data = update.id.original if hasattr(update.id, "original") else update.id
+        if isinstance(data, bpy.types.Object):
+            names.add(data.name)
+        elif isinstance(data, bpy.types.ID):
+            names.update(obj.name for obj in bpy.data.objects if obj.data is data)
+    if names:
+        viewport_layer.mark_dirty(names)
+
+
 def objects_scene(scene):
     """The EEVEE scene that renders this scene's Blender objects, if it was set up."""
     return bpy.data.scenes.get(scene.get("renderlock_objects_scene", "")) if scene else None
@@ -1974,9 +2103,13 @@ def build_composite(scene, other):
     if not any(item.in_out == 'OUTPUT' for item in sockets):
         tree.interface.new_socket("Image", in_out='OUTPUT', socket_type='NodeSocketColor')
     game = tree.nodes.new("CompositorNodeRLayers")
-    game.scene, game.label, game.location = scene, "Game", (-500, 150)
+    game.scene, game.label, game.location = scene, "Game", (-900, 150)
     objects = tree.nodes.new("CompositorNodeRLayers")
-    objects.scene, objects.label, objects.location = other, "Blender objects", (-500, -200)
+    objects.scene, objects.label, objects.location = other, "Blender objects", (-900, -250)
+    props = scene.renderlock_game
+    loaded = map_collection(other)
+    shadows = loaded is not None and other.render.engine == 'CYCLES' and props.map_shadows
+    look = loaded is not None and props.match_look and loaded.get("renderlock_look") == "AgX"
     merge = tree.nodes.new("CompositorNodeZcombine")
     merge.location = (-100, 0)
     merge.inputs["Use Alpha"].default_value = True
@@ -1986,14 +2119,407 @@ def build_composite(scene, other):
     viewer = tree.nodes.new("CompositorNodeViewer")
     viewer.location = (200, -120)
     links = tree.links
-    links.new(_socket(game, "Image"), merge.inputs["A"])
+    game_image, object_image = _socket(game, "Image"), _socket(objects, "Image")
+    if shadows and _socket(objects, "Shadow Catcher") is not None:
+        # The map catches the objects' shadows and bounce: the game frame times that ratio.
+        # Deviations under a few percent are sampling noise, not shadow, so they are ignored.
+        ratio = _socket(objects, "Shadow Catcher")
+        grey = tree.nodes.new("CompositorNodeRGBToBW")
+        grey.location = (-700, 420)
+        links.new(ratio, grey.inputs[0])
+        offset = tree.nodes.new("ShaderNodeMath")
+        offset.operation, offset.location = 'SUBTRACT', (-560, 420)
+        offset.inputs[1].default_value = 1.0
+        links.new(grey.outputs[0], offset.inputs[0])
+        size = tree.nodes.new("ShaderNodeMath")
+        size.operation, size.location = 'ABSOLUTE', (-420, 420)
+        links.new(offset.outputs[0], size.inputs[0])
+        ramp = tree.nodes.new("ShaderNodeMapRange")
+        ramp.location, ramp.clamp = (-280, 420), True
+        ramp.inputs["From Min"].default_value, ramp.inputs["From Max"].default_value = 0.015, 0.05
+        links.new(size.outputs[0], ramp.inputs["Value"])
+        keep = tree.nodes.new("ShaderNodeMix")
+        keep.data_type, keep.blend_type, keep.label, keep.location = 'RGBA', 'MIX', "Ignore catcher noise", (-140, 330)
+        keep.inputs[6].default_value = (1.0, 1.0, 1.0, 1.0)
+        links.new(ramp.outputs["Result"], keep.inputs[0])
+        links.new(ratio, keep.inputs[7])
+        catch = tree.nodes.new("ShaderNodeMix")
+        catch.data_type, catch.blend_type, catch.label, catch.location = 'RGBA', 'MULTIPLY', "Shadows on the game", (0, 200)
+        catch.inputs[0].default_value = 1.0
+        links.new(game_image, catch.inputs[6])
+        links.new(keep.outputs[2], catch.inputs[7])
+        game_image = catch.outputs[2]
+    if look:
+        # Objects lit by the map's lights get the AgX look the map was tuned for; the
+        # game view itself stays Standard (the game frame is already final).
+        x = -620
+        chain = []
+        for kind, setting in (("CompositorNodePremulKey", "To Straight"),
+                              ("CompositorNodeConvertColorSpace", ("Linear Rec.709", "AgX Base sRGB")),
+                              ("CompositorNodeConvertColorSpace", ("sRGB", "Linear Rec.709")),
+                              ("CompositorNodePremulKey", "To Premultiplied")):
+            node = tree.nodes.new(kind)
+            node.location, x = (x, -300), x + 160
+            if kind == "CompositorNodePremulKey":
+                node.inputs["Type"].default_value = setting
+            else:
+                node.from_color_space, node.to_color_space = setting
+            chain.append(node)
+        chain[1].label = "Map look (AgX)"
+        links.new(object_image, chain[0].inputs["Image"])
+        for a, b in zip(chain, chain[1:]):
+            links.new(a.outputs["Image"], b.inputs["Image"])
+        object_image = chain[-1].outputs["Image"]
+    links.new(game_image, merge.inputs["A"])
     links.new(_socket(game, "Depth"), merge.inputs["Depth A"])
-    links.new(_socket(objects, "Image"), merge.inputs["B"])
+    links.new(object_image, merge.inputs["B"])
     links.new(_socket(objects, "Depth"), merge.inputs["Depth B"])
     links.new(merge.outputs["Result"], output.inputs[0])
     links.new(merge.outputs["Result"], viewer.inputs["Image"])
     _use_merge(scene, tree)
     return tree
+
+
+def map_collection(other):
+    """The game map linked into the objects scene, if any."""
+    if other is None:
+        return None
+    return next((c for c in other.collection.children if c.get("renderlock_role") == "map"), None)
+
+
+def guide_collection(scene):
+    return next((c for c in scene.collection.children if c.get("renderlock_role") == "guide"), None) if scene else None
+
+
+def objects_region(scene, margin=2.0, frames=None):
+    """World bounds of the Blender objects (at the given frames, default the current one), grown by margin."""
+    collection = objects_collection(scene)
+    if collection is None:
+        return None
+    los, his = [], []
+    original = scene.frame_current
+    frames = sorted(set(frames or [original]))
+    SESSION.suppress_follow += 1
+    try:
+        for frame in frames:
+            if frame != scene.frame_current:
+                scene.frame_set(frame)
+            for obj in collection.all_objects:
+                if obj.type in game_map.GEOMETRY_TYPES and not obj.hide_render:
+                    lo, hi = game_map._bounds(obj)
+                    los.append(lo)
+                    his.append(hi)
+        if scene.frame_current != original:
+            scene.frame_set(original)
+    finally:
+        SESSION.suppress_follow -= 1
+    if not los:
+        return None
+    return ([min(v[i] for v in los) - margin for i in range(3)], [max(v[i] for v in his) + margin for i in range(3)])
+
+
+def _shot_frames(scene):
+    return [scene.frame_start, (scene.frame_start + scene.frame_end) // 2, scene.frame_end, scene.frame_current]
+
+
+SHADOW_REACH = 12.0  # metres around the Blender objects whose map pieces catch their shadows
+
+
+def configure_objects_scene(scene):
+    """Objects scene engine, samples and map catchers from the panel settings; rebuild the merge."""
+    other = objects_scene(scene)
+    if scene is None or other is None:
+        return
+    props = scene.renderlock_game
+    other.render.engine = props.objects_engine
+    loaded = map_collection(other)
+    cycles = props.objects_engine == 'CYCLES'
+    if cycles:
+        other.cycles.samples = props.objects_samples
+        other.cycles.use_denoising = True
+        try:
+            prefs = bpy.context.preferences.addons["cycles"].preferences
+            other.cycles.device = 'GPU' if prefs.compute_device_type != 'NONE' else 'CPU'
+        except (KeyError, AttributeError):
+            pass
+    catch = bool(loaded is not None and cycles and props.map_shadows)
+    for layer in other.view_layers:
+        layer.use_pass_z = True
+        if hasattr(layer, "cycles"):
+            layer.cycles.use_pass_shadow_catcher = catch
+    if loaded is not None:
+        region = objects_region(scene, SHADOW_REACH, _shot_frames(scene)) if catch else None
+        loaded["renderlock_catchers"] = game_map.set_catchers(loaded, region, catch)
+    if other.world is None:
+        other.world = scene.world
+    build_composite(scene, other)
+
+
+def _on_map_guide(scene):
+    guide = guide_collection(scene)
+    if guide is not None:
+        guide.hide_viewport = not scene.renderlock_game.map_guide
+    elif scene.renderlock_game.map_guide and map_collection(objects_scene(scene)) is not None:
+        MAP_JOB.clear()
+        MAP_JOB.update(state="loading", scene=scene.name, guide_only=True, message="Adding the map guide…")
+        bpy.app.timers.register(_map_timer, first_interval=0.1)
+
+
+def shot_camera_points(scene, limit=240):
+    """Scene camera positions across the shot's frame range."""
+    camera = scene.camera
+    frames = list(range(scene.frame_start, scene.frame_end + 1))
+    step = max(1, len(frames) // limit)
+    frames = frames[::step] + ([frames[-1]] if frames and frames[-1] % step else [])
+    original, points = scene.frame_current, []
+    SESSION.suppress_follow += 1
+    try:
+        for frame in frames:
+            scene.frame_set(frame)
+            points.append(tuple(camera.matrix_world.translation))
+        scene.frame_set(original)
+    finally:
+        SESSION.suppress_follow -= 1
+    return points
+
+
+MAP_JOB = {"state": "idle"}
+
+
+def _map_timer():
+    """Preparing runs in a background Blender; linking and light baking run here, one step per tick
+    so the panel can say what is happening before Blender is busy."""
+    job = MAP_JOB
+    try:
+        state = job.get("state")
+        if state == "preparing":
+            if job["process"].poll() is None:
+                return 0.5
+            if not game_map.prepared(job["path"], job["small"]):
+                job.update(state="failed", message="The map could not be prepared. See "
+                           + str(game_map.log_file(job["path"])))
+                _redraw_views()
+                return None
+            job.update(state="loading", message="Loading the map around the shot…")
+            _redraw_views()
+            return 0.1
+        if state == "loading":
+            _load_map(job)
+            _redraw_views()
+            return 0.1 if job.get("state") == "baking" else None
+        if state == "baking":
+            _bake_map_light(job)
+            _redraw_views()
+        return None
+    except Exception as error:
+        traceback.print_exc()
+        job.update(state="failed", message=f"Loading the map failed: {error}")
+        _redraw_views()
+        return None
+
+
+def _load_map(job):
+    began = time.monotonic()
+    scene = bpy.data.scenes.get(job["scene"])
+    other = objects_scene(scene)
+    if scene is None or other is None:
+        raise RuntimeError("The scene or its Blender objects layer is gone.")
+    props = scene.renderlock_game
+    loaded = map_collection(other)
+    path = job.get("path") or (loaded.get("renderlock_map") if loaded is not None else "")
+    small = job.get("small", props.map_small_textures)
+    index = game_map.load_index(path)
+    if index is None:
+        raise RuntimeError("The prepared map is missing; press Load game map again.")
+    points = job.get("points") or json.loads(loaded.get("renderlock_points", "[]") if loaded is not None else "[]")
+    if not job.get("guide_only"):
+        if loaded is not None:
+            game_map.remove(loaded)
+        names = game_map.select(index, points, props.map_radius)
+        loaded, counts, world = game_map.link(path, small, names, game_map.MAP_GROUP, other, index.get("world"))
+        loaded["renderlock_role"] = "map"
+        loaded["renderlock_look"] = index.get("view_transform", "Standard")
+        loaded["renderlock_points"] = json.dumps([list(p) for p in points])
+        loaded["renderlock_radius"] = props.map_radius
+        loaded["renderlock_signature"] = shot_signature(scene)
+        other.world = world if world is not None else scene.world
+        game_map.apply_eevee(other, index.get("eevee"))
+        game_map.remember_map(path)
+        if not props.map_path:
+            props.map_path = path
+    guide = guide_collection(scene)
+    if guide is not None:
+        game_map.remove(guide)
+    if props.map_guide and game_map.prepared(path, small):
+        cells = game_map.select_proxy(index, points, props.map_radius)
+        if cells:
+            guide, _counts, _world = game_map.link(path, small, cells, game_map.GUIDE_GROUP, scene)
+            guide["renderlock_role"] = "guide"
+            guide.hide_render = True
+            guide.hide_select = True
+    configure_objects_scene(scene)
+    counts = json.loads(loaded.get("renderlock_counts", "{}"))
+    message = (f"Game map loaded in {time.monotonic() - began:.0f} s: {counts.get('meshes', 0)} map pieces, "
+               f"{counts.get('lights', 0)} lights.")
+    if job.get("guide_only"):
+        job.update(state="done", message="Map guide added.")
+    elif props.objects_engine == 'BLENDER_EEVEE':
+        job.update(state="baking", message=message + " Baking the map's light around your objects…",
+                   loaded_message=message)
+    else:
+        job.update(state="done", message=message)
+
+
+def _bake_map_light(job):
+    """EEVEE: the game's baked light reaches Blender objects through a probe volume baked from the map."""
+    began = time.monotonic()
+    scene = bpy.data.scenes.get(job["scene"])
+    other = objects_scene(scene)
+    loaded = map_collection(other)
+    if loaded is None:
+        raise RuntimeError("Load the game map first.")
+    region = objects_region(scene, 2.0, _shot_frames(scene))
+    prefix = job.get("loaded_message", "")
+    if region is None:
+        job.update(state="done", message=(prefix + " Add objects to the Blender objects collection, "
+                                          "then press Update light around objects.").strip())
+        return
+    _gpu_busy(True)
+    try:
+        game_map.add_light_probes(loaded, region, other)
+    finally:
+        _gpu_busy(False)
+    loaded["renderlock_light_region"] = json.dumps(region)
+    job.update(state="done", message=(prefix + f" Map light baked around your objects in "
+                                      f"{time.monotonic() - began:.0f} s.").strip())
+
+
+def _gpu_busy(on):
+    """Optional: mark a GPU-heavy job for other local work (RENDERLOCK_COORDINATION folder, if set)."""
+    try:
+        folder = os.environ.get("RENDERLOCK_COORDINATION", "")
+        if not folder or not Path(folder).is_dir():
+            return
+        target = Path(folder) / "blender-gpu-busy.json"
+        if on:
+            target.write_text(json.dumps({"pid": os.getpid(), "started": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                                          "by": "game render map light"}), encoding="utf-8")
+        elif target.is_file():
+            target.unlink()
+    except OSError:
+        pass
+
+
+def _map_path(scene):
+    props = scene.renderlock_game
+    return bpy.path.abspath(props.map_path) if props.map_path else game_map.find_map()
+
+
+class RENDERLOCK_OT_game_map_load(bpy.types.Operator):
+    """Load the map around this shot as an invisible light and shadow rig for your Blender objects.
+    The game still draws the world; the map only lights, shadows and reflects your objects"""
+    bl_idname = "renderlock.game_map_load"
+    bl_label = "Load game map"
+
+    @classmethod
+    def poll(cls, context):
+        return MAP_JOB.get("state") not in ("preparing", "loading", "baking")
+
+    def execute(self, context):
+        scene = context.scene
+        props = scene.renderlock_game
+        path = _map_path(scene)
+        if not game_map.is_map(path):
+            self.report({'ERROR'}, "Choose RenderLockMap.blend from a RenderLock map download or build "
+                                   "(its map-package.json and texture folders must be beside it).")
+            return {'CANCELLED'}
+        if scene.camera is None:
+            self.report({'ERROR'}, "Set a scene camera first: the map is loaded around the shot.")
+            return {'CANCELLED'}
+        if objects_scene(scene) is None:
+            bpy.ops.renderlock.add_blender_objects()
+        small = props.map_small_textures
+        MAP_JOB.clear()
+        MAP_JOB.update(scene=scene.name, path=path, small=small, points=shot_camera_points(scene), guide_only=False)
+        if not game_map.prepared(path, small):
+            MAP_JOB.update(state="preparing", process=game_map.start_prepare(path, small, bpy.app.binary_path),
+                           message="Preparing the map for lighting (first time only, about a minute)…")
+        else:
+            MAP_JOB.update(state="loading", message="Loading the map around the shot…")
+        bpy.app.timers.register(_map_timer, first_interval=0.2)
+        return {'FINISHED'}
+
+
+class RENDERLOCK_OT_game_map_relight(bpy.types.Operator):
+    """After adding or moving Blender objects: bake the map's light around them again (EEVEE) and
+    choose which map pieces catch their shadows (Cycles)"""
+    bl_idname = "renderlock.game_map_relight"
+    bl_label = "Update light around objects"
+
+    @classmethod
+    def poll(cls, context):
+        return MAP_JOB.get("state") not in ("preparing", "loading", "baking") and \
+            map_collection(objects_scene(context.scene)) is not None
+
+    def execute(self, context):
+        scene = context.scene
+        configure_objects_scene(scene)
+        if scene.renderlock_game.objects_engine == 'BLENDER_EEVEE':
+            MAP_JOB.clear()
+            MAP_JOB.update(state="baking", scene=scene.name, message="Baking the map's light around your objects…")
+            bpy.app.timers.register(_map_timer, first_interval=0.1)
+        else:
+            loaded = map_collection(objects_scene(scene))
+            self.report({'INFO'}, f"{loaded.get('renderlock_catchers', 0)} map pieces catch your objects' shadows.")
+        return {'FINISHED'}
+
+
+class RENDERLOCK_OT_game_map_remove(bpy.types.Operator):
+    """Remove the game map (and its viewport guide) from this scene"""
+    bl_idname = "renderlock.game_map_remove"
+    bl_label = "Remove game map"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        scene = context.scene
+        for collection in (map_collection(objects_scene(scene)), guide_collection(scene)):
+            if collection is not None:
+                game_map.remove(collection)
+        configure_objects_scene(scene)
+        return {'FINISHED'}
+
+
+def _cycles_gpu_missing():
+    try:
+        prefs = bpy.context.preferences.addons["cycles"].preferences
+        return prefs.compute_device_type == 'NONE'
+    except (KeyError, AttributeError):
+        return False
+
+
+class RENDERLOCK_OT_cycles_use_gpu(bpy.types.Operator):
+    """Let Cycles render on your graphics card (Blender Preferences > System > Cycles Render Devices)"""
+    bl_idname = "renderlock.cycles_use_gpu"
+    bl_label = "Use my graphics card for Cycles"
+
+    def execute(self, context):
+        prefs = context.preferences.addons["cycles"].preferences
+        prefs.refresh_devices()
+        for kind in ("OPTIX", "CUDA", "HIP", "ONEAPI", "METAL"):
+            devices = [d for d in prefs.devices if d.type == kind]
+            if devices:
+                prefs.compute_device_type = kind
+                for device in devices:
+                    device.use = True
+                try:
+                    bpy.ops.wm.save_userpref()
+                except RuntimeError:
+                    pass
+                configure_objects_scene(context.scene)
+                self.report({'INFO'}, f"Cycles now renders with {kind} on {devices[0].name}.")
+                return {'FINISHED'}
+        self.report({'WARNING'}, "Blender found no graphics card that Cycles can use; it stays on the CPU.")
+        return {'CANCELLED'}
 
 
 class RENDERLOCK_OT_add_blender_objects(bpy.types.Operator):
@@ -2014,7 +2540,7 @@ class RENDERLOCK_OT_add_blender_objects(bpy.types.Operator):
         if other is None:
             other = bpy.data.scenes.new(f"{scene.name} · Blender objects")
             other.world = scene.world
-        other.render.engine = 'BLENDER_EEVEE'
+        other.render.engine = scene.renderlock_game.objects_engine
         other.render.film_transparent = True
         for layer in other.view_layers:
             layer.use_pass_z = True
@@ -2025,7 +2551,7 @@ class RENDERLOCK_OT_add_blender_objects(bpy.types.Operator):
         for layer in scene.view_layers:
             layer.use_pass_z = True  # game depth is what the objects are merged against
         sync_objects_scene(scene)
-        build_composite(scene, other)
+        configure_objects_scene(scene)
         # New objects go into the collection.
         layer_collection = next((c for c in context.view_layer.layer_collection.children
                                  if c.collection == collection), None)
@@ -2045,6 +2571,9 @@ class RENDERLOCK_OT_remove_blender_objects(bpy.types.Operator):
     def execute(self, context):
         scene = context.scene
         other = objects_scene(scene)
+        for collection in (map_collection(other), guide_collection(scene)):
+            if collection is not None:
+                game_map.remove(collection)
         _drop_merge(scene)
         tree = bpy.data.node_groups.get(COMPOSITE_TREE + f" ({scene.name})")
         if tree is not None:
@@ -2087,10 +2616,53 @@ class RENDERLOCK_PT_shot_objects(bpy.types.Panel):
         count = len(collection.all_objects) if collection else 0
         layout.label(text=f'"{collection.name if collection else OBJECTS_COLLECTION}": {count} objects',
                      icon='OUTLINER_COLLECTION')
-        layout.label(text="Shown in renders (F12 / Render shot), lit by EEVEE.", icon='INFO')
+        layout.label(text="Shown in renders (F12 / Render shot).", icon='INFO')
         if not merge_in_use(scene):
             layout.label(text="The compositor no longer uses the RenderLock merge.", icon='ERROR')
             layout.operator(RENDERLOCK_OT_add_blender_objects.bl_idname, text="Restore the merge", icon='FILE_REFRESH')
+        props = scene.renderlock_game
+        col = layout.column()
+        col.use_property_split = True
+        col.use_property_decorate = False
+        col.prop(props, "objects_engine", expand=True)
+        if props.objects_engine == 'CYCLES':
+            col.prop(props, "objects_samples")
+            if _cycles_gpu_missing():
+                col.label(text="Cycles is set to render on the CPU (slow).", icon='ERROR')
+                col.operator(RENDERLOCK_OT_cycles_use_gpu.bl_idname, icon='PREFERENCES')
+        box = layout.box()
+        box.label(text="Game map: lights and shadows", icon='WORLD')
+        loaded = map_collection(other)
+        busy = MAP_JOB.get("state") in ("preparing", "loading", "baking") and MAP_JOB.get("scene") == scene.name
+        if busy or (MAP_JOB.get("state") in ("done", "failed") and MAP_JOB.get("scene") == scene.name):
+            box.label(text=MAP_JOB.get("message", "")[:120],
+                      icon='TIME' if busy else ('ERROR' if MAP_JOB["state"] == "failed" else 'CHECKMARK'))
+        col = box.column()
+        col.prop(props, "map_path", text="Map")
+        if not props.map_path:
+            found = game_map.find_map()
+            col.label(text=f"Will use {found}" if found else "Choose RenderLockMap.blend from your map download or build.",
+                      icon='INFO')
+        col.prop(props, "map_radius")
+        col.prop(props, "map_small_textures")
+        if loaded is None:
+            col.operator(RENDERLOCK_OT_game_map_load.bl_idname, icon='IMPORT')
+        else:
+            counts = json.loads(loaded.get("renderlock_counts", "{}"))
+            col.label(text=f"{counts.get('meshes', 0)} map pieces and {counts.get('lights', 0)} lights around the shot "
+                           f"({loaded.get('renderlock_radius', 0):.0f} m).", icon='LIGHT')
+            if loaded.get("renderlock_signature") != shot_signature(scene):
+                col.label(text="The shot changed since the map was loaded.", icon='ERROR')
+            row = col.row(align=True)
+            row.operator(RENDERLOCK_OT_game_map_load.bl_idname, text="Reload around the shot", icon='FILE_REFRESH')
+            row.operator(RENDERLOCK_OT_game_map_remove.bl_idname, text="", icon='X')
+            col.operator(RENDERLOCK_OT_game_map_relight.bl_idname, icon='LIGHTPROBE_VOLUME')
+            if props.objects_engine == 'CYCLES':
+                col.prop(props, "map_shadows")
+            else:
+                col.label(text="Shadows on the game need Cycles.", icon='INFO')
+            col.prop(props, "match_look")
+            col.prop(props, "map_guide")
         layout.operator(RENDERLOCK_OT_remove_blender_objects.bl_idname, icon='X')
 
 
@@ -2100,6 +2672,8 @@ CLASSES = (RenderLockGameSettings, RENDERLOCK_OT_game_connect, RENDERLOCK_OT_gam
            RENDERLOCK_OT_shot_goto, RENDERLOCK_OT_replay_step, RENDERLOCK_OT_replay_toggle,
            RENDERLOCK_OT_shot_play, RENDERLOCK_OT_shot_render, RENDERLOCK_OT_shot_stop,
            RENDERLOCK_OT_open_output, RENDERLOCK_OT_add_blender_objects, RENDERLOCK_OT_remove_blender_objects,
+           RENDERLOCK_OT_game_map_load, RENDERLOCK_OT_game_map_remove, RENDERLOCK_OT_game_map_relight,
+           RENDERLOCK_OT_cycles_use_gpu,
            RenderLockGameEngine, RENDERLOCK_PT_game, RENDERLOCK_PT_shot, RENDERLOCK_PT_shot_output,
            RENDERLOCK_PT_shot_objects,
            RENDERLOCK_PT_shot_settings)
@@ -2117,6 +2691,9 @@ def register():
     for handler in [h for h in bpy.app.handlers.render_init if h.__name__ == "_objects_render_init"]:
         bpy.app.handlers.render_init.remove(handler)
     bpy.app.handlers.render_init.append(_objects_render_init)
+    for handler in [h for h in bpy.app.handlers.depsgraph_update_post if h.__name__ == "_overlay_geometry_changed"]:
+        bpy.app.handlers.depsgraph_update_post.remove(handler)
+    bpy.app.handlers.depsgraph_update_post.append(_overlay_geometry_changed)
     register_keymap()
     if not bpy.app.timers.is_registered(_live_timer):
         bpy.app.timers.register(_live_timer, first_interval=0.5, persistent=True)
@@ -2130,6 +2707,12 @@ def unregister():
         bpy.app.handlers.frame_change_post.remove(handler)
     for handler in [h for h in bpy.app.handlers.render_init if h.__name__ == "_objects_render_init"]:
         bpy.app.handlers.render_init.remove(handler)
+    for handler in [h for h in bpy.app.handlers.depsgraph_update_post if h.__name__ == "_overlay_geometry_changed"]:
+        bpy.app.handlers.depsgraph_update_post.remove(handler)
+    try:
+        viewport_layer.free()
+    except Exception:
+        pass
     for panel in _compatible_panels():
         panel.COMPAT_ENGINES.discard(ENGINE)
     del bpy.types.Scene.renderlock_game
