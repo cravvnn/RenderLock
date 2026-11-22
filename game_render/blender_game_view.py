@@ -839,7 +839,7 @@ class RenderLockGameEngine(bpy.types.RenderEngine):
                 layer.draw_game(self._texture, self._depth if overlay else None, projection,
                                 x, y, w, h, region.width, region.height)
             if overlay and (not baked or camera is not None):
-                layer.draw_objects(overlay, depsgraph, view, projection)
+                layer.draw_objects(overlay, depsgraph, view, projection, overlay_lights(context.scene))
         except Exception:
             traceback.print_exc()
         finally:
@@ -2091,6 +2091,14 @@ def overlay_objects(scene):
         return []
     return [obj for obj in collection.all_objects
             if obj.type in {'MESH', 'CURVE', 'SURFACE', 'META', 'FONT'} and obj.visible_get()]
+
+
+def overlay_lights(scene):
+    """Lights of the Blender objects collection: they light the live preview too."""
+    collection = objects_collection(scene) if scene is not None else None
+    if collection is None:
+        return []
+    return [obj for obj in collection.all_objects if obj.type == 'LIGHT' and obj.visible_get()]
 
 
 @bpy.app.handlers.persistent
