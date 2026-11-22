@@ -45,7 +45,11 @@ ROOT = _root()
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+import importlib  # noqa: E402
 import frame_stream  # noqa: E402
+# Running the script again (Text Editor) must pick up an updated stream layout too,
+# or Blender and the game's native helper disagree and no frames arrive.
+frame_stream = importlib.reload(frame_stream)
 
 ENGINE = "RENDERLOCK_GAME"
 UNIT = 0.0254          # metres per Source unit (RenderLock scene coordinates)
@@ -1142,6 +1146,9 @@ class RENDERLOCK_PT_game(bpy.types.Panel):
         box.label(text=f"State: {SESSION.state}")
         if SESSION.message:
             box.label(text=SESSION.message[:120])
+        if SESSION.state == "ready" and not SESSION.frame_meta:
+            box.label(text="No game frames yet. If this stays, Disconnect, run the script", icon='ERROR')
+            box.label(text="again (Text > Reload, Run Script) and Connect.")
         if SESSION.frame_meta:
             meta = SESSION.frame_meta
             box.label(text=f"Game shows tick {meta['tick']} ({match_time(meta['tick'])})  "
