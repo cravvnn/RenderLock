@@ -1,6 +1,7 @@
 import copy
 import hashlib
 import json
+import os
 
 import pytest
 
@@ -40,6 +41,36 @@ def test_portable_local_package_verifies_every_file_and_ignores_caller_inventory
     assert packages.load_package(folder)['document']['source']['kind']=='installed_game'
     moved=folder.with_name('relocated');folder.rename(moved)
     assert packages.library_identity(moved/packages.LIBRARY)['sha256']==doc['library']['sha256']
+
+
+def test_parent_receipt_skips_hashing_only_the_unchanged_package(prepared, tmp_path, monkeypatch):
+    folder, _ = prepared
+    library = folder / packages.LIBRARY
+    expected = packages.library_identity(library)
+    receipt_file = tmp_path / 'verified.json'
+    digest = packages.write_parent_receipt(expected, receipt_file)
+    receipt = packages.read_parent_receipt(receipt_file, digest)
+    assert receipt is not None
+    receipt_file.write_bytes(receipt_file.read_bytes() + b' ')
+    assert packages.read_parent_receipt(receipt_file, digest) is None
+    monkeypatch.setattr(packages, '_VERIFIED_PACKAGES', {})
+    paths = []
+    original = packages.file_hash
+
+    def tracked_hash(path):
+        paths.append(path.name)
+        return original(path)
+
+    monkeypatch.setattr(packages, 'file_hash', tracked_hash)
+    assert packages.library_identity(library, parent_receipt=receipt) == expected
+    assert paths == []
+    texture = folder / 'textures/wall.png'
+    saved = texture.stat()
+    texture.write_bytes(b'fixture PIXELS')
+    os.utime(texture, ns=(saved.st_atime_ns, saved.st_mtime_ns))
+    with pytest.raises(ValueError, match='resource is missing or changed'):
+        packages.library_identity(library, parent_receipt=receipt)
+    assert 'wall.png' in paths
 
 
 @pytest.mark.parametrize('change',['changed'])

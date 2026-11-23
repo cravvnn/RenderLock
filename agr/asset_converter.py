@@ -189,9 +189,10 @@ class AssetConverter:
         # Material texture channels are discovered from compiled shader files,
         # not just RERL dependencies. Without these, VRF can silently omit normal
         # textures and mispack roughness while still producing a valid GLB.
-        shaders = sorted(p for p in provider.resources if p.endswith('.vcs'))
-        for path in shaders:
-            resolved = provider.resolve(path)
+        inventory = getattr(provider, 'compiled_shaders', None)
+        shaders = inventory() if inventory else tuple(
+            provider.resolve(path) for path in sorted(provider.resources) if path.endswith('.vcs'))
+        for resolved in shaders:
             records[resolved.resource_path] = resolved
         inputs = {p: r.sha256 for p, r in sorted(records.items())}
         settings = {'format': 'glb', 'materials': True, 'rig': True,
@@ -204,7 +205,21 @@ class AssetConverter:
             for p, resolved in records.items():
                 target = tree / p
                 target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(resolved.local_path, target)
+                if p.endswith('.vcs'):
+                    try:
+                        shader = resolved.local_path.read_bytes()
+                    except FileNotFoundError:
+                        shader = None
+                    if shader is None or hashlib.sha256(shader).hexdigest() != resolved.sha256:
+                        refreshed = provider.resolve(p)
+                        if refreshed.sha256 != resolved.sha256:
+                            raise ConversionError(f'Game shader changed during model conversion: {p}')
+                        shader = refreshed.local_path.read_bytes()
+                        if hashlib.sha256(shader).hexdigest() != resolved.sha256:
+                            raise ConversionError(f'Cached game shader changed during model conversion: {p}')
+                    target.write_bytes(shader)
+                else:
+                    shutil.copyfile(resolved.local_path, target)
             gameinfo = tree / 'gameinfo.gi'
             # VRF's --game loader does not expand this engine token for loose
             # cache trees. An explicit private path works on both drive layouts.

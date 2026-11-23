@@ -8,6 +8,8 @@ from pathlib import Path, PurePosixPath
 import re
 import shutil
 
+from .path_io import file_identity
+
 FORMAT = 'renderlock-map-v2'
 # deadlockrigs 1.0.7, map builder 26, run unmodified with the Source 2 Viewer 21.1 release.
 BUILDER_COMMIT = '74ddb41198d67f99b831e704434ffaed54528ab3'
@@ -133,7 +135,46 @@ def validate_document(doc):
     return doc
 
 
-def load_package(path):
+def _accept_parent_receipt(receipt, folder, digest, doc):
+    if not isinstance(receipt, dict) or receipt.get('manifest_sha256') != digest or receipt.get('folder') != str(folder):
+        return None
+    rows = receipt.get('identities')
+    if not isinstance(rows, list) or len(rows) != len(doc['files']):
+        return None
+    identities = []
+    for row, saved in zip(doc['files'], rows):
+        target = folder.joinpath(*relative_path(row['file']).parts).resolve()
+        if not target.is_relative_to(folder):
+            return None
+        actual = file_identity(target)
+        if saved != [str(target), list(actual)] or actual[2] != row['bytes']:
+            return None
+        identities.append((str(target), actual))
+    return identities
+
+
+def write_parent_receipt(library, destination):
+    package = load_package(library['path'])
+    key = (str(package['folder']), package['manifest_sha256'])
+    if package['manifest_sha256'] != library['manifest_sha256']:
+        raise _fail('The prepared map identity changed after it was selected.')
+    receipt = dict(folder=key[0], manifest_sha256=key[1], identities=_VERIFIED_PACKAGES[key]['identities'])
+    raw = json.dumps(receipt).encode('utf-8')
+    destination.write_bytes(raw)
+    return hashlib.sha256(raw).hexdigest()
+
+
+def read_parent_receipt(path, digest):
+    try:
+        raw = Path(path).read_bytes()
+        if hashlib.sha256(raw).hexdigest() == digest:
+            return json.loads(raw)
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+def load_package(path, *, parent_receipt=None):
     """Require every declared byte; no basename search or caller count overrides."""
     library = Path(path).expanduser().resolve()
     folder = library if library.is_dir() else library.parent
@@ -144,27 +185,28 @@ def load_package(path):
         raw = manifest.read_bytes()
         manifest_sha256 = hashlib.sha256(raw).hexdigest()
         cached = _VERIFIED_PACKAGES.get((str(folder), manifest_sha256))
-        identity = lambda s: (s.st_dev, s.st_ino, s.st_size, s.st_mtime_ns)
         if cached is not None:
             try:
-                if all(identity(Path(name).stat()) == expected for name, expected in cached['identities']):
+                if all(file_identity(Path(name)) == expected for name, expected in cached['identities']):
                     return copy.deepcopy(cached['package'])
             except OSError:
                 pass
         doc = validate_document(json.loads(raw))
-        identities = []
-        for row in doc['files']:
-            target = folder.joinpath(*relative_path(row['file']).parts).resolve()
-            if not target.is_relative_to(folder):
-                raise _fail('A prepared map resource leaves its folder.')
-            before = target.stat()
-            if not target.is_file() or before.st_size != row['bytes'] or file_hash(target) != row['sha256']:
-                raise _fail('A prepared map resource is missing or changed: ' + row['file'])
-            after = target.stat()
-            if identity(before) != identity(after):
-                raise _fail('A prepared map resource changed during validation: ' + row['file'])
-            identities.append((str(target), identity(after)))
-        if not all(identity(Path(name).stat()) == expected for name, expected in identities):
+        identities = _accept_parent_receipt(parent_receipt, folder, manifest_sha256, doc)
+        if identities is None:
+            identities = []
+            for row in doc['files']:
+                target = folder.joinpath(*relative_path(row['file']).parts).resolve()
+                if not target.is_relative_to(folder):
+                    raise _fail('A prepared map resource leaves its folder.')
+                before = file_identity(target)
+                if before[2] != row['bytes'] or file_hash(target) != row['sha256']:
+                    raise _fail('A prepared map resource is missing or changed: ' + row['file'])
+                after = file_identity(target)
+                if before != after:
+                    raise _fail('A prepared map resource changed during validation: ' + row['file'])
+                identities.append((str(target), after))
+        if not all(file_identity(Path(name)) == expected for name, expected in identities):
             raise _fail('Prepared map resources changed while validating the package.')
         package = dict(folder=folder, document=doc, manifest_sha256=manifest_sha256)
         # Repeated checks within one job reuse verified bytes only while every
@@ -177,8 +219,8 @@ def load_package(path):
         raise _fail('Keep the complete extracted map package together, including textures, lightmaps and map-package.json.') from exc
 
 
-def library_identity(path):
-    package = load_package(path)
+def library_identity(path, *, parent_receipt=None):
+    package = load_package(path, parent_receipt=parent_receipt)
     doc = package['document']
     if doc['source']['kind'] == 'hosted_snapshot' and package['manifest_sha256'] not in HOSTED_MANIFESTS:
         raise _fail('This hosted map snapshot is not qualified by this RenderLock version.')

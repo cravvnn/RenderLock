@@ -7,7 +7,7 @@ def bake_fe_proxy_bones(rig, definition, frames, fps, collection=None, *, unit_s
     import bpy
     import numpy as np
     from mathutils import Matrix, Quaternion, Vector
-    from .fe_proxy_bones import proxy_bone_outputs, uniform_proxy_colliders, weighted_rigid_delta, skin_proxy_goals, project_proxy_rods
+    from .fe_proxy_bones import ProxyGoalSkinner, proxy_bone_outputs, uniform_proxy_colliders, weighted_rigid_delta, project_proxy_rods
     from .cloth_proxy_settings import proxy_pin_weights
     from .blender_fe_proxy import _capsule_mesh
     from .blender_scene import _curve
@@ -78,11 +78,12 @@ def bake_fe_proxy_bones(rig, definition, frames, fps, collection=None, *, unit_s
         pin=proxy.vertex_groups.new(name='AGR authored proxy goal pins')
         for i,weight in enumerate(proxy_pin_weights(data,definition.get('blender_goal_pins','authored_strength'))):
             if weight>0:pin.add([i],weight,'REPLACE')
+        skinner = ProxyGoalSkinner(data, rig.data.bones.keys(), unit_scale)
         poses=[];worlds=[];goals=[]
         for frame in frames:
             scene.frame_set(frame);bpy.context.view_layer.update()
             poses.append({bone.name:bone.matrix.copy() for bone in rig.pose.bones});worlds.append(rig.matrix_world.copy())
-            goals.append(skin_proxy_goals(data,poses[-1],unit_scale))
+            goals.append(skinner.evaluate(poses[-1]))
         # Cloth pins follow exact DMX-inverse-bind skinning. The independently
         # imported rig can relocate weapon bones, so its rest inverse is invalid
         # for these source-space proxy vertices.

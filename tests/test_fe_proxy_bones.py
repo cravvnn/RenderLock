@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from agr.fe_proxy_bones import proxy_bone_outputs, uniform_proxy_colliders, weighted_rigid_delta, skin_proxy_goals, project_proxy_rods
+from agr.fe_proxy_bones import ProxyGoalSkinner, proxy_bone_outputs, uniform_proxy_colliders, weighted_rigid_delta, skin_proxy_goals, project_proxy_rods
 
 
 def fixture():
@@ -64,6 +64,29 @@ def test_attachment_goals_use_source_inverse_bind_after_importer_relocates_rig()
     np.testing.assert_allclose(goals[1]-goals[0],[.0254,0,0],atol=1e-12)
     with pytest.raises(ValueError,match='absent'):
         skin_proxy_goals(proxy,{})
+
+
+def test_prepared_skinner_reuses_influences_with_new_poses():
+    identity = np.eye(4)
+    rest = identity.copy()
+    rest[:3, 3] = [2., 0., 0.]
+    proxy = dict(vertices=[[3., 2., 0.], [2., 0., 0.]],
+                 joint_names=['a', 'b', 'unused'], joint_count=3,
+                 joint_rest_transforms=[identity.tolist(), rest.tolist(), []],
+                 blend_indices=[1, 0, 1, 1, 0, 2],
+                 blend_weights=[.2, .5, .1, .2, .6, 1e-9])
+    skinner = ProxyGoalSkinner(proxy, {'a', 'b'}, 1.)
+    for offset in (4., -6.):
+        pose = identity.copy()
+        pose[:3, 3] = [offset, 0., 0.]
+        goals = skinner.evaluate({'a': identity, 'b': pose})
+        expected = [[3. + .3 / .8 * (offset - 2.), 2., 0.],
+                    [2. + .2 / .8 * (offset - 2.), 0., 0.]]
+        np.testing.assert_allclose(goals, expected, atol=1e-12)
+    with pytest.raises(ValueError, match='joint bind/pose transform'):
+        skinner.evaluate({'a': identity, 'b': np.full((4, 4), np.nan)})
+    with pytest.raises(ValueError, match='skin bone is absent: b'):
+        skinner.evaluate({'a': identity})
 
 
 def test_authored_proxy_rods_retain_exact_domain_lengths_and_pinned_endpoints():

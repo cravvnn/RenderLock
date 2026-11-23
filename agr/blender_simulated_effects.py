@@ -264,6 +264,24 @@ def validate_render_samples(tracks):
                 raise ValueError('Invalid particle age or sprite sequence')
 
 
+def _write_particle_curves(obj, facing_helper, frames, values, radii, boundaries):
+    from .blender_scene import _action_channels, _curve
+
+    _, channels = _action_channels(obj, obj.name + ' | particle samples')
+    for path, track in zip(('location', 'scale', 'rotation_quaternion', 'color'), zip(*values)):
+        for index, component in enumerate(zip(*track)):
+            _curve(channels, obj, path, index, frames, component)
+    if radii:
+        _curve(channels, obj, '["agr_trail_radius"]', 0, frames, radii)
+    for path in ('hide_render', 'hide_viewport'):
+        setattr(obj, path, True)
+        _curve(channels, obj, path, 0, (boundaries[0], frames[0], boundaries[1]), (1, 0, 1), constant=True)
+    if facing_helper is not None:
+        _, facing_channels = _action_channels(facing_helper, facing_helper.name + ' | particle samples')
+        for index, component in enumerate(zip(*(sample[0] for sample in values))):
+            _curve(facing_channels, facing_helper, 'location', index, frames, component)
+
+
 def collect_system_samples(simulation):
     """Retain live array order and empty samples for whole-system renderers."""
     systems = {}
@@ -854,6 +872,12 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254,
                     rotation=obj.constraints.new('COPY_ROTATION');rotation.target=facing_helper
                     rotation.name='AGR camera facing before particle roll'
                     rotation.mix_mode='BEFORE';rotation.owner_space='WORLD';rotation.target_space='WORLD'
+            first=1+(samples[0][0]-simulation['start_tick'])*frame_step;last=1+(samples[-1][0]-simulation['start_tick'])*frame_step
+            # Keep the legacy insertion behavior when Blender can merge nearby
+            # float32 keys. Light data and node socket animations keep their own actions.
+            boundaries = (first-frame_step, last+frame_step)
+            bulk = not light and frame_step >= .02 and max(map(abs, boundaries)) < frame_step * 2**20
+            frames, values, radii = [], [], []
             for tick,step,p in samples:
                 frame=1+(tick-simulation['start_tick'])*frame_step
                 obj.location=Vector(p['position'])*unit_scale
@@ -885,7 +909,9 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254,
                     obj.rotation_quaternion=Vector((1,0,0)).rotation_difference(Vector(direction))
                     obj.location-=Vector(direction)*length*renderer.get('m_flForwardShift',0)*unit_scale
                     obj.scale=(max(1e-9,length*unit_scale),1,max(1e-9,radius*unit_scale))
-                    obj['agr_trail_radius']=float(radius*unit_scale);obj.keyframe_insert('["agr_trail_radius"]',frame=frame)
+                    obj['agr_trail_radius']=float(radius*unit_scale)
+                    if bulk:radii.append(obj['agr_trail_radius'])
+                    else:obj.keyframe_insert('["agr_trail_radius"]',frame=frame)
                 else:
                     radius=p['radius']*render_scalar(renderer.get('m_flRadiusScale'),context=context,default=1)*unit_scale
                     obj.scale=(radius,radius,radius)
@@ -893,23 +919,29 @@ def build_simulated_effects(simulation, assets, scene, camera, unit_scale=.0254,
                         obj.rotation_quaternion=Vector((0,0,1)).rotation_difference(Vector(p['normal']).normalized())@Quaternion((0,0,1),p['rotation'][2])
                     else:
                         facing_helper.location=obj.location
-                        facing_helper.keyframe_insert('location',frame=frame)
+                        if not bulk:facing_helper.keyframe_insert('location',frame=frame)
                         obj.rotation_quaternion=Quaternion((0,0,1),p['rotation'][2])
+                if bulk:
+                    frames.append(frame)
+                    values.append((tuple(obj.location), tuple(obj.scale), tuple(obj.rotation_quaternion), tuple(obj.color)))
+                    continue
                 for prop in ('location','scale','rotation_quaternion','color'):obj.keyframe_insert(prop,frame=frame)
                 obj.hide_render=False;obj.hide_viewport=False
                 obj.keyframe_insert('hide_render',frame=frame);obj.keyframe_insert('hide_viewport',frame=frame)
-            first=1+(samples[0][0]-simulation['start_tick'])*frame_step;last=1+(samples[-1][0]-simulation['start_tick'])*frame_step
             # Samples are one replay tick apart, regardless of output FPS. A
             # whole output-frame offset stretches low-FPS tails and clips high-FPS ones.
-            boundaries = (first-frame_step, last+frame_step)
-            for frame in boundaries:
-                obj.hide_render=True;obj.hide_viewport=True;obj.keyframe_insert('hide_render',frame=frame);obj.keyframe_insert('hide_viewport',frame=frame)
+            if bulk:
+                _write_particle_curves(obj, facing_helper, frames, values, radii, boundaries)
+            else:
+                for frame in boundaries:
+                    obj.hide_render=True;obj.hide_viewport=True;obj.keyframe_insert('hide_render',frame=frame);obj.keyframe_insert('hide_viewport',frame=frame)
             if light:
                 for frame in boundaries:data.energy=0;data.keyframe_insert('energy',frame=frame)
                 _linear(data)
                 if range_socket is not None:_linear(data.node_tree)
-            _linear(obj)
-            if facing_helper is not None:_linear(facing_helper)
+            if not bulk:
+                _linear(obj)
+                if facing_helper is not None:_linear(facing_helper)
             if not light:
                 # The released renderer has literal/constant scalar support,
                 # not the development renderer's dynamic per-sample contexts.

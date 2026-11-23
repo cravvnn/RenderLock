@@ -15,7 +15,6 @@ import numpy as np
 from .animation import (AnimationError, _bind, _field, _hash, _identity,
                         _graph_change_error, _inside, _load_table, _read, _select_rows,
                         _skeleton, _TableTimeline, _trim_prehistory)
-from .vendor.resource_hash import resource_id
 
 
 def _resource(value: str, suffix: str) -> str:
@@ -156,9 +155,9 @@ def prepare_animation_assets(segment_path: Path, pack_root: Path, provider, conv
             entry = None
             selected = []
             for row in chosen:
-                recorded, registry = timeline.at(row['demo_tick'])
+                recorded, registry, graphs_by_id = timeline.at(row['demo_tick'])
                 primary = int(_field(row, 'm_primaryGraphId'))
-                matches = [g for g in recorded if g.endswith('.vnmgraph') and resource_id(g) == primary]
+                matches = graphs_by_id.get(primary, ())
                 if len(matches) != 1:
                     raise AnimationError(f'Missing or ambiguous recorded primary graph ID {primary}')
                 graph_name = _resource(matches[0], '.vnmgraph')

@@ -1,3 +1,10 @@
+# Unreleased
+
+- Speed up installed VPK indexing and primary animation graph lookup without changing asset validation or graph collision handling.
+- Reuse the evaluated Blender scene for all character checks at a given frame and prepare cloth proxy skinning data once per rig.
+- Reuse the checked shader inventory between models and carry verified map file identities from the export worker to Blender.
+- Write sprite and trail particle curves in batches and keep visibility keys at lifetime transitions.
+
 # 0.3.0b36 - Midtown from deadlockrigs 1.0.7
 
 - Build maps with Sirsyorrz's deadlockrigs release 1.0.7 and the official Source 2 Viewer 21.1 release, both run unmodified. Map > Build from game downloads and checks them.

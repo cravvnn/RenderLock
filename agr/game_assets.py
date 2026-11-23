@@ -20,6 +20,14 @@ import tempfile
 from typing import Iterable
 import zlib
 
+from .path_io import file_identity
+
+_RESERVED_RESOURCE_NAMES = frozenset({
+    "con", "prn", "aux", "nul", *(f"com{i}" for i in range(1, 10)),
+    *(f"lpt{i}" for i in range(1, 10)),
+})
+_FORBIDDEN_RESOURCE_CHARACTERS = re.compile(r'[\x00-\x1f<>"|?*]')
+
 
 class GameAssetError(ValueError):
     """A resource, installation, or cache could not be validated."""
@@ -44,15 +52,13 @@ def safe_resource_path(value: str) -> str:
     path = value.replace("\\", "/")
     if path.startswith("/") or ":" in path:
         raise GameAssetError(f"Absolute resource path is not allowed: {value!r}")
-    parts = path.split("/")
-    reserved = {"con", "prn", "aux", "nul", *(f"com{i}" for i in range(1, 10)),
-                *(f"lpt{i}" for i in range(1, 10))}
-    for part in parts:
-        if (part in ("", ".", "..") or part[-1:] in (" ", ".")
-                or any(ord(c) < 32 or c in '<>"|?*' for c in part)
-                or part.split(".", 1)[0].lower() in reserved):
+    if _FORBIDDEN_RESOURCE_CHARACTERS.search(path):
+        raise GameAssetError(f"Unsafe resource path: {value!r}")
+    for part in path.split("/"):
+        if (part in ("", ".", "..") or part.endswith((" ", "."))
+                or part.partition(".")[0].lower() in _RESERVED_RESOURCE_NAMES):
             raise GameAssetError(f"Unsafe resource path: {value!r}")
-    return "/".join(parts).lower()
+    return path.lower()
 
 
 def _compiled_candidate(path: str) -> str:
@@ -269,17 +275,19 @@ class VPKArchive:
         if (st.st_size, st.st_mtime_ns) != self.signature:
             raise GameAssetError(f"Game archive changed during this job; restart after the update: {self.path}")
 
+    def payload_path(self, entry: VPKEntry) -> Path:
+        if not entry.length or entry.archive_index == 0x7FFF:
+            return self.path
+        if not self.path.name.endswith("_dir.vpk"):
+            raise GameAssetError(f"External VPK chunks require a _dir.vpk archive: {self.path}")
+        return self.path.with_name(self.path.name[:-8] + f"_{entry.archive_index:03d}.vpk")
+
     def read(self, entry: VPKEntry) -> bytes:
         self.assert_unchanged()
         payload = b""
         if entry.length:
-            if entry.archive_index == 0x7FFF:
-                path, offset = self.path, self.data_offset + entry.offset
-            else:
-                if not self.path.name.endswith("_dir.vpk"):
-                    raise GameAssetError(f"External VPK chunks require a _dir.vpk archive: {self.path}")
-                path = self.path.with_name(self.path.name[:-8] + f"_{entry.archive_index:03d}.vpk")
-                offset = entry.offset
+            path = self.payload_path(entry)
+            offset = entry.offset + (self.data_offset if entry.archive_index == 0x7FFF else 0)
             if not path.is_file():
                 raise MissingResourceError(f"Missing numbered VPK chunk for {entry.resource_path}: {path}")
             before = path.stat()
@@ -508,6 +516,33 @@ class GameAssetProvider:
         _write_verified(path, data, digest)
         return ResolvedResource(entry.resource_path, path, digest, entry.archive, dependencies,
                                 PurePosixPath(entry.resource_path).suffix)
+
+    def compiled_shaders(self):
+        """Reuse the verified inventory within this mounted game snapshot."""
+        cached = getattr(self, '_compiled_shaders', None)
+        if cached is not None:
+            records, identities = cached
+            try:
+                if all(file_identity(path) == expected for path, expected in identities.items()):
+                    return records
+            except OSError:
+                pass
+        names = sorted(name for name in self.resources if name.endswith('.vcs'))
+        paths = set()
+        for name in names:
+            entry = self.resources[name]
+            paths.add(entry.archive)
+            paths.add(self._archives_by_path[entry.archive].payload_path(entry))
+        try:
+            before = {path: file_identity(path) for path in paths}
+        except OSError:
+            # Resolve reports the exact resource and missing archive chunk.
+            return tuple(self.resolve(name) for name in names)
+        records = tuple(self.resolve(name) for name in names)
+        if any(file_identity(path) != expected for path, expected in before.items()):
+            raise GameAssetError('Game shader archives changed during validation; restart after the update.')
+        self._compiled_shaders = records, before
+        return records
 
     def resource_identity(self, resource_path: str) -> dict:
         """Hash a CRC-verified mounted payload without materializing another copy."""

@@ -8,7 +8,7 @@ import struct
 import numpy as np
 import pytest
 
-from agr.animation import AnimationError, _bind, _bone_name_aliases, evaluate_segment
+from agr.animation import AnimationError, _bind, _bone_name_aliases, _TableTimeline, evaluate_segment
 from agr.vendor.resource_hash import resource_id
 
 
@@ -303,3 +303,26 @@ def test_earlier_table_snapshot_used_before_later_update(workspace):
     path = evaluate_segment(inputs/'segment.json', root/'output', assets)
     with np.load(json.loads(path.read_text())['entities'][0]['pose_file']) as poses:
         assert poses['t'][0,0,0] == 10.
+
+
+def test_graph_index_preserves_collisions_and_tracks_table_updates(workspace):
+    root, assets, inputs = workspace
+    table = json.loads((inputs/'animation_tables.json').read_text())
+    graph = table['initial_tables']['AnimAssetData'][0]
+    collision = dict(graph, index=2, name='graphs/TEST.vnmgraph')
+    replacement = dict(collision, name='graphs/other.vnmgraph')
+    table['animation_table_updates'] = [
+        dict(collision, tick=11, table='AnimAssetData'),
+        dict(replacement, tick=12, table='AnimAssetData'),
+    ]
+    timeline = _TableTimeline(table)
+    primary = resource_id(graph['name'])
+    assert timeline.at(10)[2][primary] == [graph['name']]
+    assert timeline.at(11)[2][primary] == [graph['name'], collision['name']]
+    assert timeline.at(12)[2] == {
+        primary: [graph['name']],
+        resource_id(replacement['name']): [replacement['name']],
+    }
+    write(inputs/'animation_tables.json', table)
+    with pytest.raises(AnimationError, match='has no graph/skeleton mapping'):
+        evaluate_segment(inputs/'segment.json', root/'output', assets)

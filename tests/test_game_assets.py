@@ -200,6 +200,28 @@ def test_cache_verification_update_retains_old_content_and_no_hardlinks(tmp_path
     assert first.local_path.read_bytes() == compiled()
 
 
+def test_shader_inventory_reuses_payload_and_rechecks_changed_chunk(tmp_path, monkeypatch):
+    root = installation(tmp_path, {'shader/test.vcs': b'original'}, external=True)
+    provider = GameAssetProvider(root, tmp_path / 'cache')
+    read = VPKArchive.read
+    calls = []
+
+    def tracked_read(archive, entry):
+        calls.append(entry.resource_path)
+        return read(archive, entry)
+
+    monkeypatch.setattr(VPKArchive, 'read', tracked_read)
+    first = provider.compiled_shaders()
+    assert provider.compiled_shaders() == first
+    assert calls == ['shader/test.vcs']
+    chunk = root / 'game/citadel/pak01_000.vpk'
+    saved = chunk.stat()
+    chunk.write_bytes(b'changed!')
+    os.utime(chunk, ns=(saved.st_atime_ns, saved.st_mtime_ns))
+    with pytest.raises(GameAssetError, match='CRC32 mismatch'):
+        provider.compiled_shaders()
+
+
 def test_crc_and_numbered_chunk_missing_are_explicit(tmp_path):
     root = installation(tmp_path, {"models/test.vmdl_c": compiled()}, external=True)
     provider = GameAssetProvider(root, tmp_path / "cache")
@@ -214,9 +236,25 @@ def test_crc_and_numbered_chunk_missing_are_explicit(tmp_path):
     assert report["missing"] and "numbered VPK chunk" in report["missing"][0]["reason"]
 
 
-def test_reject_unsafe_resource_paths():
-    with pytest.raises(GameAssetError):
-        safe_resource_path("x/../../escape")
+@pytest.mark.parametrize(("path", "message"), [
+    ("x/../../escape", "Unsafe"),
+    ("C:/absolute", "Absolute"),
+    ("/absolute", "Absolute"),
+    ("x//empty", "Unsafe"),
+    ("x/LPT9.vmdl_c", "Unsafe"),
+    ("x/trailing./model", "Unsafe"),
+    ("x/trailing /model", "Unsafe"),
+    ("x/needle?", "Unsafe"),
+    ("x/control\x1f", "Unsafe"),
+    ("x/null\x00", "Invalid"),
+])
+def test_reject_unsafe_resource_paths(path, message):
+    with pytest.raises(GameAssetError, match=message):
+        safe_resource_path(path)
+
+
+def test_resource_paths_keep_canonical_names():
+    assert safe_resource_path("Models\\Rem/COM0.VMDL_C") == "models/rem/com0.vmdl_c"
 
 
 def test_index_rejects_traversal_duplicate_and_bad_bounds(tmp_path):

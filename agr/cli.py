@@ -831,6 +831,10 @@ def _convert(args, diagnostics):
         if external_map is not None:
             command += ['--external-map', external_map['path']]
             if external_map.get('format') == 'renderlock-map-v2':
+                from .map_package import write_parent_receipt
+                receipt_path = work / 'verified-map.json'
+                receipt_digest = write_parent_receipt(external_map, receipt_path)
+                command += ['--map-parent-receipt', str(receipt_path), receipt_digest]
                 command += ['--map-project-scene', str(output)]
                 # Defaults also cover callers that build the arguments themselves (the app window).
                 command += ['--map-texture-tier', getattr(args, 'map_texture_tier', None) or 'auto',
