@@ -360,6 +360,18 @@ def set_catchers(collection, region, enable):
     return catchers
 
 
+def set_render_visible(collection, visible):
+    """Show or hide the map's pieces and lamps in renders. The baked light probes always stay.
+    EEVEE sets up every map material again for each frame (about a minute with the map around
+    a shot, and nearly all of the graphics memory), so its renders leave the map out by default."""
+    changed = 0
+    for obj in collection.all_objects:
+        if obj.type in ('MESH', 'LIGHT') and not obj.get(PROBE_TAG) and obj.hide_render == bool(visible):
+            obj.hide_render = not visible
+            changed += 1
+    return changed
+
+
 def add_light_probes(collection, region, scene, capture_distance=80.0, surfel_density=10, samples=1024, clamp=0.5,
                      strength=3.5, capture_world=False):
     """EEVEE: bake the map's light (including the game's baked lighting on its surfaces)

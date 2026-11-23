@@ -22,6 +22,7 @@ import sys
 import threading
 import time
 import traceback
+import types
 from pathlib import Path
 
 import bpy
@@ -63,6 +64,11 @@ import map_edit  # noqa: E402
 import blender_map_edit  # noqa: E402
 map_edit = importlib.reload(map_edit)
 blender_map_edit = importlib.reload(blender_map_edit)
+import close_with_blender  # noqa: E402
+# Survives running this script again in the same Blender.
+SHARED = sys.modules.setdefault("_renderlock_game_shared", types.ModuleType("_renderlock_game_shared"))
+if not hasattr(SHARED, "closing"):
+    SHARED.closing = []  # games this Blender asked to close and that may still be shutting down
 
 ENGINE = "RENDERLOCK_GAME"
 UNIT = 0.0254          # metres per Source unit (RenderLock scene coordinates)
@@ -209,6 +215,13 @@ class Session:
                          name="renderlock-game-start", daemon=True).start()
 
     def _start(self, game, demo, width, height, hide_hud):
+        # A game this Blender just asked to close must be gone before the next one starts.
+        deadline = time.monotonic() + 90
+        while any(process.poll() is None for process in SHARED.closing) and time.monotonic() < deadline:
+            self.message = "Waiting for the previous game to close…"
+            time.sleep(0.5)
+        SHARED.closing[:] = [process for process in SHARED.closing if process.poll() is None]
+        self.message = "Starting Deadlock…"
         for attempt in range(2):
             error = self._start_once(game, demo, width, height, hide_hud)
             if error is None:
@@ -235,6 +248,7 @@ class Session:
             self.controller.start_editing(
                 game, demo, protocol="netcon", native=True,
                 launch_options=f"-w {width} -h {height} -windowed -noborder")
+            self._close_with_blender()
             bridge = self.controller._native_bridge()
             self.stream = frame_stream.FrameStream(bridge.token, 3840, 2160)
             self.stream.enable(True)
@@ -258,6 +272,16 @@ class Session:
             self.message = text[:300]
         print("[RenderLock game]", text, flush=True)
 
+    def _close_with_blender(self):
+        """If Blender closes or crashes while connected, a small helper closes this game normally."""
+        pid = self._launched_pid()
+        if not pid:
+            return
+        try:
+            close_with_blender.start(pid, os.getpid(), sys.executable)
+        except Exception:
+            traceback.print_exc()
+
     def _launched_pid(self):
         """PID of the game this session launched, or None (never another Deadlock)."""
         try:
@@ -268,6 +292,9 @@ class Session:
 
     def stop(self):
         pid = self._launched_pid()
+        process = getattr(getattr(self.controller, "_session", None), "process", None)
+        if process is not None and process.poll() is None:
+            SHARED.closing.append(process)
         try:
             if self.stream:
                 self.stream.close()
@@ -641,7 +668,29 @@ def _keyframe(time_s, pose):
                     aspect_ratio=aspect, lens_scale=math.tan(math.radians(hfov) / 2) / aspect)
 
 
+class _ThisScript:
+    """Stands in for this file as a module when it runs from the Text Editor, so the map panel
+    (which imports it by name) uses this run's session instead of loading a second copy."""
+
+    def __getattr__(self, name):
+        try:
+            return globals()[name]
+        except KeyError:
+            raise AttributeError(name) from None
+
+
+_EARLIER = getattr(sys.modules.get("blender_game_view"), "SESSION", None) if __name__ == "__main__" else None
 SESSION = Session()
+if __name__ == "__main__":
+    sys.modules["blender_game_view"] = _ThisScript()
+if _EARLIER is not None and getattr(_EARLIER, "state", "") in ("starting", "ready"):
+    # The script was run again while connected. The old run still owns that game, so close it
+    # normally; otherwise it keeps running with nothing in control and blocks the next Connect.
+    try:
+        _EARLIER.stop()
+    except Exception:
+        traceback.print_exc()
+    SESSION.state, SESSION.message = "closed", "The script was run again, so the game was closed. Connect again."
 
 
 def _close_game(pid):
@@ -1003,6 +1052,12 @@ class RenderLockGameSettings(bpy.types.PropertyGroup):
         update=lambda self, context: _on_light_strength(_scene_of(self)),
         description="EEVEE: how strongly the game map's light reaches your objects. EEVEE's light probes catch "
                     "less of it than Cycles does; 3.5 came closest to Cycles in tests")
+    map_full_render: bpy.props.BoolProperty(
+        name="Map lamps and reflections (slow)", default=False,
+        update=lambda self, context: configure_objects_scene(_scene_of(self)),
+        description="EEVEE: also render the map's own lamps, their shadows and its reflections on your objects. "
+                    "Takes about a minute per frame and most of the graphics memory. Off: your objects are lit "
+                    "by the baked map light only, a few seconds per frame")
     map_guide: bpy.props.BoolProperty(
         name="Map guide in viewport", default=True, update=lambda self, context: _on_map_guide(_scene_of(self)),
         description="Show the map's light proxy around the shot in Solid view for placing objects. "
@@ -2041,6 +2096,15 @@ def _panels_for_file(*_args):
     scene = getattr(bpy.context, "scene", None)
     props = getattr(scene, "renderlock_game", None) if scene else None
     apply_panels(props.objects_engine if props else 'BLENDER_EEVEE')
+    for each in bpy.data.scenes:
+        # Linked map pieces forget whether they render when the file is opened again. (Not
+        # done at render start: changing that many objects there crashes Blender.)
+        loaded = map_collection(objects_scene(each))
+        if loaded is not None and getattr(each, "renderlock_game", None) is not None:
+            try:
+                game_map.set_render_visible(loaded, map_in_render(each))
+            except Exception:
+                traceback.print_exc()
 
 
 # --------------------------------------------------------------------------- Blender objects
@@ -2309,6 +2373,13 @@ def _shot_frames(scene):
 SHADOW_REACH = 12.0  # metres around the Blender objects whose map pieces catch their shadows
 
 
+def map_in_render(scene):
+    """Whether renders include the map's pieces and lamps: always in Cycles (it traces the map's
+    light), in EEVEE only when asked (its light is baked into the probes)."""
+    props = scene.renderlock_game
+    return props.objects_engine == 'CYCLES' or props.map_full_render
+
+
 def configure_objects_scene(scene):
     """Objects scene engine, samples and map catchers from the panel settings; rebuild the merge."""
     other = objects_scene(scene)
@@ -2332,6 +2403,7 @@ def configure_objects_scene(scene):
         if hasattr(layer, "cycles"):
             layer.cycles.use_pass_shadow_catcher = catch
     if loaded is not None:
+        game_map.set_render_visible(loaded, map_in_render(scene))
         region = objects_region(scene, SHADOW_REACH, _shot_frames(scene)) if catch else None
         loaded["renderlock_catchers"] = game_map.set_catchers(loaded, region, catch)
         loaded["renderlock_catch_region"] = json.dumps(region) if region else ""
@@ -2477,8 +2549,10 @@ def _bake_map_light(job):
         return
     _gpu_busy(True)
     try:
+        game_map.set_render_visible(loaded, True)  # the bake gathers light from the map's pieces
         game_map.add_light_probes(loaded, region, other, strength=scene.renderlock_game.map_light_strength)
     finally:
+        game_map.set_render_visible(loaded, map_in_render(scene))
         _gpu_busy(False)
     loaded["renderlock_light_region"] = json.dumps(region)
     job.update(state="done", message=(prefix + f" Map light baked around your objects in "
@@ -2757,8 +2831,10 @@ class RENDERLOCK_PT_shot_objects(bpy.types.Panel):
             col.operator(RENDERLOCK_OT_game_map_relight.bl_idname, icon='LIGHTPROBE_VOLUME')
             if props.objects_engine == 'CYCLES':
                 col.prop(props, "map_shadows")
+                col.label(text="Cycles renders the whole map: minutes per frame.", icon='INFO')
             else:
                 col.prop(props, "map_light_strength")
+                col.prop(props, "map_full_render")
                 col.label(text="Shadows on the game need Cycles.", icon='INFO')
             col.prop(props, "match_look")
             col.prop(props, "map_guide")
