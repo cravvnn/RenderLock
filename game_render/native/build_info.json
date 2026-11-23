@@ -1,9 +1,9 @@
 {
   "abi": 4,
   "version": "0.7.48-beta",
-  "sha256": "280e6173c10224dd162601d34754659ad4fccd815f5bf7fe3cc131c108630e65",
-  "game_audio_sha256": "09df5d30218ccd50ed81db443b92651aaf192139e5ec38649b03abe619a0e4f1",
-  "built_utc": "2026-11-22T09:02:43.327177+00:00",
+  "sha256": "82166e5ddf91f4545c3303109e79949c84bce64d8d21e88cfec1c2c1d25507df",
+  "game_audio_sha256": "4a563f3eeb4fcddfb5fb64cca6ac276747d21fc4da375902f301102a6bcd9d2c",
+  "built_utc": "2026-11-23T20:26:47.842326+00:00",
   "compiler": "Visual Studio 17 2022",
   "configuration": "Release",
   "runtime": "static",
@@ -44,5 +44,6 @@
       "d3d11.dll",
       "ole32.dll"
     ]
-  }
+  },
+  "replay_index_sha256": "735d1f81c1ad327157c277f4ddf38ebecb4b80a7069c36bf5576b3ab39378428"
 }

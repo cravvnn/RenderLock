@@ -1,14 +1,14 @@
 {
   "manifest_format": 1,
   "native_abi": 4,
-  "generated_utc": "2026-11-18",
+  "generated_utc": "2026-11-23",
   "generator": "tools/generate_profile.py",
-  "reviewed_client_utc": "2026-11-18",
+  "reviewed_client_utc": "2026-11-23",
   "modules": {
     "citadel/bin/win64/client.dll": {
       "role": "client",
-      "reviewed_utc": "2026-11-18",
-      "latest_timestamp": 1795023579,
+      "reviewed_utc": "2026-11-23",
+      "latest_timestamp": 1795284773,
       "accepted": [
         "c7d068857c617c9c41d2c501865a94d93c52f3081864623ae23146e495f3021b",
         "769bf1e74afd67ab0aa02fa94c0c7eb3c133991d32c43e099289210511551a2b",
@@ -74,11 +74,12 @@
         "21cd561a8818522756ef377ca67584bf8573c2cc63f348134703513c1dad443f",
         "2007fddaf9f48211e1ed188aff3c31ad47ba667cbaace16f5dd30e9376b884c7",
         "d0341ce77398614af905ef8669d328fd4d45958282acef66789a250492e466b5",
-        "4b24981cef32b0ef862aff29f77197ac7857b4dbe7bbfb839dee33b45a655375"
+        "4b24981cef32b0ef862aff29f77197ac7857b4dbe7bbfb839dee33b45a655375",
+        "822c9422fde4d6b5becd0b94e21a45038d84405da659f82120c4b2835ae93c31"
       ],
       "feature_pins": {
         "automatic preload": [
-          "4b24981cef32b0ef862aff29f77197ac7857b4dbe7bbfb839dee33b45a655375"
+          "822c9422fde4d6b5becd0b94e21a45038d84405da659f82120c4b2835ae93c31"
         ]
       },
       "review_basis": " Build6861: complete/scoped camera consumers, named observer/schema and indexed global/minimap references; changed stock call slots reviewed separately."
@@ -302,6 +303,7 @@
     "soundsystem-2026-11-11-6861.json",
     "deadlock-2026-11-18-6864-complete.json",
     "scenesystem-2026-11-18-6864.json",
-    "soundsystem-2026-11-18-6864.json"
+    "soundsystem-2026-11-18-6864.json",
+    "deadlock-2026-11-23-6865-complete.json"
   ]
 }

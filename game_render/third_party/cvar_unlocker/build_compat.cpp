@@ -67,6 +67,7 @@ static bool g_6844_server=false;
 static bool g_6848_server=false;
 static bool g_6851_server=false;
 static bool g_6853_server=false;
+static bool g_6865_server=false;
 static bool g_6864_server=false;
 static bool g_6861_server=false;
 static bool g_6860_server=false;
@@ -182,26 +183,29 @@ bool DollyVerifyUnlockerBuild(void* real_server_module) {
     g_6851_server=server_hash=="dd191d3ceafa49f5e92c3706d82c78f337c65ae176074e65c1ff8e9a83004407";
     // Build 6858 retains the reviewed 6853 Config001 layout and Tier0 ABI.
     g_6853_server=server_hash=="004e9bb537eb081e7383715400c41cf3899b23af4733697c1963daec7eb9516f" || server_hash=="a6d7a488bde35b02f600178b5da0d4924e74bae9918c07a84c5119d0bebf3866";
+    g_6865_server=server_hash=="719a032ce107ed44f0f6fdd8b6279c720afa35af9bf943bc589573f32833c14b";
     g_6864_server=server_hash=="a091ffbc7f1f885674000d3f2353eecee62dc702e5a0475d5c81d47e25b2f7c7";
-    if(tier6864 != g_6864_server) return false;
+    if(tier6864 != (g_6865_server || g_6864_server)) return false;
     g_6861_server=server_hash=="86eefc584d5fd7fb17e8ee59d35061b47efc7cbe8c8ecee6b27490625fe241ed";
     if(tier6861 != g_6861_server) return false;
     g_6860_server=server_hash=="1415c83dadf8f8b0a72fc253df728804188b13c1ea22a877d43b98b1081cfd3b";
-    if (tier6853 != (g_6853_server || g_6860_server || g_6861_server || g_6864_server)) return false;
+    if (tier6853 != (g_6853_server || g_6860_server || g_6861_server || g_6864_server || g_6865_server)) return false;
     g_6844_server=server_hash=="fbeec5547ac12562ec3d8216592e95797c7572278cbad18c469aacbc129829e4";
     g_6842_server=server_hash=="fb0de9a1d2789934c1310bdf56c6b8d762f1a864d806c0c5668dff4c02f220bb";
     g_6839_server=server_hash=="e7db4fca4c87f2994c6e5454dfcbf7c6d055b99b82c2c0d6ee727fc05113d324";
-    if (tier6726 != (g_6864_server || g_6861_server || g_6860_server || g_6853_server || g_6726_server || g_6728_server || g_6730_server || g_6731_server || g_6739_server || g_6742_server || g_6745_server || g_6746_server || g_6753_server || g_6757_server || g_6759_server || g_6762_server || g_6763_server || g_6765_server || g_6766_server || g_6769_server || g_6774_server || g_6779_server || g_6793_server || g_6801_server || g_6805_server || g_6806_server || g_6807_server || g_6810_server || g_6812_server || g_6813_server || g_6814_server || g_6815_server || g_6817_server || g_6819_server || g_6821_server || g_6826_server || g_6827_server || g_6828_server || g_6829_server || g_6831_server || g_6835_server || g_6837_server || g_6844_server || g_6848_server || g_6851_server || g_6842_server || g_6839_server)) return false;
+    if (tier6726 != (g_6865_server || g_6864_server || g_6861_server || g_6860_server || g_6853_server || g_6726_server || g_6728_server || g_6730_server || g_6731_server || g_6739_server || g_6742_server || g_6745_server || g_6746_server || g_6753_server || g_6757_server || g_6759_server || g_6762_server || g_6763_server || g_6765_server || g_6766_server || g_6769_server || g_6774_server || g_6779_server || g_6793_server || g_6801_server || g_6805_server || g_6806_server || g_6807_server || g_6810_server || g_6812_server || g_6813_server || g_6814_server || g_6815_server || g_6817_server || g_6819_server || g_6821_server || g_6826_server || g_6827_server || g_6828_server || g_6829_server || g_6831_server || g_6835_server || g_6837_server || g_6844_server || g_6848_server || g_6851_server || g_6842_server || g_6839_server)) return false;
     if (tier6793 != g_6793_server) return false;
-    if ((tier6801 || tier6853) != (g_6864_server || g_6861_server || g_6860_server || g_6853_server || g_6801_server || g_6805_server || g_6806_server || g_6807_server || g_6810_server || g_6812_server || g_6813_server || g_6814_server || g_6815_server || g_6817_server || g_6819_server || g_6821_server || g_6826_server || g_6827_server || g_6828_server || g_6829_server || g_6831_server || g_6835_server || g_6837_server || g_6844_server || g_6848_server || g_6851_server || g_6842_server || g_6839_server)) return false;
+    if ((tier6801 || tier6853) != (g_6865_server || g_6864_server || g_6861_server || g_6860_server || g_6853_server || g_6801_server || g_6805_server || g_6806_server || g_6807_server || g_6810_server || g_6812_server || g_6813_server || g_6814_server || g_6815_server || g_6817_server || g_6819_server || g_6821_server || g_6826_server || g_6827_server || g_6828_server || g_6829_server || g_6831_server || g_6835_server || g_6837_server || g_6844_server || g_6848_server || g_6851_server || g_6842_server || g_6839_server)) return false;
     if (tier6779 != g_6779_server) return false;
-    return g_6864_server || g_6861_server || g_6860_server || g_6853_server || g_6851_server || g_6848_server || g_6844_server || g_6842_server || g_6839_server || g_6837_server || g_6835_server || g_6831_server || g_6829_server || g_6828_server || g_6827_server || g_6826_server || g_6821_server || g_6819_server || g_6817_server || g_6815_server || g_6814_server || g_6813_server || g_6812_server || g_6810_server || g_6807_server || g_6806_server || g_6805_server || g_6801_server || g_6793_server || g_6779_server || g_6774_server || g_6769_server || g_6766_server || g_6765_server || g_6763_server || g_6762_server || g_6759_server || g_6757_server || g_6753_server || g_6746_server || g_6745_server || g_6742_server || g_6739_server || g_6731_server || g_6730_server || g_6728_server || g_6726_server || g_latest_server || g_hotfix_server || server_hash=="cb480d4091735abe7b74695c8c8077a882528aaaaa9f457d81fbca886b6c9bd8";
+    return g_6865_server || g_6864_server || g_6861_server || g_6860_server || g_6853_server || g_6851_server || g_6848_server || g_6844_server || g_6842_server || g_6839_server || g_6837_server || g_6835_server || g_6831_server || g_6829_server || g_6828_server || g_6827_server || g_6826_server || g_6821_server || g_6819_server || g_6817_server || g_6815_server || g_6814_server || g_6813_server || g_6812_server || g_6810_server || g_6807_server || g_6806_server || g_6805_server || g_6801_server || g_6793_server || g_6779_server || g_6774_server || g_6769_server || g_6766_server || g_6765_server || g_6763_server || g_6762_server || g_6759_server || g_6757_server || g_6753_server || g_6746_server || g_6745_server || g_6742_server || g_6739_server || g_6731_server || g_6730_server || g_6728_server || g_6726_server || g_latest_server || g_hotfix_server || server_hash=="cb480d4091735abe7b74695c8c8077a882528aaaaa9f457d81fbca886b6c9bd8";
 }
 bool DollyVerifyServerConfig(void* config) {
     if(!config) return false;
     if(!g_new_build) return true;
     auto base=reinterpret_cast<std::uintptr_t>(g_real_server);
     auto table=*static_cast<std::uintptr_t**>(config);
+    if (g_6865_server)
+        return reinterpret_cast<std::uintptr_t>(table)==base+0x2b9f178 && table[0]==base+0x9abdc4 && table[1]==base+0x9abdd0 && table[13]==base+0x9b18b0;
     if (g_6864_server)
         return reinterpret_cast<std::uintptr_t>(table)==base+0x2b9f068 && table[0]==base+0x9ab904 && table[1]==base+0x9ab910 && table[13]==base+0x9b13f0;
     if (g_6861_server)
@@ -303,8 +307,8 @@ bool DollyAdaptCvarInterface() {
     if(!g_new_build) return g_pCVar!=nullptr;
     if(!g_pCVar || cvar!=g_pCVar) return false;
     const auto base=reinterpret_cast<std::uintptr_t>(GetModuleHandleW(L"tier0.dll"));
-    if(!DollyConfigureCvarProxy(g_proxy,g_pCVar,reinterpret_cast<void**>(base+(g_6864_server ? 0x313208 : g_6861_server ? 0x313208 : 0x313208)),base,
-        g_6864_server ? kSlots6864 : g_6861_server ? kSlots6861 : kSlots,sizeof(kSlots)/sizeof(kSlots[0]),kDollyThunks,
+    if(!DollyConfigureCvarProxy(g_proxy,g_pCVar,reinterpret_cast<void**>(base+((g_6865_server || g_6864_server) ? 0x313208 : g_6861_server ? 0x313208 : 0x313208)),base,
+        (g_6865_server || g_6864_server) ? kSlots6864 : g_6861_server ? kSlots6861 : kSlots,sizeof(kSlots)/sizeof(kSlots[0]),kDollyThunks,
         reinterpret_cast<void*>(&UnsupportedCvarMethod),reinterpret_cast<void*>(&DollyNewMaxSplitScreenSlots))) return false;
     g_pCVar=cvar=reinterpret_cast<ICvar*>(&g_proxy);
     return true;
