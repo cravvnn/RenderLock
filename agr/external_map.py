@@ -49,7 +49,7 @@ def validate_map_blender(report, library=None):
         raise ValueError('External map: choose Blender 5.2 LTS for the new prepared map workflow.')
 
 
-def validate_map_library(path):
+def validate_map_library(path, *, parent_receipt=None):
     """Require the supported unmodified download before expensive preparation."""
     try:
         path = Path(path).expanduser().resolve()
@@ -62,7 +62,7 @@ def validate_map_library(path):
             except (ValueError, AttributeError):
                 prepared = False
             if prepared:
-                return map_package.library_identity(path)
+                return map_package.library_identity(path, parent_receipt=parent_receipt)
         before = path.stat()
         sizes = {MAP_BLEND_BYTES, *(entry['bytes'] for entry in _LEGACY_MAPS.values())}
         if path.suffix.lower() != '.blend' or not path.is_file() or before.st_size not in sizes:

@@ -134,7 +134,7 @@ class _TableTimeline:
         self.tick = -float('inf')
         self.cached = None
 
-    def at(self, tick: int) -> tuple[dict, list[str]]:
+    def at(self, tick: int) -> tuple[dict, list[str], dict[int, list[str]]]:
         if tick < self.tick:
             raise AnimationError('Recipe input is not ordered by replay tick')
         self.tick = tick
@@ -151,7 +151,11 @@ class _TableTimeline:
             raise AnimationError('Animation task registry is empty or sparse')
         assets = {r['name']: self.parse_asset(r)
                   for r in self.state.get('AnimAssetData', {}).values()}
-        self.cached = assets, [tasks[i]['name'] for i in range(len(tasks))]
+        graphs_by_id: dict[int, list[str]] = {}
+        for name in assets:
+            if name.endswith('.vnmgraph'):
+                graphs_by_id.setdefault(resource_id(name), []).append(name)
+        self.cached = assets, [tasks[i]['name'] for i in range(len(tasks))], graphs_by_id
         return self.cached
 
 
@@ -538,9 +542,9 @@ def evaluate_segment(segment_path: Path, output: Path, assets: Path,
                 for row in selected_raw:
                     if row['demo_tick'] > desired[-1]:
                         break
-                    recorded, registry = timeline.at(row['demo_tick'])
+                    recorded, registry, graphs_by_id = timeline.at(row['demo_tick'])
                     primary = int(_field(row, 'm_primaryGraphId'))
-                    matches = [g for g in recorded if g.endswith('.vnmgraph') and resource_id(g) == primary]
+                    matches = graphs_by_id.get(primary, ())
                     if len(matches) != 1:
                         raise AnimationError(f'Asset pack has no graph/skeleton mapping for primary graph ID {primary}')
                     current = matches[0]

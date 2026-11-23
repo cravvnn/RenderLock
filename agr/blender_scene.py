@@ -123,6 +123,8 @@ def _init_blender():
 
 
 def _action_channels(obj, name):
+    import bpy
+
     action = bpy.data.actions.new(name)
     obj.animation_data_create()
     if hasattr(action, "slots"):
@@ -136,6 +138,8 @@ def _action_channels(obj, name):
 
 
 def _curve(channels, obj, path, component, frames, values, constant=False, steps=None):
+    import numpy as np
+
     curve = channels.new(path, index=component)
     curve.keyframe_points.add(len(frames))
     curve.keyframe_points.foreach_set("co", np.column_stack((frames, values)).astype(np.float32).ravel())
@@ -747,11 +751,11 @@ def _review_setup(scene, positions):
 def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime=None, shot_hero=None,
                 character_shader=None, character_only=False, allow_partial_lighting=False, external_map=None,
                 map_viewport_proxy=False, map_project_scene=None, pending_world_receivers=False,
-                shot_package=None, shot_reconstruction_map=None):
+                shot_package=None, shot_reconstruction_map=None, map_parent_receipt=None):
     _init_blender()
     if external_map is not None:
         from agr.external_map import validate_map_library
-        library = validate_map_library(external_map)
+        library = validate_map_library(external_map, parent_receipt=map_parent_receipt)
         if library.get('format') == 'renderlock-map-v2':
             from agr.blender_map_scene import build_map_first
             return build_map_first(build_scene, segment, assets, output, library=library,
@@ -1059,13 +1063,22 @@ def build_scene(segment, assets, output, fps=64, partial=False, particle_runtime
         tick = marker.get("tick")
         if tick is not None and data["start_tick"] <= tick <= data["end_tick"]:
             scene.timeline_markers.new(str(marker.get("label", marker.get("name", "Replay event"))), frame=round(tick_frame(tick, data["start_tick"], data["tick_rate"], fps)))
-    for entry in report["entities"]:
-        root = bpy.data.objects[entry["root"]]
+    diagnostic_roots = [(entry, bpy.data.objects[entry["root"]])
+                        for entry in report["entities"]]
+    for entry, _ in diagnostic_roots:
         entry["transform_checks"] = []
-        for frame in sorted({1.0, scene["agr_end_frame_exact"], (1 + scene["agr_end_frame_exact"]) / 2}):
+    if diagnostic_roots:
+        end_frame = scene["agr_end_frame_exact"]
+        for frame in sorted({1.0, end_frame, (1 + end_frame) / 2}):
             scene.frame_set(math.floor(frame), subframe=frame % 1)
-            evaluated = root.evaluated_get(bpy.context.evaluated_depsgraph_get())
-            entry["transform_checks"].append({"frame": frame, "location": list(evaluated.location), "rotation_euler_radians": list(evaluated.rotation_euler), "world_matrix": [list(row) for row in evaluated.matrix_world]})
+            depsgraph = bpy.context.evaluated_depsgraph_get()
+            for entry, root in diagnostic_roots:
+                evaluated = root.evaluated_get(depsgraph)
+                entry["transform_checks"].append({
+                    "frame": frame, "location": list(evaluated.location),
+                    "rotation_euler_radians": list(evaluated.rotation_euler),
+                    "world_matrix": [list(row) for row in evaluated.matrix_world],
+                })
     if poses_requested:
         baked = sum(entry.get('pose', {}).get('status') == 'baked' for entry in report['entities'])
         report['coverage']['skeletal_animation'] = {
@@ -1116,6 +1129,7 @@ def main(argv=None):
     parser.add_argument('--external-map',type=Path)
     parser.add_argument('--map-viewport-proxy',action='store_true')
     parser.add_argument('--map-project-scene',type=Path,help=argparse.SUPPRESS)
+    parser.add_argument('--map-parent-receipt', nargs=2, help=argparse.SUPPRESS)
     parser.add_argument('--map-texture-tier',choices=('auto','full','1024'),default='auto')
     parser.add_argument('--map-crop-margin',type=float,default=120.0)
     parser.add_argument('--shot-package', type=Path,
@@ -1132,10 +1146,15 @@ def main(argv=None):
         from agr import blender_map_scene
         blender_map_scene.MAP_OPTIONS.update(texture_tier=args.map_texture_tier,
                                              crop_margin=args.map_crop_margin)
+    receipt = None
+    if args.external_map is not None and args.map_parent_receipt:
+        from agr.map_package import read_parent_receipt
+        receipt = read_parent_receipt(*args.map_parent_receipt)
     attach_blender_log(args.output)
     return build_scene(args.segment, args.assets, args.output, args.fps, args.partial,args.particle_runtime,
                        args.shot_hero,args.character_shader,args.character_only,args.partial_lighting,args.external_map,
                        args.map_viewport_proxy,args.map_project_scene,
+                       map_parent_receipt=receipt,
                        shot_package=args.shot_package,
                        shot_reconstruction_map=(json.loads(args.shot_reconstruction_map.read_text(encoding='utf-8'))
                                                 if args.shot_reconstruction_map else None))

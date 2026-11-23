@@ -11,41 +11,82 @@ def skin_proxy_goals(proxy, bone_matrices, unit_scale=.0254):
     cannot serve as inverse binds for an independently reconstructed FE proxy.
     Returned points are in the imported rig's local metre coordinate system.
     """
-    vertices=np.asarray(proxy['vertices'],dtype=float);count=len(vertices)
-    binds=proxy.get('joint_rest_transforms');names=proxy['joint_names'];slots=proxy['joint_count']
-    if (vertices.shape!=(count,3) or not np.isfinite(vertices).all()
-            or not isinstance(binds,list) or len(binds)!=len(names)
-            or len(set(names))!=len(names) or type(slots) is not int or not 1<=slots<=16
-            or len(proxy['blend_indices'])!=count*slots or len(proxy['blend_weights'])!=count*slots
-            or not np.isfinite(unit_scale) or unit_scale<=0):
-        raise ValueError('Invalid source inverse-bind proxy arrays')
-    C=np.array([[0.,1,0,0],[-1.,0,0,0],[0,0,1,0],[0,0,0,1]])
-    vertices=np.column_stack((vertices*unit_scale,np.ones(count)))@C.T
-    matrices={}
-    for name,row in zip(names,binds):
-        if name not in bone_matrices:continue
-        rest=np.asarray(row,dtype=float);pose=np.asarray(bone_matrices[name],dtype=float)
-        if (rest.shape!=(4,4) or pose.shape!=(4,4) or not np.isfinite(rest).all()
-                or not np.isfinite(pose).all() or abs(np.linalg.det(rest[:3,:3]))<1e-8):
-            raise ValueError('Invalid source proxy joint bind/pose transform')
-        rest=rest.copy();rest[:3,3]*=unit_scale
-        matrices[name]=pose@np.linalg.inv(C@rest)
-    points=[]
-    for i,vertex in enumerate(vertices):
-        point=np.zeros(3);total=0.
-        for slot in range(slots):
-            k=i*slots+slot;weight=proxy['blend_weights'][k];index=proxy['blend_indices'][k]
-            if (type(index) is not int or not 0<=index<len(names)
-                    or not np.isfinite(weight) or weight<0):
-                raise ValueError('Invalid source proxy joint influence')
-            if weight>1e-8:
-                name=names[index]
-                if name not in matrices:raise ValueError('Source proxy skin bone is absent: '+name)
-                point+=(matrices[name]@vertex)[:3]*weight;total+=weight
-        if total<=1e-8 or total>1.001:
+    return ProxyGoalSkinner(proxy, bone_matrices, unit_scale).evaluate(bone_matrices)
+
+
+class ProxyGoalSkinner:
+    """Prepare source bind and influence data once for an animated rig."""
+
+    def __init__(self, proxy, bone_names, unit_scale):
+        vertices = np.asarray(proxy['vertices'], dtype=float)
+        count = len(vertices)
+        binds = proxy.get('joint_rest_transforms')
+        names, slots = proxy['joint_names'], proxy['joint_count']
+        indices, weights = proxy['blend_indices'], proxy['blend_weights']
+        if (vertices.shape != (count, 3) or not np.isfinite(vertices).all()
+                or not isinstance(binds, list) or len(binds) != len(names)
+                or len(set(names)) != len(names) or type(slots) is not int or not 1 <= slots <= 16
+                or len(indices) != count * slots or len(weights) != count * slots
+                or not np.isfinite(unit_scale) or unit_scale <= 0):
+            raise ValueError('Invalid source inverse-bind proxy arrays')
+
+        basis = np.array([[0., 1, 0, 0], [-1., 0, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]])
+        vertices = np.column_stack((vertices * unit_scale, np.ones(count))) @ basis.T
+        inverse_binds = {}
+        for name, row in zip(names, binds):
+            if name not in bone_names:
+                continue
+            rest = np.array(row, dtype=float)
+            if (rest.shape != (4, 4) or not np.isfinite(rest).all()
+                    or abs(np.linalg.det(rest[:3, :3])) < 1e-8):
+                raise ValueError('Invalid source proxy joint bind/pose transform')
+            rest[:3, 3] *= unit_scale
+            inverse_binds[name] = np.linalg.inv(basis @ rest)
+
+        if any(type(index) is not int or not 0 <= index < len(names) for index in indices):
+            raise ValueError('Invalid source proxy joint influence')
+        weights = np.asarray(weights)
+        if weights.shape != (count * slots,) or not np.isfinite(weights).all() or np.any(weights < 0):
+            raise ValueError('Invalid source proxy joint influence')
+        active = weights > 1e-8
+        joint_indices = np.asarray(indices, dtype=np.intp)[active]
+        by_name = {name: i for i, name in enumerate(inverse_binds)}
+        matrix_indices = np.array([by_name.get(name, -1) for name in names], dtype=np.intp)[joint_indices]
+        missing = np.flatnonzero(matrix_indices < 0)
+        if missing.size:
+            raise ValueError('Source proxy skin bone is absent: ' + names[joint_indices[missing[0]]])
+
+        vertex_indices = np.flatnonzero(active) // slots
+        totals = np.zeros(count)
+        np.add.at(totals, vertex_indices, weights[active])
+        if np.any(totals <= 1e-8) or np.any(totals > 1.001):
             raise ValueError('Source proxy skin weights have invalid total influence')
-        points.append(point/total)
-    return np.asarray(points)
+
+        self._names = tuple(inverse_binds)
+        self._inverse_binds = np.asarray(list(inverse_binds.values()))
+        self._matrix_indices = matrix_indices
+        self._vertex_indices = vertex_indices
+        self._vertices = vertices[vertex_indices, :, None]
+        self._weights = weights[active, None]
+        self._totals = totals[:, None]
+
+    def evaluate(self, bone_matrices):
+        poses = []
+        for name in self._names:
+            if name not in bone_matrices:
+                raise ValueError('Source proxy skin bone is absent: ' + name)
+            pose = np.asarray(bone_matrices[name], dtype=float)
+            if pose.shape != (4, 4) or not np.isfinite(pose).all():
+                raise ValueError('Invalid source proxy joint bind/pose transform')
+            poses.append(pose)
+        if not len(self._totals):
+            return np.empty(0)
+
+        transforms = np.asarray(poses) @ self._inverse_binds
+        transformed = (transforms[self._matrix_indices] @ self._vertices)[:, :3, 0]
+        points = np.zeros((len(self._totals), 3))
+        np.add.at(points, self._vertex_indices, transformed * self._weights)
+        return points / self._totals
 
 
 def proxy_bone_outputs(proxy, physics):
